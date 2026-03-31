@@ -4,7 +4,11 @@ State dict loading strips both `module.` prefixes from DataParallel-wrapped
 checkpoint keys.
 """
 
+import contextlib
+import io
+import logging
 import os
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -48,9 +52,26 @@ def strip_module_prefix(state_dict: dict) -> dict:
     return cleaned
 
 
+def _suppress_hf_warnings():
+    """Suppress known noisy warnings from huggingface_hub and transformers."""
+    # huggingface_hub logs "unauthenticated requests" and other noise
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+    # warnings.warn-based messages
+    warnings.filterwarnings("ignore", message=".*local_dir_use_symlinks.*")
+    warnings.filterwarnings("ignore", message=".*not sharded.*")
+
+# Apply globally on import so from_pretrained calls are also covered
+_suppress_hf_warnings()
+
+
+def _hf_download(repo_id: str, filename: str) -> str:
+    """Download from HuggingFace. Returns local path."""
+    return hf_hub_download(repo_id=repo_id, filename=filename)
+
+
 def download_unet_weights() -> str:
     """Download UNet checkpoint from HuggingFace. Returns local path."""
-    return hf_hub_download(repo_id=HF_REPO_ID, filename=UNET_WEIGHT_PATH)
+    return _hf_download(HF_REPO_ID, UNET_WEIGHT_PATH)
 
 
 def download_style_encoder_weights(variant: str = "triplet") -> str:
@@ -62,15 +83,26 @@ def download_style_encoder_weights(variant: str = "triplet") -> str:
         filename = STYLE_ENCODER_CLASS_PATH
     else:
         raise ValueError(f"Unknown variant: {variant}")
-    return hf_hub_download(repo_id=HF_REPO_ID, filename=filename)
+    return _hf_download(HF_REPO_ID, filename)
 
 
 def load_unet(checkpoint_path: str, device: str = "cuda") -> "UNetModel":
     """Load the DiffusionPen UNet with proper state dict handling."""
-    from transformers import CanineModel
-    from reforge.diffusionpen.unet import UNetModel
+    import sys
 
-    text_encoder = CanineModel.from_pretrained(CANINE_MODEL_ID)
+    # Suppress noisy "not sharded" spam from accelerate and load reports
+    # from transformers. Must wrap the imports too because unet.py imports
+    # CanineModel at module level, which triggers accelerate output.
+    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+    _saved_out, _saved_err = sys.stdout, sys.stderr
+    sys.stdout = sys.stderr = io.StringIO()
+    try:
+        from transformers import CanineModel
+        from reforge.diffusionpen.unet import UNetModel
+        text_encoder = CanineModel.from_pretrained(CANINE_MODEL_ID)
+    finally:
+        sys.stdout, sys.stderr = _saved_out, _saved_err
+    logging.getLogger("transformers.modeling_utils").setLevel(logging.WARNING)
 
     args = SimpleNamespace(interpolation=False, mix_rate=0.0)
     model = UNetModel(
@@ -89,7 +121,7 @@ def load_unet(checkpoint_path: str, device: str = "cuda") -> "UNetModel":
         args=args,
     )
 
-    state_dict = torch.load(checkpoint_path, map_location="cpu")
+    state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     cleaned = strip_module_prefix(state_dict)
     model.load_state_dict(cleaned, strict=False)
     model = model.to(device)

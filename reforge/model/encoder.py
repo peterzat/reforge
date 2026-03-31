@@ -22,7 +22,7 @@ class StyleEncoder(nn.Module):
 
         self.encoder = ImageEncoder(model_name="mobilenetv2_100", pretrained=False)
         if checkpoint_path is not None:
-            state_dict = torch.load(checkpoint_path, map_location="cpu")
+            state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
             self.encoder.load_state_dict(state_dict, strict=False)
         self.encoder.eval()
 
