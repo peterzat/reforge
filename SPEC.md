@@ -1,55 +1,61 @@
-## Spec -- 2026-03-31 -- Scaffold reforge repo with full pipeline and demo
+## Spec -- 2026-04-01 -- Quality convergence: from scaffold to readable handwriting
 
-**Goal:** Set up the reforge repository with complete directory structure, port all pipeline code from penforge with every hard-won fix baked in, establish the three-tier test infrastructure, build the CV evaluation module, and deliver a working `demo.sh` that generates a handwritten note from `hw-sample.png`.
+**Goal:** Transform reforge output from "words splattered on a page" to consistently readable handwritten text by decomposing quality into progressive correctness tiers (single word, word pair, full line), instrumenting each tier with measurable metrics, and establishing an autonomous experimentation loop that drives continuous improvement through A/B testing with compute-backed iteration.
 
 ### Acceptance Criteria
 
-- [x] Repository structure matches the architecture in CLAUDE.md (all directories and module files exist)
-- [x] `requirements.txt` pins versions for: torch, diffusers, transformers, Pillow, opencv-python, scipy, numpy, tqdm, huggingface-hub, timm, pytest
-- [x] `.gitignore` covers `.venv/`, `__pycache__/`, `*.pyc`, `experiments/output/`, `tests/*/output/`, `result.png`
-- [x] `hw-sample.png` is committed in `styles/` and contains a 5-word handwritten sentence (each word >= 4 chars)
-- [x] `diffusionpen/unet.py` and `diffusionpen/feature_extractor.py` are ported verbatim from DiffusionPen (MIT license)
-- [x] Style preprocessing correctly segments a sentence photo into 5 word tensors of shape `(1, 3, 64, 256)` in range `[-1, 1]`, using per-word deskew and contrast normalization (not full-image deskew or full-image morph cleanup)
-- [x] StyleEncoder returns `(5, 1280)` raw MobileNetV2 features without mean-pooling
-- [x] Generator implements DDIM sampling with CFG (default scale 3.0), best-of-N candidate selection, and adaptive canvas width up to 320px
-- [x] Long words (>10 chars) are split using score-based syllable splitting (balance + consonant penalty + boundary bonus), with each chunk >= 4 chars, chunk heights normalized, and baseline-aligned overlap blending
-- [x] Postprocessing implements all five gray-box defense layers: adaptive background estimation, body-zone noise removal, isolated-cluster filtering, compositor ink-only compositing, and post-upscale halo cleanup
-- [x] Font normalization uses dual strategy: height-based for 1-3 char words, area-based for 4+ char words
-- [x] Cross-word harmonization adjusts stroke weight (shift to global median) and height (scale down outliers >120% of median, never scale up)
-- [x] Compositor detects baselines accounting for thin and looped descenders, aligns words on shared baseline, and supports paragraph breaks via None sentinels
-- [x] State dict loading strips both `module.` prefixes from DataParallel-wrapped checkpoint keys
-- [x] `python -m pytest tests/quick/ -x -q` passes in under 10 seconds with no GPU or model weights required
-- [x] Quick tests cover at minimum: word segmentation (correct count + reading order), tensor shape/range, quality scoring (range 0-1), syllable splitting (correct chunks for "handwriting"), gray-box detection on synthetic images, baseline alignment, stroke weight convergence, height harmonization, charset validation
-- [x] `tests/medium/` contains at least one A/B harness test (marked `medium`, skips without GPU) that generates two variants and compares them via CV evaluation
-- [x] `tests/full/` contains at least one e2e test (marked `full`, skips without model weights) that runs the pipeline and saves visual output
-- [x] `pytest.ini` defines markers: `quick`, `medium`, `full`, `gpu`
-- [x] `reforge/evaluate/visual.py` implements `check_gray_boxes`, `check_ink_contrast`, `check_baseline_alignment`, `check_stroke_weight_consistency`, `check_word_height_ratio`, `check_background_cleanliness`, and `overall_quality_score`, each returning numeric scores from numpy array inputs
-- [x] Quick tests verify each CV evaluation function against synthetic test images (known-good and known-bad cases)
-- [x] `experiments/ab_harness.py` supports at least 4 preset experiments (cfg, scheduler, postprocess, combined) and generates labeled comparison PNGs
-- [x] `./demo.sh` on a fresh clone: creates venv, installs deps, downloads models, generates `result.png` from `hw-sample.png` with a multi-paragraph note (>= 2 paragraphs, >= 30 words total)
-- [ ] `demo.sh` prints quality metrics from the CV evaluation module after generation
-- [x] `demo.sh` exits 0 only if output file exists, dimensions > 100x100, and file size > 10KB
-- [x] `demo.sh` completes in under 5 minutes on a machine with cached models and GPU
-- [x] CLAUDE.md is complete per the provided template (commands, architecture, data flow, constraints, anti-patterns)
+#### Tier 0: Single-word correctness
+
+- [ ] A single generated word (4-8 chars, e.g. "brown") passes visual inspection by CV metrics: ink contrast > 0.5, no gray boxes, background cleanliness > 0.7, ink occupies 20-80% of image height
+- [ ] A single generated short word (1-3 chars, e.g. "I", "an") meets the same thresholds without being oversized relative to longer words (ink height within 1.5x of a 6-char word generated with the same style)
+- [ ] Best-of-N candidate selection demonstrably improves quality: the chosen candidate scores higher than the median of N candidates on at least 80% of runs across a 10-word test set
+- [ ] Per-word postprocessing (all 5 defense layers) eliminates gray box artifacts on 95%+ of generated words when tested across a batch of 20+ words of varying length
+
+#### Tier 1: Word-pair consistency
+
+- [ ] Two adjacent generated words have stroke weight consistency score > 0.7 (as measured by `check_stroke_weight_consistency`) after harmonization
+- [ ] Two adjacent generated words have height ratio score > 0.6 (as measured by `check_word_height_ratio`) after font normalization and harmonization
+- [ ] Ink darkness (median ink pixel value) varies by less than 25 brightness levels between any two words in a 5-word sequence after harmonization
+
+#### Tier 2: Line-level composition
+
+- [ ] A composed line of 5-8 words has baseline alignment score > 0.7 (as measured by `check_baseline_alignment`)
+- [ ] Word spacing within a line is visually consistent: the coefficient of variation of inter-word gaps is < 0.3
+- [ ] No word in a composed line overlaps another word or extends beyond the page margins
+- [ ] A composed line has overall quality score > 0.5 (as measured by `overall_quality_score`)
+
+#### Tier 3: Experimentation infrastructure
+
+- [ ] An A/B experiment can be run against a single parameter (e.g. guidance scale, DDIM steps, font normalization target) and produces a numeric before/after comparison with statistical context (mean, std across multiple runs, not just one sample)
+- [ ] Experiment results are logged to a machine-readable file (JSON or CSV) so that parameter improvements accumulate across sessions
+- [ ] A "quality regression test" exists that generates a fixed set of words with a fixed seed, computes quality metrics, and fails if any metric drops below a recorded baseline
+- [ ] The A/B harness supports multi-word experiments (not just single-word), testing at minimum a 5-word line to capture composition-level quality effects
+
+#### Tier 4: Quality floor enforcement
+
+- [ ] `demo.sh` output has overall quality score > 0.5
+- [ ] `demo.sh` output has zero gray box detections
+- [ ] `demo.sh` output has ink contrast > 0.4
+- [ ] Quick tests include at least one test per Tier 0 and Tier 1 criterion that validates the metric computation against synthetic images (not requiring GPU)
+- [ ] Medium tests include at least one test per Tier 2 criterion that generates real words (requires GPU) and asserts the quality threshold
 
 ### Context
 
-This is a from-scratch repo, but the pipeline code is a port from the penforge project. Every design constraint in CLAUDE.md's "Hard-won design constraints" section represents a real bug that took multiple commits to fix. These are not optional enhancements; they are the minimum bar for a functional pipeline.
+The initial scaffold spec (26/26 criteria met) delivered a working pipeline, but the output quality is poor: illegible words, inconsistent stroke widths, possible white/gray block artifacts, and no acceptance tests that would catch these problems. The pipeline code exists and runs; the issue is that parameter values, postprocessing thresholds, and composition logic have not been tuned against measurable quality targets.
 
-The `diffusionpen/` files (unet.py, feature_extractor.py) are copied verbatim from the DiffusionPen repository under MIT license. Do not modify them.
+**Incremental decomposition.** Quality problems compound: a bad single word cannot be fixed by better composition, and inconsistent word pairs cannot be fixed by better line layout. The tier structure (single word, word pair, line, experiment, enforcement) forces bottom-up correctness. Each tier's criteria must pass before the next tier's criteria are meaningful.
 
-The CV evaluation module is not a nice-to-have. It is the mechanism by which future development iterations can be autonomously validated. Without it, every quality change requires manual visual inspection, which breaks the autonomous improvement loop.
+**Experimentation philosophy.** This is an applied science project. The right guidance scale, DDIM step count, font normalization target, ink threshold, and dozens of other parameters are not knowable a priori. They must be discovered through systematic A/B testing. The machine has 20GB VRAM and 14 CPU cores; experiments should exploit this compute to run multiple variants in parallel and build statistical confidence, not rely on single-sample comparisons.
 
-The A/B harness presets should sweep:
-- **cfg**: guidance_scale values (1.0, 3.0, 5.0, 7.5)
-- **scheduler**: DDIM vs DPM++ vs UniPC at equal steps
-- **postprocess**: soft sigmoid vs hard threshold
-- **combined**: baseline (CFG=1.0, DDIM, 50 steps, hard) vs tuned (CFG=3.0, DPM++, 25 steps, soft)
+**Measurement over intuition.** Every quality criterion above is tied to a specific metric function in `reforge/evaluate/visual.py` or can be computed from pipeline outputs. "Looks better" is not a criterion. If a quality dimension cannot be measured by CV metrics, add a metric function first, then add the criterion.
 
-Model weights are downloaded from HuggingFace on first run and cached at `~/.cache/huggingface/` (shared cache, do not override HF_HOME). The project-specific cache dir for any non-HF artifacts is `~/.cache/reforge/`.
+**Autonomous improvement loop.** The medium test tier and A/B harness exist precisely so that a coding agent can: change a parameter, run a test, observe the numeric result, and decide whether to commit or revert. The quality regression test (Tier 3) prevents improvements in one dimension from degrading another. Baseline recordings accumulate over time, ratcheting the quality floor upward.
 
-Target hardware: NVIDIA RTX 4000 SFF Ada (20GB VRAM), 64GB RAM. Demo settings should use quality preset (50 steps, 3 candidates) since this machine handles it comfortably.
+**Coding practices (from zat.env).** Work in small increments. Get one tier working before moving to the next. Run tests after each change. If a change regresses a metric, revert and try a different approach. Do not stack multiple untested parameter changes. Write experiment results to disk so that a fresh session can pick up where the last left off.
 
-demo.sh text should be something readable and representative, 2-3 paragraphs, 30-50 words, using only characters from the 80-char charset. Avoid characters not in charset (no em-dashes, curly quotes, etc.).
+**What this spec does not prescribe.** It does not specify which parameter values to use, which postprocessing approach is correct, or what the "right" guidance scale is. Those are implementation decisions to be discovered through experimentation. The spec defines the quality floor (minimum metric thresholds) and the infrastructure to keep improving above that floor.
 
-<!-- SPEC_META: {"date":"2026-03-31","title":"Scaffold reforge repo with full pipeline and demo","criteria_total":26,"criteria_met":25} -->
+---
+*Prior spec (2026-03-31): Scaffold reforge repo with full pipeline and demo (26/26 criteria met).*
+
+<!-- SPEC_META: {"date":"2026-04-01","title":"Quality convergence: from scaffold to readable handwriting","criteria_total":20,"criteria_met":0} -->

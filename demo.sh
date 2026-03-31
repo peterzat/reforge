@@ -26,6 +26,25 @@ python reforge.py \
     --guidance-scale 3.0 \
     --candidates 3
 
+# Print quality metrics
+python3 -c "
+import numpy as np
+from PIL import Image
+from reforge.evaluate.visual import overall_quality_score
+
+img = np.array(Image.open('result.png').convert('L'))
+scores = overall_quality_score(img)
+print()
+print('Quality metrics:')
+for k, v in scores.items():
+    label = k.replace('_', ' ').title()
+    if isinstance(v, float):
+        print(f'  {label:30s} {v:.3f}')
+    else:
+        print(f'  {label:30s} {v}')
+print()
+"
+
 # Validate output
 if [ ! -f "result.png" ]; then
     echo "ERROR: result.png not created" >&2
