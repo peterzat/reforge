@@ -48,7 +48,7 @@ def main():
 
     from reforge.pipeline import run
 
-    result = run(
+    run(
         style_path=args.style,
         style_image_paths=args.style_images,
         text=text,
@@ -58,11 +58,6 @@ def main():
         num_candidates=args.candidates,
         device=args.device,
     )
-
-    print(f"Output saved to: {result['output_path']}")
-    print("Quality scores:")
-    for k, v in result["quality_scores"].items():
-        print(f"  {k}: {v:.3f}")
 
 
 if __name__ == "__main__":

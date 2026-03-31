@@ -1,5 +1,9 @@
 """Orchestration pipeline: validate -> preprocess -> encode -> generate -> harmonize -> compose."""
 
+import os
+import sys
+import time
+
 import numpy as np
 import torch
 from PIL import Image
@@ -18,6 +22,21 @@ from reforge.config import (
 from reforge.validation import split_paragraphs, validate_charset
 
 
+def _fmt_time(seconds: float) -> str:
+    """Format seconds as a human-readable duration."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s:02d}s"
+
+
+def _log(msg: str, verbose: bool, end: str = "\n") -> None:
+    """Print a status line if verbose."""
+    if verbose:
+        sys.stderr.write(msg + end)
+        sys.stderr.flush()
+
+
 def run(
     style_path: str | None = None,
     style_image_paths: list[str] | None = None,
@@ -27,6 +46,7 @@ def run(
     guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
     device: str = "cuda",
+    verbose: bool = True,
 ) -> dict:
     """Run the full generation pipeline.
 
@@ -39,6 +59,7 @@ def run(
         guidance_scale: CFG guidance scale.
         num_candidates: Best-of-N candidate count.
         device: Torch device.
+        verbose: Print progress to stderr.
 
     Returns:
         Dict with output_path, quality_scores, and word_positions.
@@ -51,6 +72,14 @@ def run(
             "CUDA requested but not available. "
             "Use --device cpu for CPU inference (slow) or install CUDA drivers."
         )
+
+    if verbose:
+        if device == "cuda":
+            name = torch.cuda.get_device_name(0)
+            vram = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            _log(f"Device: {name} ({vram:.0f} GB)", verbose)
+        else:
+            _log(f"Device: {device}", verbose)
 
     # --- Validate ---
     validate_charset(text)
@@ -84,7 +113,10 @@ def run(
 
     style_tensors = preprocess_words(word_imgs_raw)
 
-    # --- Encode style ---
+    # --- Load models ---
+    t0 = time.monotonic()
+    _log("Loading models...", verbose, end="")
+
     from reforge.model.encoder import StyleEncoder
     from reforge.model.weights import (
         download_style_encoder_weights,
@@ -99,11 +131,12 @@ def run(
     encoder = encoder.to(device)
     style_features = encoder.encode(style_tensors)
 
-    # --- Load generation models ---
     unet_ckpt = download_unet_weights()
     unet = load_unet(unet_ckpt, device=device)
     vae = load_vae(device=device)
     tokenizer = load_tokenizer()
+
+    _log(f" done ({_fmt_time(time.monotonic() - t0)})", verbose)
 
     # --- Generate words ---
     from reforge.model.generator import generate_word
@@ -121,11 +154,25 @@ def run(
         for word in para:
             flat_words.append(word)
 
+    real_words = [w for w in flat_words if w is not None]
+    n_words = len(real_words)
+    _log(f"Generating {n_words} words ({num_steps} steps, {num_candidates} candidates)", verbose)
+
     generated_images = []
+    word_idx = 0
+    t_gen = time.monotonic()
     for word in flat_words:
         if word is None:
             generated_images.append(None)
             continue
+        word_idx += 1
+        if verbose:
+            elapsed = time.monotonic() - t_gen
+            if word_idx > 1:
+                eta = elapsed / (word_idx - 1) * (n_words - word_idx + 1)
+                _log(f"\r  [{word_idx}/{n_words}] {word} (ETA {_fmt_time(eta)})", verbose, end="")
+            else:
+                _log(f"\r  [{word_idx}/{n_words}] {word}", verbose, end="")
         img = generate_word(
             word, unet, vae, tokenizer, style_features,
             uncond_context=uncond_context,
@@ -135,6 +182,9 @@ def run(
             device=device,
         )
         generated_images.append(img)
+
+    gen_time = time.monotonic() - t_gen
+    _log(f"\r  [{n_words}/{n_words}] done ({_fmt_time(gen_time)})" + " " * 20, verbose)
 
     # --- Font normalization ---
     from reforge.quality.font_scale import normalize_font_size
@@ -168,6 +218,15 @@ def run(
     word_positions = compute_word_positions(generated_images, flat_words)
     real_word_imgs = [img for img in generated_images if img is not None]
     quality = overall_quality_score(output_array, real_word_imgs, word_positions)
+
+    # --- Summary ---
+    file_size = os.path.getsize(output_path)
+    size_str = f"{file_size / 1024:.0f} KB" if file_size < 1024 * 1024 else f"{file_size / (1024*1024):.1f} MB"
+    _log(f"Output: {output_path} ({output_img.width}x{output_img.height}, {size_str})", verbose)
+
+    if verbose:
+        parts = [f"{k}={v:.2f}" for k, v in quality.items() if k != "overall"]
+        _log(f"Quality: {quality['overall']:.2f} ({' '.join(parts)})", verbose)
 
     return {
         "output_path": output_path,
