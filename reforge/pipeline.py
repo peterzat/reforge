@@ -44,7 +44,13 @@ def run(
         Dict with output_path, quality_scores, and word_positions.
     """
     import cv2
-    import torch
+
+    # --- Validate device ---
+    if device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA requested but not available. "
+            "Use --device cpu for CPU inference (slow) or install CUDA drivers."
+        )
 
     # --- Validate ---
     validate_charset(text)
@@ -109,11 +115,9 @@ def run(
 
     # Build flat word list with None sentinels for paragraph breaks
     flat_words = []
-    flat_images = []
     for i, para in enumerate(paragraphs):
         if i > 0:
             flat_words.append(None)
-            flat_images.append(None)
         for word in para:
             flat_words.append(word)
 

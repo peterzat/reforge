@@ -62,7 +62,8 @@ PRESETS = {
 
 
 def generate_variant(
-    word: str, unet, vae, tokenizer, style_features, variant: dict, device: str
+    word: str, unet, vae, tokenizer, style_features, uncond_context,
+    variant: dict, device: str,
 ) -> np.ndarray:
     """Generate a word image using variant-specific settings."""
     from reforge.model.generator import generate_word
@@ -76,6 +77,7 @@ def generate_variant(
         vae,
         tokenizer,
         style_features,
+        uncond_context=uncond_context if guidance_scale != 1.0 else None,
         num_steps=num_steps,
         guidance_scale=guidance_scale,
         num_candidates=1,
@@ -122,6 +124,9 @@ def run_experiment(style_path: str, experiment: str, device: str = "cuda"):
     vae = load_vae(device=device)
     tokenizer = load_tokenizer()
 
+    # Pre-build unconditional context for CFG (reused across variants)
+    uncond_context = tokenizer(" ", return_tensors="pt", padding="max_length", max_length=16)
+
     # Generate variants
     test_word = "Hello"
     images = []
@@ -130,7 +135,10 @@ def run_experiment(style_path: str, experiment: str, device: str = "cuda"):
 
     for variant in preset["variants"]:
         print(f"  Generating: {variant['label']}")
-        img = generate_variant(test_word, unet, vae, tokenizer, style_features, variant, device)
+        img = generate_variant(
+            test_word, unet, vae, tokenizer, style_features,
+            uncond_context, variant, device,
+        )
         score = overall_quality_score(img)
         images.append(img)
         labels.append(variant["label"])

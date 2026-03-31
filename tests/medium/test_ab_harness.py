@@ -46,6 +46,9 @@ class TestABHarness:
         vae = load_vae(device=device)
         tokenizer = load_tokenizer()
 
+        # Pre-build unconditional context for CFG
+        uncond_context = tokenizer(" ", return_tensors="pt", padding="max_length", max_length=16)
+
         # Generate with CFG=1.0 (no guidance) vs CFG=3.0
         word = "Hello"
         img_no_cfg = generate_word(
@@ -54,6 +57,7 @@ class TestABHarness:
         )
         img_cfg = generate_word(
             word, unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
             num_steps=20, guidance_scale=3.0, num_candidates=1, device=device,
         )
 
