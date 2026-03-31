@@ -291,7 +291,6 @@ def ddim_sample(
         beta_end=0.012,
         beta_schedule="scaled_linear",
         clip_sample=False,
-        set_alpha_cumprod_to_one=False,
     )
     scheduler.set_timesteps(num_steps, device=device)
 

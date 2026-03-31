@@ -1,8 +1,8 @@
 """Length-aware font normalization.
 
 Dual strategy:
-- Short words (1-3 chars): normalize by ink height (target ~24px)
-- Long words (4+ chars): normalize by area per character (target ~1500 px^2)
+- Short words (1-3 chars): normalize by ink height (target ~32px)
+- Long words (4+ chars): normalize by area per character (target ~350 px^2)
 """
 
 import cv2
@@ -35,22 +35,23 @@ def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
     word_len = len(word.strip())
 
     if word_len <= 3:
-        # Height-based normalization
+        # Height-based normalization for short words
         current_height = compute_ink_height(img)
         if current_height <= 0:
             return img
         scale = SHORT_WORD_HEIGHT_TARGET / current_height
     else:
-        # Area-based normalization
+        # Area-based normalization for longer words
         current_area = compute_ink_area(img)
         if current_area <= 0:
             return img
-        target_area = LONG_WORD_AREA_TARGET * word_len
         current_area_per_char = current_area / word_len
-        scale = np.sqrt(LONG_WORD_AREA_TARGET / max(1, current_area_per_char))
+        if current_area_per_char < 1:
+            return img
+        scale = np.sqrt(LONG_WORD_AREA_TARGET / current_area_per_char)
 
-    # Clamp scale to avoid extreme resizing
-    scale = np.clip(scale, 0.3, 3.0)
+    # Clamp: allow moderate scale-down but minimal scale-up
+    scale = np.clip(scale, 0.3, 1.2)
 
     if abs(scale - 1.0) < 0.05:
         return img
