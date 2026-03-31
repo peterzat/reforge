@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+rm -f result.png
+
 echo "=== reforge demo ==="
 
 # Create and activate venv if needed
