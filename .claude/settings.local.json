@@ -28,7 +28,8 @@
       "Bash(.venv/bin/python -m pytest tests/medium/ --collect-only -q 2>&1)",
       "Bash(.venv/bin/python -m pytest tests/full/ --collect-only -q 2>&1)",
       "Bash(.venv/bin/python -m pytest tests/medium/test_generation.py -x -s 2>&1)",
-      "Bash(.venv/bin/python -m pytest tests/full/test_e2e.py -x -s 2>&1)"
+      "Bash(.venv/bin/python -m pytest tests/full/test_e2e.py -x -s 2>&1)",
+      "Skill(codereview)"
     ]
   }
 }

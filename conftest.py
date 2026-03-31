@@ -9,7 +9,6 @@ Direct marker selection (e.g. -m quick) is unaffected.
 """
 
 import pathlib
-import sys
 
 ROOT = pathlib.Path(__file__).parent
 

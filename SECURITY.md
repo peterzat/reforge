@@ -1,6 +1,6 @@
-## Security Review -- 2026-03-31 (scope: changes-only)
+## Security Review -- 2026-04-01 (scope: changes-only)
 
-**Summary:** No security issues identified in the reviewed changes. The diff consists entirely of test code (medium/full test improvements, session-scoped fixtures, tier DAG conftest, TESTING.md) and a Claude Code local settings file. No new attack surface introduced.
+**Summary:** No security issues identified. The only uncommitted change adds a pre-approved tool entry to `.claude/settings.local.json`, a local IDE configuration file with no runtime impact.
 
 ### Findings
 
@@ -12,6 +12,6 @@ No security issues identified.
 
 ---
 
-*Prior review (2026-03-31, scope: full): No exploitable vulnerabilities found. CLI-only ML inference tool with no network surface. One WARN for unpinned dependency versions, one NOTE for first name in docs.*
+*Prior review (2026-03-31): No issues in test infrastructure changes (medium/full test improvements, tier DAG conftest, TESTING.md).*
 
-<!-- SECURITY_META: {"date":"2026-03-31","commit":"8787490","scope":"changes-only","block":0,"warn":0,"note":0} -->
+<!-- SECURITY_META: {"date":"2026-04-01","commit":"c4b3a43","scope":"changes-only","block":0,"warn":0,"note":0} -->
