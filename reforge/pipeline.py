@@ -170,9 +170,10 @@ def run(
             elapsed = time.monotonic() - t_gen
             if word_idx > 1:
                 eta = elapsed / (word_idx - 1) * (n_words - word_idx + 1)
-                _log(f"\r  [{word_idx}/{n_words}] {word} (ETA {_fmt_time(eta)})", verbose, end="")
+                msg = f"  [{word_idx}/{n_words}] {word} (ETA {_fmt_time(eta)})"
             else:
-                _log(f"\r  [{word_idx}/{n_words}] {word}", verbose, end="")
+                msg = f"  [{word_idx}/{n_words}] {word}"
+            _log(f"\r{msg:<60}", verbose, end="")
         img = generate_word(
             word, unet, vae, tokenizer, style_features,
             uncond_context=uncond_context,
