@@ -264,6 +264,7 @@ def ddim_sample(
     vae,
     text_context: dict,
     style_features: torch.Tensor,
+    uncond_context: dict | None = None,
     canvas_width: int = DEFAULT_CANVAS_WIDTH,
     num_steps: int = DEFAULT_DDIM_STEPS,
     guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
@@ -276,9 +277,11 @@ def ddim_sample(
         vae: SD 1.5 VAE decoder.
         text_context: Canine-C tokenizer output dict.
         style_features: (5, 1280) raw style features.
+        uncond_context: Pre-tokenized unconditional context for CFG.
+            If None and guidance_scale != 1.0, CFG is skipped.
         canvas_width: Width of generation canvas.
         num_steps: Number of DDIM steps.
-        guidance_scale: CFG scale (1.0 disables CFG).
+        guidance_scale: CFG guidance scale (1.0 disables CFG).
         device: Torch device.
 
     Returns:
@@ -297,56 +300,47 @@ def ddim_sample(
     latent_h = DEFAULT_CANVAS_HEIGHT // 8
     latent_w = canvas_width // 8
 
-    # Start from noise
-    latents = torch.randn(1, 4, latent_h, latent_w, device=device)
-
-    # Move inputs to device
+    # Move inputs to device once
     text_ctx = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in text_context.items()}
     style_feat = style_features.to(device)
 
-    # Prepare unconditional inputs for CFG
-    use_cfg = guidance_scale != 1.0
+    # CFG setup
+    use_cfg = guidance_scale != 1.0 and uncond_context is not None
     if use_cfg:
-        from transformers import CanineTokenizer
-        tokenizer = CanineTokenizer.from_pretrained("google/canine-c")
-        uncond_ctx = tokenizer(" ", return_tensors="pt", padding="max_length", max_length=text_ctx["input_ids"].shape[1])
-        uncond_ctx = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in uncond_ctx.items()}
+        uncond_ctx = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in uncond_context.items()}
         zero_style = torch.zeros_like(style_feat)
 
-    for t in scheduler.timesteps:
-        t_batch = t.unsqueeze(0) if t.dim() == 0 else t
-
-        # Conditional prediction
-        # UNet forward: (x, timesteps, context, y, style_extractor)
-        # When style_extractor is provided, UNet uses it as style features
-        # and does reshape(b,5,-1) + mean + style_lin internally
-        noise_pred_cond = unet(
-            latents, t_batch, context=text_ctx, y=style_feat,
-            style_extractor=style_feat,
-        )
-
-        if use_cfg:
-            # Unconditional prediction
-            noise_pred_uncond = unet(
-                latents, t_batch, context=uncond_ctx, y=zero_style,
-                style_extractor=zero_style,
-            )
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
-        else:
-            noise_pred = noise_pred_cond
-
-        latents = scheduler.step(noise_pred, t, latents).prev_sample
-
-    # VAE decode
     with torch.no_grad():
+        # Start from noise
+        latents = torch.randn(1, 4, latent_h, latent_w, device=device)
+
+        for t in scheduler.timesteps:
+            t_batch = t.unsqueeze(0) if t.dim() == 0 else t
+
+            # Conditional prediction
+            noise_pred_cond = unet(
+                latents, t_batch, context=text_ctx, y=style_feat,
+                style_extractor=style_feat,
+            )
+
+            if use_cfg:
+                # Unconditional prediction
+                noise_pred_uncond = unet(
+                    latents, t_batch, context=uncond_ctx, y=zero_style,
+                    style_extractor=zero_style,
+                )
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+            else:
+                noise_pred = noise_pred_cond
+
+            latents = scheduler.step(noise_pred, t, latents).prev_sample
+
+        # VAE decode
         decoded = vae.decode(latents / VAE_SCALE_FACTOR).sample
-        # (x/2 + 0.5).clamp(0,1) -> [0,1] RGB
         decoded = (decoded / 2 + 0.5).clamp(0, 1)
+        img = decoded[0].mean(dim=0).cpu().numpy()
 
-    # Convert to grayscale uint8
-    img = decoded[0].mean(dim=0).cpu().numpy()  # average RGB channels
     img = (img * 255).astype(np.uint8)
-
     return img
 
 
@@ -356,6 +350,7 @@ def generate_word(
     vae,
     tokenizer,
     style_features: torch.Tensor,
+    uncond_context: dict | None = None,
     num_steps: int = DEFAULT_DDIM_STEPS,
     guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
@@ -364,22 +359,25 @@ def generate_word(
     """Generate a single word image with best-of-N candidate selection.
 
     Long words (>10 chars) are split, generated as chunks, and stitched.
+
+    Args:
+        uncond_context: Pre-tokenized unconditional context for CFG.
+            Build once with tokenizer(" ", ...) and reuse across all words.
     """
     from reforge.quality.score import quality_score
 
     chunks = split_long_word(word)
 
-    if len(chunks) == 1:
-        # Single word generation with best-of-N
-        canvas_width = compute_canvas_width(len(word))
-        text_ctx = tokenizer(word, return_tensors="pt", padding="max_length", max_length=16)
+    def _generate_chunk(chunk_text: str) -> np.ndarray:
+        canvas_width = compute_canvas_width(len(chunk_text))
+        text_ctx = tokenizer(chunk_text, return_tensors="pt", padding="max_length", max_length=16)
 
         best_img = None
         best_score = -1
-
         for _ in range(num_candidates):
             img = ddim_sample(
                 unet, vae, text_ctx, style_features,
+                uncond_context=uncond_context,
                 canvas_width=canvas_width,
                 num_steps=num_steps,
                 guidance_scale=guidance_scale,
@@ -390,33 +388,13 @@ def generate_word(
             if score > best_score:
                 best_score = score
                 best_img = img
-
         return best_img
 
-    # Multi-chunk: generate each chunk, normalize heights, baseline-align, stitch
-    chunk_images = []
-    for chunk in chunks:
-        canvas_width = compute_canvas_width(len(chunk))
-        text_ctx = tokenizer(chunk, return_tensors="pt", padding="max_length", max_length=16)
+    if len(chunks) == 1:
+        return _generate_chunk(word)
 
-        best_img = None
-        best_score = -1
-        for _ in range(num_candidates):
-            img = ddim_sample(
-                unet, vae, text_ctx, style_features,
-                canvas_width=canvas_width,
-                num_steps=num_steps,
-                guidance_scale=guidance_scale,
-                device=device,
-            )
-            img = postprocess_word(img)
-            score = quality_score(img)
-            if score > best_score:
-                best_score = score
-                best_img = img
-
-        chunk_images.append(best_img)
-
+    # Multi-chunk: generate each, normalize heights, baseline-align, stitch
+    chunk_images = [_generate_chunk(chunk) for chunk in chunks]
     return stitch_chunks(chunk_images)
 
 

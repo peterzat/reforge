@@ -1,7 +1,13 @@
 """Orchestration pipeline: validate -> preprocess -> encode -> generate -> harmonize -> compose."""
 
 import numpy as np
+import torch
 from PIL import Image
+
+# Enable tensor core acceleration on Ada GPUs
+torch.set_float32_matmul_precision("high")
+if torch.backends.cudnn.is_available():
+    torch.backends.cudnn.benchmark = True
 
 from reforge.config import (
     DEFAULT_DDIM_STEPS,
@@ -96,6 +102,11 @@ def run(
     # --- Generate words ---
     from reforge.model.generator import generate_word
 
+    # Pre-build unconditional context for CFG (reused across all words)
+    uncond_context = None
+    if guidance_scale != 1.0:
+        uncond_context = tokenizer(" ", return_tensors="pt", padding="max_length", max_length=16)
+
     # Build flat word list with None sentinels for paragraph breaks
     flat_words = []
     flat_images = []
@@ -113,6 +124,7 @@ def run(
             continue
         img = generate_word(
             word, unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
             num_steps=num_steps,
             guidance_scale=guidance_scale,
             num_candidates=num_candidates,
