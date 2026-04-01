@@ -38,7 +38,6 @@ import sys
 import numpy as np
 from PIL import Image
 from reforge.evaluate.visual import overall_quality_score
-from reforge.evaluate.ocr import ocr_read, ocr_accuracy
 
 img = Image.open('result.png')
 size = __import__('os').path.getsize('result.png')
