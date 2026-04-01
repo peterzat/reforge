@@ -4,13 +4,13 @@
 
 ### Acceptance Criteria
 
-- [ ] A diagnostic script or test exists that, given a word image and its target text, reports: (a) whether ink extends to within 5px of the left/right canvas edge before postprocessing, (b) how many ink columns each postprocessing layer removes from the left 25% and right 25% of the image, (c) OCR accuracy before vs. after postprocessing. This instrument is the foundation for root-cause analysis and must exist before any fix is attempted.
-- [ ] Running the diagnostic on at least 10 words from the demo text identifies which layer(s) are responsible for the majority of character loss (generation, body-zone removal, isolated-cluster filter, word-level gray cleanup, font normalization, or compositor ink threshold). The finding is recorded in a comment or log, not just observed interactively.
-- [ ] After the fix, demo.sh produces output where every word achieves OCR accuracy >= 0.5 (per-word, not just average). Currently roughly half the words score below 0.5 due to clipping.
-- [ ] After the fix, no word in the demo output loses more than 1 character from either edge compared to its target text, as measured by OCR. Words like "morning" must not render as "mor".
-- [ ] The fix does not reintroduce gray-box artifacts. The existing `check_gray_boxes()` test must still pass, and the quick test suite (`tests/quick/`) must still pass without modification.
-- [ ] A medium-tier test generates at least 5 words of varying length (3-8 chars) and asserts that per-word OCR accuracy averages above 0.6 and no single word scores below 0.3. This replaces or extends the existing medium OCR test.
-- [ ] The diagnostic instrument is preserved as a reusable function (not a throwaway script) so future postprocessing changes can be regression-tested against it.
+- [x] A diagnostic script or test exists that, given a word image and its target text, reports: (a) whether ink extends to within 5px of the left/right canvas edge before postprocessing, (b) how many ink columns each postprocessing layer removes from the left 25% and right 25% of the image, (c) OCR accuracy before vs. after postprocessing. This instrument is the foundation for root-cause analysis and must exist before any fix is attempted.
+- [x] Running the diagnostic on at least 10 words from the demo text identifies which layer(s) are responsible for the majority of character loss (generation, body-zone removal, isolated-cluster filter, word-level gray cleanup, font normalization, or compositor ink threshold). The finding is recorded in a comment or log, not just observed interactively.
+- [x] After the fix, demo.sh produces output where every word achieves OCR accuracy >= 0.5 (per-word, not just average). Currently roughly half the words score below 0.5 due to clipping.
+- [x] After the fix, no word in the demo output loses more than 1 character from either edge compared to its target text, as measured by OCR. Words like "morning" must not render as "mor".
+- [x] The fix does not reintroduce gray-box artifacts. The existing `check_gray_boxes()` test must still pass, and the quick test suite (`tests/quick/`) must still pass without modification.
+- [x] A medium-tier test generates at least 5 words of varying length (3-8 chars) and asserts that per-word OCR accuracy averages above 0.6 and no single word scores below 0.3. This replaces or extends the existing medium OCR test.
+- [x] The diagnostic instrument is preserved as a reusable function (not a throwaway script) so future postprocessing changes can be regression-tested against it.
 
 ### Context
 
@@ -37,4 +37,4 @@
 ---
 *Prior spec (2026-04-01): Readable output: fix clipped characters, add OCR validation, repair quality score (18/18 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-01","title":"Word clipping: diagnose and fix truncated characters","criteria_total":7,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-01","title":"Word clipping: diagnose and fix truncated characters","criteria_total":7,"criteria_met":7} -->

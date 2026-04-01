@@ -1,0 +1,130 @@
+{
+  "words": [
+    {
+      "word": "The",
+      "raw_ink_width": 150,
+      "final_ink_width": 150,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "quiet",
+      "raw_ink_width": 144,
+      "final_ink_width": 142,
+      "ink_width_lost": 2,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "morning",
+      "raw_ink_width": 230,
+      "final_ink_width": 230,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "light",
+      "raw_ink_width": 119,
+      "final_ink_width": 119,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "filters",
+      "raw_ink_width": 207,
+      "final_ink_width": 206,
+      "ink_width_lost": 1,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 0.4117647058823529,
+      "ocr_after": 0.875
+    },
+    {
+      "word": "through",
+      "raw_ink_width": 208,
+      "final_ink_width": 208,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 0.38888888888888884,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "shadows",
+      "raw_ink_width": 245,
+      "final_ink_width": 245,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "dancing",
+      "raw_ink_width": 202,
+      "final_ink_width": 202,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "across",
+      "raw_ink_width": 247,
+      "final_ink_width": 247,
+      "ink_width_lost": 0,
+      "ink_near_left_edge": true,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "the",
+      "raw_ink_width": 107,
+      "final_ink_width": 106,
+      "ink_width_lost": 1,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "favorite",
+      "raw_ink_width": 227,
+      "final_ink_width": 225,
+      "ink_width_lost": 2,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 1.0,
+      "ocr_after": 1.0
+    },
+    {
+      "word": "songs",
+      "raw_ink_width": 194,
+      "final_ink_width": 193,
+      "ink_width_lost": 1,
+      "ink_near_left_edge": false,
+      "ink_near_right_edge": false,
+      "ocr_before": 0.8333333333333334,
+      "ocr_after": 0.8333333333333334
+    }
+  ],
+  "clipping_causes": {
+    "generation": 1,
+    "layer2_body_zone": 0,
+    "layer3_cluster": 0,
+    "layer3b_gray_cleanup": 0
+  }
+}

@@ -200,14 +200,18 @@ def body_zone_noise_removal(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray
 def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray:
     """Layer 3: Discard ink clusters separated by large gaps from main cluster.
 
-    Uses full ink mask (not just body zone) for column detection so that
-    ascenders, crossbars, and other features outside the body zone are
-    counted as ink presence, preventing character clipping.
+    Uses a lenient threshold (< 230) for column presence so faint
+    inter-letter strokes bridge gaps that the stricter ink_mask misses.
+    Clusters are merged transitively: if A is near B and B is near C,
+    all three form one group, even if A is far from C. Only truly
+    isolated groups (no neighbor within CLUSTER_GAP_PX) are removed.
     """
     h, w = img.shape[:2]
 
-    # Use full ink mask for column presence, not just body zone
-    col_has_ink = np.any(ink_mask, axis=0)
+    # Lenient column presence: any pixel below 230 counts, not just
+    # the adaptive ink threshold. DiffusionPen generates faint gray
+    # (160-200) between letters that should bridge gaps.
+    col_has_ink = np.any(img < 230, axis=0)
 
     # Find connected runs of ink columns
     clusters = []
@@ -224,17 +228,35 @@ def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray
     if len(clusters) <= 1:
         return img
 
-    # Find main cluster (widest)
-    main_idx = max(range(len(clusters)), key=lambda i: clusters[i][1] - clusters[i][0])
-    main_start, main_end = clusters[main_idx]
+    # Transitive merge: group clusters where neighbors are within gap threshold
+    groups = []  # list of lists of cluster indices
+    current_group = [0]
+    for i in range(1, len(clusters)):
+        prev_end = clusters[i - 1][1]
+        curr_start = clusters[i][0]
+        gap = curr_start - prev_end
+        if gap < CLUSTER_GAP_PX:
+            current_group.append(i)
+        else:
+            groups.append(current_group)
+            current_group = [i]
+    groups.append(current_group)
+
+    if len(groups) <= 1:
+        return img
+
+    # Find the main group (most total ink columns)
+    def group_ink_width(group):
+        return sum(clusters[i][1] - clusters[i][0] for i in group)
+
+    main_group_idx = max(range(len(groups)), key=lambda g: group_ink_width(groups[g]))
 
     result = img.copy()
-    for i, (cs, ce) in enumerate(clusters):
-        if i == main_idx:
+    for g_idx, group in enumerate(groups):
+        if g_idx == main_group_idx:
             continue
-        # Check gap distance to main cluster
-        gap = min(abs(cs - main_end), abs(main_start - ce))
-        if gap >= CLUSTER_GAP_PX:
+        for ci in group:
+            cs, ce = clusters[ci]
             result[:, cs:ce] = 255
 
     return result
