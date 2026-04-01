@@ -197,7 +197,7 @@ def body_zone_noise_removal(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray
     return result
 
 
-def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray:
+def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray = None) -> np.ndarray:
     """Layer 3: Discard ink clusters separated by large gaps from main cluster.
 
     Uses a lenient threshold (< 230) for column presence so faint

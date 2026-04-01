@@ -6,7 +6,6 @@ Results are logged for root-cause analysis.
 """
 
 import json
-import sys
 
 import numpy as np
 import pytest
