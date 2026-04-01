@@ -8,12 +8,7 @@ DiffusionPen renders them at full canvas height, producing oversized glyphs.
 import cv2
 import numpy as np
 
-from reforge.config import LONG_WORD_AREA_TARGET, SHORT_WORD_HEIGHT_TARGET
-
-
-def compute_ink_area(img: np.ndarray) -> int:
-    """Count the number of ink pixels in an image."""
-    return int(np.sum(img < 180))
+from reforge.config import SHORT_WORD_HEIGHT_TARGET
 
 
 def compute_ink_height(img: np.ndarray) -> int:
@@ -31,7 +26,7 @@ def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
 
     All words normalize by ink height. Short words (1-3 chars) target
     SHORT_WORD_HEIGHT_TARGET; longer words target a slightly higher value
-    derived from LONG_WORD_AREA_TARGET to account for their denser ink.
+    (SHORT_WORD_HEIGHT_TARGET * 1.1) to account for their denser ink.
     """
     current_height = compute_ink_height(img)
     if current_height <= 0:
@@ -42,11 +37,7 @@ def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
     if word_len <= 3:
         target_height = SHORT_WORD_HEIGHT_TARGET
     else:
-        # For longer words, estimate target height from area target.
-        # Typical ink coverage: ~40% of bounding box for handwriting.
-        # area = height * width * coverage, width ~ height * (word_len * 0.6)
-        # Solve for height given target area per char.
-        # This produces ~34-38px for 4-8 char words, close to short word target.
+        # Slightly higher target for longer words to account for denser ink
         target_height = int(SHORT_WORD_HEIGHT_TARGET * 1.1)
 
     scale = target_height / current_height

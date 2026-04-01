@@ -1,7 +1,7 @@
 """Cross-word harmonization: stroke weight and height normalization.
 
 Stroke weight: shift each word's ink median toward the global median.
-Height: scale DOWN outliers > 120% of median height (never scale up).
+Height: scale DOWN outliers > 120% of median, scale UP undersized < 80% of median.
 """
 
 import cv2

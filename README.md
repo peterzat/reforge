@@ -102,7 +102,7 @@ DiffusionPen generates dark-gray backgrounds (~150-175 brightness) around word i
 
 After generation and postprocessing, words are normalized for visual consistency:
 
-**Font size normalization** uses a dual strategy. Short words (1-3 characters) are normalized by ink height to a 32px target, preventing single characters from filling the entire 64x256 canvas. Longer words (4+ characters) are normalized by ink area per character to 550 px^2, producing consistent visual density. Scale factors are clamped to [0.3, 1.6].
+**Font size normalization** uses a unified height strategy. Short words (1-3 characters) are normalized by ink height to a 32px target, preventing single characters from filling the entire 64x256 canvas. Longer words (4+ characters) target a slightly higher ink height (~35px) to account for denser ink. Scale factors are clamped to [0.3, 1.6].
 
 **Height harmonization** scales words toward the median ink height. Words exceeding 120% of median are scaled down; words below 80% of median are scaled up. This two-sided approach reduces the height variance that causes uneven baselines.
 

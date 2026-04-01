@@ -1,30 +1,34 @@
-## Review -- 2026-04-01 (commit: 80925b1)
+## Review -- 2026-04-01 (commit: c16cd4a)
 
-**Summary:** Refresh review of 1 unpushed commit. Focus: 7 files changed (generator.py cluster filter fix, new diagnostic instrument, 3 new/updated tests, quality baseline update). Core change: `isolated_cluster_filter` now uses lenient threshold (< 230) for column presence and transitive cluster merging to prevent word clipping.
+**Review scope:** Refresh review. Focus: 18 files changed since prior review (commit 80925b1). 0 already-reviewed files (all files in the full unpushed set were also in the focus set).
+
+**Summary:** Two unpushed commits: unified height normalization replacing the old dual (height+area) strategy, bidirectional harmonization (scale up undersized words), Makefile with targeted test targets, pre-commit hook, setup-hooks script, README expansion, CLAUDE.md loop cadence docs, and quality baseline update reflecting improved metrics. Core code changes are correct and well-tested. Three WARN findings, all stale documentation/dead code from the strategy change, all auto-fixed.
 
 ### Findings
 
-[WARN] reforge/model/generator.py:200 -- `ink_mask` parameter in `isolated_cluster_filter` is now vestigial; the function uses `img < 230` directly instead of the passed mask. Made parameter optional (`= None`) to signal it is transitional.
-  Evidence: Parameter accepted at line 200, but function body (lines 209-262) never references `ink_mask`. All column presence detection uses `img < 230` at line 214.
-  Suggested fix: Applied -- default changed to `= None`. Callers can be updated to stop passing `ink_mask` in a future commit.
+[WARN] reforge/quality/font_scale.py:11 -- Vestigial import and dead code from old area-based normalization. `LONG_WORD_AREA_TARGET` was imported but unused in code. `compute_ink_area()` was defined but never called. Docstring referenced "derived from LONG_WORD_AREA_TARGET" but the code used `SHORT_WORD_HEIGHT_TARGET * 1.1`. Internal comment block (lines 40-44) described an area-based derivation that no longer applied.
+  Evidence: `from reforge.config import LONG_WORD_AREA_TARGET, SHORT_WORD_HEIGHT_TARGET` at line 11; `def compute_ink_area` at line 14 with zero callers; code at line 50 uses `int(SHORT_WORD_HEIGHT_TARGET * 1.1)`.
+  Suggested fix: Applied -- removed import, removed dead function, updated docstring and comment.
 
-[WARN] tests/medium/test_word_clipping_diagnostic.py:9 -- Unused `import sys`.
-  Evidence: `sys` imported at line 9, never referenced in the file.
-  Suggested fix: Applied -- removed the import.
+[WARN] reforge/quality/harmonize.py:4 -- Module docstring contradicts code. Said "never scale up" but the code now scales up words below 80% of median height.
+  Evidence: Line 4: `Height: scale DOWN outliers > 120% of median height (never scale up).` vs. lines 88-90 which scale up undersized words.
+  Suggested fix: Applied -- updated docstring to reflect bidirectional harmonization.
 
-[NOTE] tests/medium/test_ab_harness.py:59 -- `test_cfg_produces_clean_background` threshold lowered from 0.3 to 0.2. This weakens the background cleanliness gate. Justified by the cluster filter fix preserving more ink (and some faint gray) that was previously removed. Worth monitoring if background artifacts reappear.
+[WARN] README.md:105 -- Font normalization description outdated. Said "uses a dual strategy" and "normalized by ink area per character to 550 px^2". Code now uses unified height-based normalization.
+  Evidence: Line 105 text vs. `normalize_font_size()` in font_scale.py which uses height targets for all word lengths.
+  Suggested fix: Applied -- updated to describe unified height strategy.
 
-[NOTE] tests/medium/test_word_clipping_diagnostic.py:116 -- `postprocessed` return value from `generate_raw_word` is computed (GPU cost per word) but discarded. The test only uses `raw_img`. Consider either removing the postprocessing step from `generate_raw_word` or using the result.
+[NOTE] reforge/config.py:37 -- `LONG_WORD_AREA_TARGET = 550` is defined but no longer imported by any module. It is dead configuration. Left in place since config constants are low-risk and the value documents the old strategy for reference. Can be removed in a cleanup pass.
 
-[NOTE] tests/medium/quality_baseline.json -- `baseline_alignment` dropped from 0.7503 to 0.381, pulling `overall` from 0.8195 to 0.7587. Other metrics improved (stroke_weight_consistency up, background_cleanliness up). Likely stochastic variation from a different generation run, but the magnitude of the alignment drop warrants observation.
+[NOTE] Makefile:12 -- `test-full` unconditionally runs `cp result.png docs/best-output.png`, updating the README image on every full test run regardless of whether quality improved. This is a side effect on the working tree. Acceptable given the current single-developer workflow where the developer reviews and commits changes.
 
 ### Fixes Applied
 
-1. `reforge/model/generator.py:200` -- Made `ink_mask` parameter optional with `= None` default.
-2. `tests/medium/test_word_clipping_diagnostic.py:9` -- Removed unused `import sys`.
+1. `reforge/quality/font_scale.py` -- Removed vestigial `LONG_WORD_AREA_TARGET` import, removed dead `compute_ink_area()` function, updated docstring to reference `SHORT_WORD_HEIGHT_TARGET * 1.1`, replaced misleading area-derivation comment with concise explanation.
+2. `reforge/quality/harmonize.py:4` -- Updated module docstring from "never scale up" to "scale DOWN outliers > 120% of median, scale UP undersized < 80% of median."
+3. `README.md:105` -- Replaced "dual strategy" / "ink area per character" description with unified height strategy description matching current code.
 
 ---
+*Prior review (2026-04-01, commit 80925b1): Refresh review of cluster filter fix and diagnostic test. 2 WARNs (vestigial ink_mask parameter, unused sys import), both auto-fixed. 3 NOTEs (threshold loosening, discarded postprocessed value, baseline alignment drop).*
 
-*Prior review (2026-04-01, commit 236bd6e): Light review of 1 unpushed commit (SPEC.md, quality baseline, settings). No issues.*
-
-<!-- REVIEW_META: {"date":"2026-04-01","commit":"80925b1","reviewed_up_to":"80925b1602b4adaed4bf7db701476504516af479","base":"origin/main","tier":"refresh","block":0,"warn":2,"note":3} -->
+<!-- REVIEW_META: {"date":"2026-04-01","commit":"c16cd4a","reviewed_up_to":"c16cd4a27b6604dd2964c737c372abc418c2a71f","base":"origin/main","tier":"refresh","block":0,"warn":3,"note":2} -->
