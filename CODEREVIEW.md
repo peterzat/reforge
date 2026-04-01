@@ -1,34 +1,28 @@
-## Review -- 2026-04-01 (commit: c16cd4a)
+## Review -- 2026-04-01 (commit: 067f996)
 
-**Review scope:** Refresh review. Focus: 18 files changed since prior review (commit 80925b1). 0 already-reviewed files (all files in the full unpushed set were also in the focus set).
+**Review scope:** Refresh review. Focus: 27 files changed since prior review (commit 8227b0f). 1 already-reviewed file (docs/OUTPUT_HISTORY.md) checked for interactions only.
 
-**Summary:** Two unpushed commits: unified height normalization replacing the old dual (height+area) strategy, bidirectional harmonization (scale up undersized words), Makefile with targeted test targets, pre-commit hook, setup-hooks script, README expansion, CLAUDE.md loop cadence docs, and quality baseline update reflecting improved metrics. Core code changes are correct and well-tested. Three WARN findings, all stale documentation/dead code from the strategy change, all auto-fixed.
+**Summary:** Large commit implementing the output quality spec: tighter height harmonization (105%/92% thresholds replacing 120%/80%), dynamic page sizing targeting near-square aspect ratio, proportional margins, generation presets (draft/fast/quality), style fidelity metric, composition score, style similarity tiebreaker in best-of-N selection, six experiment sweep scripts, and new CLI arguments (--preset, --page-ratio). Tests updated (119 quick passing). Two WARNs found and auto-fixed: stale docstrings referencing old 120%/80% thresholds in harmonize.py and CLAUDE.md, and unused imports (MARGIN_V_RATIO, compute_margins) in render.py. One NOTE: compute_margins() in layout.py is defined and tested but not used by any production code path. Security: 0 BLOCK / 0 WARN / 0 NOTE.
 
 ### Findings
 
-[WARN] reforge/quality/font_scale.py:11 -- Vestigial import and dead code from old area-based normalization. `LONG_WORD_AREA_TARGET` was imported but unused in code. `compute_ink_area()` was defined but never called. Docstring referenced "derived from LONG_WORD_AREA_TARGET" but the code used `SHORT_WORD_HEIGHT_TARGET * 1.1`. Internal comment block (lines 40-44) described an area-based derivation that no longer applied.
-  Evidence: `from reforge.config import LONG_WORD_AREA_TARGET, SHORT_WORD_HEIGHT_TARGET` at line 11; `def compute_ink_area` at line 14 with zero callers; code at line 50 uses `int(SHORT_WORD_HEIGHT_TARGET * 1.1)`.
-  Suggested fix: Applied -- removed import, removed dead function, updated docstring and comment.
+[WARN] reforge/quality/harmonize.py:4,67-68 -- Docstrings referenced old 120%/80% thresholds. Config was changed to 1.05 (105%) and 0.92 (92%) but docstrings were not updated. CLAUDE.md lines 264 and 371 also referenced the old values.
+  Evidence: Module docstring line 4: "scale DOWN outliers > 120% of median". Function docstring lines 67-68: "Scale DOWN words above HEIGHT_OUTLIER_THRESHOLD (120%) of median." Config.py line 50-51: `HEIGHT_OUTLIER_THRESHOLD = 1.05`, `HEIGHT_UNDERSIZE_THRESHOLD = 0.92`.
+  Suggested fix: Applied -- updated docstrings to reference the config constants by name (no hardcoded percentages), updated CLAUDE.md to reference 105%/92%.
 
-[WARN] reforge/quality/harmonize.py:4 -- Module docstring contradicts code. Said "never scale up" but the code now scales up words below 80% of median height.
-  Evidence: Line 4: `Height: scale DOWN outliers > 120% of median height (never scale up).` vs. lines 88-90 which scale up undersized words.
-  Suggested fix: Applied -- updated docstring to reflect bidirectional harmonization.
+[WARN] reforge/compose/render.py:15,20 -- Unused imports: `MARGIN_V_RATIO` from config and `compute_margins` from layout. The compose_words() function computes margins inline (lines 67-68, 117-119) rather than calling compute_margins().
+  Evidence: `grep -n MARGIN_V_RATIO render.py` returns only the import line. `grep -n compute_margins render.py` returns only the import line.
+  Suggested fix: Applied -- removed both unused imports.
 
-[WARN] README.md:105 -- Font normalization description outdated. Said "uses a dual strategy" and "normalized by ink area per character to 550 px^2". Code now uses unified height-based normalization.
-  Evidence: Line 105 text vs. `normalize_font_size()` in font_scale.py which uses height targets for all word lengths.
-  Suggested fix: Applied -- updated to describe unified height strategy.
-
-[NOTE] reforge/config.py:37 -- `LONG_WORD_AREA_TARGET = 550` is defined but no longer imported by any module. It is dead configuration. Left in place since config constants are low-risk and the value documents the old strategy for reference. Can be removed in a cleanup pass.
-
-[NOTE] Makefile:12 -- `test-full` unconditionally runs `cp result.png docs/best-output.png`, updating the README image on every full test run regardless of whether quality improved. This is a side effect on the working tree. Acceptable given the current single-developer workflow where the developer reviews and commits changes.
+[NOTE] reforge/compose/layout.py:80-95 -- `compute_margins()` is defined, exported, and tested in test_layout.py, but not called by any production code. render.py computes the same margins inline. The function could either replace the inline computation in render.py or be removed. Leaving in place since the test coverage is a positive signal and the function may be useful for future callers.
 
 ### Fixes Applied
 
-1. `reforge/quality/font_scale.py` -- Removed vestigial `LONG_WORD_AREA_TARGET` import, removed dead `compute_ink_area()` function, updated docstring to reference `SHORT_WORD_HEIGHT_TARGET * 1.1`, replaced misleading area-derivation comment with concise explanation.
-2. `reforge/quality/harmonize.py:4` -- Updated module docstring from "never scale up" to "scale DOWN outliers > 120% of median, scale UP undersized < 80% of median."
-3. `README.md:105` -- Replaced "dual strategy" / "ink area per character" description with unified height strategy description matching current code.
+1. `reforge/quality/harmonize.py` -- Updated module docstring and harmonize_heights() docstring to reference config constants by name instead of hardcoded 120%/80% values.
+2. `reforge/compose/render.py` -- Removed unused imports of `MARGIN_V_RATIO` and `compute_margins`.
+3. `CLAUDE.md` -- Updated two references from 120%/80% to 105%/92% to match current config values.
 
 ---
-*Prior review (2026-04-01, commit 80925b1): Refresh review of cluster filter fix and diagnostic test. 2 WARNs (vestigial ink_mask parameter, unused sys import), both auto-fixed. 3 NOTEs (threshold loosening, discarded postprocessed value, baseline alignment drop).*
+*Prior review (2026-04-01, commit 8227b0f): Refresh review. No issues found. 1 unpushed commit made output archive non-fatal in test-full target.*
 
-<!-- REVIEW_META: {"date":"2026-04-01","commit":"c16cd4a","reviewed_up_to":"c16cd4a27b6604dd2964c737c372abc418c2a71f","base":"origin/main","tier":"refresh","block":0,"warn":3,"note":2} -->
+<!-- REVIEW_META: {"date":"2026-04-01","commit":"067f996","reviewed_up_to":"067f996476e9263da4a0634bca654f1318a7f549","base":"origin/main","tier":"refresh","block":0,"warn":2,"note":1} -->

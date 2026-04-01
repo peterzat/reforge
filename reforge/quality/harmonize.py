@@ -1,7 +1,7 @@
 """Cross-word harmonization: stroke weight and height normalization.
 
 Stroke weight: shift each word's ink median toward the global median.
-Height: scale DOWN outliers > 120% of median, scale UP undersized < 80% of median.
+Height: scale DOWN outliers > HEIGHT_OUTLIER_THRESHOLD of median, scale UP undersized < HEIGHT_UNDERSIZE_THRESHOLD of median.
 """
 
 import cv2
@@ -64,8 +64,8 @@ def compute_ink_height(img: np.ndarray) -> int:
 def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
     """Scale words toward median height to reduce height variance.
 
-    Scale DOWN words above HEIGHT_OUTLIER_THRESHOLD (120%) of median.
-    Scale UP words below HEIGHT_UNDERSIZE_THRESHOLD (80%) of median.
+    Scale DOWN words above HEIGHT_OUTLIER_THRESHOLD of median.
+    Scale UP words below HEIGHT_UNDERSIZE_THRESHOLD of median.
     Preserves aspect ratio during scaling.
     """
     if not word_images:

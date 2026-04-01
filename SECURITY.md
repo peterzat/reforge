@@ -1,6 +1,6 @@
-## Security Review -- 2026-04-01 (scope: reforge/quality, reforge/config.py, reforge/pipeline.py, reforge/model/generator.py, .githooks, scripts, Makefile, tests)
+## Security Review -- 2026-04-01 (scope: reforge.py, pipeline, compose, config, evaluate, generator, 6 experiment sweeps)
 
-**Summary:** No security issues identified. Reviewed image processing modules (font_scale.py, harmonize.py), pipeline orchestration, DDIM sampling/postprocessing (generator.py), configuration constants, pre-commit hook, setup script, Makefile, and three test files. No secrets, no command injection vectors, no deserialization of untrusted data. All `torch.load` calls in the weight-loading path use `weights_only=True`. File writes use either hardcoded paths (tests) or user-controlled CLI arguments with no privilege boundary.
+**Summary:** No security issues identified. Reviewed 13 files covering the CLI entry point, orchestration pipeline, composition/layout, generation engine, quality evaluation, configuration, and all experiment sweep scripts. No secrets, no command injection vectors, no deserialization risks, no network exposure. Model weight loading uses `weights_only=True`. User input is validated against a fixed charset. Output path is user-controlled but this is a local CLI tool run by the user themselves.
 
 ### Findings
 
@@ -12,6 +12,6 @@ No security issues identified.
 
 ---
 
-*Prior review (2026-04-01, scope: generator.py, diagnostic.py, tests/medium): No issues. DDIM sampling, postprocessing, diagnostics, and test files contained no secrets, external input handling, or dangerous sinks.*
+*Prior review (2026-04-01, scope: changes-only): No issues. Uncommitted changes were documentation-only (CODEREVIEW.md, SECURITY.md metadata).*
 
-<!-- SECURITY_META: {"date":"2026-04-01","commit":"c16cd4a","scope":"reforge/quality/font_scale.py reforge/quality/harmonize.py reforge/config.py reforge/pipeline.py reforge/model/generator.py .githooks/pre-commit scripts/setup-hooks.sh Makefile tests/medium/test_word_clipping_diagnostic.py tests/medium/test_ab_harness.py tests/quick/test_stroke_weight.py","block":0,"warn":0,"note":0} -->
+<!-- SECURITY_META: {"date":"2026-04-01","commit":"067f996","scope":"reforge.py reforge/compose/layout.py reforge/compose/render.py reforge/config.py reforge/evaluate/visual.py reforge/model/generator.py reforge/pipeline.py experiments/sweep_candidates.py experiments/sweep_guidance.py experiments/sweep_photo_quality.py experiments/sweep_preprocess.py experiments/sweep_steps.py experiments/sweep_word_choice.py","block":0,"warn":0,"note":0} -->

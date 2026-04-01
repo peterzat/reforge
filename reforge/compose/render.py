@@ -12,12 +12,10 @@ from reforge.config import (
     COMPOSITOR_INK_THRESHOLD,
     DEFAULT_PAGE_WIDTH,
     LINE_SPACING,
-    MARGIN_V_RATIO,
     PAGE_MARGIN,
     PARAGRAPH_SPACING,
 )
 from reforge.compose.layout import (
-    compute_margins,
     compute_page_width,
     compute_word_positions,
     detect_baseline,
