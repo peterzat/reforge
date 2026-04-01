@@ -86,7 +86,12 @@ def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def harmonize_words(word_images: list[np.ndarray]) -> list[np.ndarray]:
-    """Apply both stroke weight and height harmonization."""
-    result = harmonize_stroke_weight(word_images)
-    result = harmonize_heights(result)
+    """Apply height harmonization first, then stroke weight.
+
+    Height harmonization resizes images (via interpolation), which shifts
+    ink pixel values. Applying stroke weight harmonization last ensures
+    the final ink medians converge properly.
+    """
+    result = harmonize_heights(word_images)
+    result = harmonize_stroke_weight(result)
     return result

@@ -11,4 +11,6 @@ timm>=0.9.12
 accelerate>=0.25.0
 einops>=0.7.0
 omegaconf>=2.3.0
+sentencepiece>=0.1.99
+protobuf>=4.25.0
 pytest>=7.4.0

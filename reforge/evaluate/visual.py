@@ -153,7 +153,11 @@ def check_word_height_ratio(word_imgs: list[np.ndarray]) -> float:
 
 
 def check_background_cleanliness(img: np.ndarray) -> float:
-    """Compute fraction of non-white non-ink pixels (noise).
+    """Compute fraction of non-white non-ink pixels (noise) in background regions.
+
+    Excludes gray pixels adjacent to ink (anti-aliasing) since those are
+    expected from diffusion output, not artifacts. Only counts gray pixels
+    that are isolated in background areas.
 
     Returns score in [0, 1] where 1.0 means clean background.
     """
@@ -162,14 +166,32 @@ def check_background_cleanliness(img: np.ndarray) -> float:
 
     # Noise = pixels that are neither ink (<128) nor clean background (>240)
     noise = (img >= 128) & (img <= 240)
+
+    # Exclude gray pixels adjacent to ink (within 2px) -- these are anti-aliasing
+    ink_mask = img < 128
+    if np.any(ink_mask):
+        ink_uint8 = ink_mask.astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        near_ink = cv2.dilate(ink_uint8, kernel) > 0
+        noise = noise & ~near_ink
+
     noise_ratio = float(np.mean(noise))
 
     # 0% noise = perfect, >20% = poor
     return max(0.0, 1.0 - noise_ratio / 0.20)
 
 
-def overall_quality_score(img: np.ndarray, word_imgs: list[np.ndarray] | None = None, word_positions: list[dict] | None = None) -> dict:
+def overall_quality_score(
+    img: np.ndarray,
+    word_imgs: list[np.ndarray] | None = None,
+    word_positions: list[dict] | None = None,
+    words: list[str] | None = None,
+) -> dict:
     """Compute composite quality score from all checks.
+
+    When words and word_imgs are provided, OCR accuracy is included as the
+    dominant factor. Unreadable words (OCR < 0.5) or blank words (< expected
+    ink) tank the overall score.
 
     Returns dict with individual scores and overall score.
     """
@@ -186,5 +208,87 @@ def overall_quality_score(img: np.ndarray, word_imgs: list[np.ndarray] | None = 
     if word_positions is not None:
         scores["baseline_alignment"] = check_baseline_alignment(img, word_positions)
 
-    scores["overall"] = float(np.mean(list(scores.values())))
+    # OCR accuracy: dominant factor when available
+    if word_imgs is not None and words is not None:
+        ocr_scores = _compute_ocr_scores(word_imgs, words)
+        if ocr_scores is not None:
+            scores["ocr_accuracy"] = ocr_scores["mean"]
+            scores["ocr_min"] = ocr_scores["min"]
+
+            # Blank word detection: words with < 50% of expected ink pixels
+            blank_ratio = _blank_word_ratio(word_imgs, words)
+            scores["blank_word_ratio"] = 1.0 - blank_ratio
+
+    # Compute overall: OCR-weighted if available
+    component_scores = [v for k, v in scores.items()
+                        if k not in ("ocr_min", "blank_word_ratio")]
+    if "ocr_accuracy" in scores:
+        # Weight OCR accuracy as 40% of overall, rest shares 60%
+        non_ocr = [v for k, v in scores.items()
+                   if k not in ("ocr_accuracy", "ocr_min", "blank_word_ratio")]
+        non_ocr_mean = float(np.mean(non_ocr)) if non_ocr else 0.5
+        overall = 0.4 * scores["ocr_accuracy"] + 0.6 * non_ocr_mean
+
+        # Tank overall if any word is unreadable or blank
+        if scores.get("ocr_min", 1.0) < 0.5:
+            overall = min(overall, 0.45)
+        if scores.get("blank_word_ratio", 1.0) < 0.8:
+            overall = min(overall, 0.45)
+    else:
+        overall = float(np.mean(component_scores))
+
+    scores["overall"] = overall
     return scores
+
+
+def _compute_ocr_scores(
+    word_imgs: list[np.ndarray], words: list[str],
+) -> dict | None:
+    """Compute per-word OCR accuracy. Returns None if OCR is unavailable."""
+    try:
+        from reforge.evaluate.ocr import ocr_accuracy
+    except ImportError:
+        return None
+
+    accuracies = []
+    for img, word in zip(word_imgs, words):
+        if img is None or word is None:
+            continue
+        acc = ocr_accuracy(img, word)
+        accuracies.append(acc)
+
+    if not accuracies:
+        return None
+
+    return {
+        "mean": float(np.mean(accuracies)),
+        "min": float(np.min(accuracies)),
+        "per_word": accuracies,
+    }
+
+
+def _blank_word_ratio(
+    word_imgs: list[np.ndarray], words: list[str],
+) -> float:
+    """Fraction of words with fewer ink pixels than expected.
+
+    A word is considered blank if its ink pixel count is less than
+    50% of (word_length * 50) pixels (rough expected minimum).
+    """
+    if not word_imgs or not words:
+        return 0.0
+
+    blank_count = 0
+    total = 0
+    for img, word in zip(word_imgs, words):
+        if img is None or word is None:
+            continue
+        total += 1
+        expected_ink = len(word) * 50  # rough minimum
+        actual_ink = int(np.sum(img < 128))
+        if actual_ink < expected_ink * 0.5:
+            blank_count += 1
+
+    if total == 0:
+        return 0.0
+    return blank_count / total

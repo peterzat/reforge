@@ -218,7 +218,9 @@ def run(
     output_array = np.array(output_img)
     word_positions = compute_word_positions(generated_images, flat_words)
     real_word_imgs = [img for img in generated_images if img is not None]
-    quality = overall_quality_score(output_array, real_word_imgs, word_positions)
+    quality = overall_quality_score(
+        output_array, real_word_imgs, word_positions, words=real_words,
+    )
 
     # --- Summary ---
     file_size = os.path.getsize(output_path)

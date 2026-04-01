@@ -24,7 +24,8 @@ def compose_words(
     words: list,
     page_width: int = DEFAULT_PAGE_WIDTH,
     upscale_factor: int = 2,
-) -> Image.Image:
+    return_positions: bool = False,
+) -> Image.Image | tuple:
     """Compose word images onto a canvas with baseline alignment.
 
     None entries in word_images / words indicate paragraph breaks.
@@ -34,9 +35,11 @@ def compose_words(
         words: List of word strings (or None for paragraph break).
         page_width: Canvas width in pixels.
         upscale_factor: Upscale factor for final output.
+        return_positions: If True, return (image, adjusted_positions) tuple.
 
     Returns:
-        PIL Image in mode "L" (grayscale).
+        PIL Image in mode "L" (grayscale), or tuple of (Image, positions)
+        if return_positions is True. Positions reflect baseline-adjusted y values.
     """
     positions = compute_word_positions(word_images, words, page_width)
 
@@ -88,6 +91,7 @@ def compose_words(
     canvas = np.full((canvas_h, page_width), 255, dtype=np.uint8)
 
     # Composite each word (Layer 4: ink-only compositing)
+    adjusted_positions = []
     for pos in positions:
         idx = pos["word_idx"]
         img = word_images[idx]
@@ -98,6 +102,11 @@ def compose_words(
         shared_bl = line_baselines[line_num]
         word_bl = baselines.get(idx, img.shape[0] - 1)
         y_adjusted = pos["y"] + (shared_bl - word_bl)
+
+        # Record baseline-adjusted position
+        adj = dict(pos)
+        adj["y"] = int(y_adjusted)
+        adjusted_positions.append(adj)
 
         x_start = pos["x"]
         y_start = int(y_adjusted)
@@ -127,4 +136,7 @@ def compose_words(
         # Layer 5: Post-upscale halo cleanup
         canvas = halo_cleanup(canvas)
 
-    return Image.fromarray(canvas, mode="L")
+    result = Image.fromarray(canvas, mode="L")
+    if return_positions:
+        return result, adjusted_positions
+    return result

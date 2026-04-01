@@ -35,10 +35,10 @@ VAE_SCALE_FACTOR = 0.18215
 # Font normalization
 SHORT_WORD_HEIGHT_TARGET = 32  # pixels, for 1-3 char words
 LONG_WORD_AREA_TARGET = 350    # px^2 per char, for 4+ char words
-HEIGHT_OUTLIER_THRESHOLD = 1.1  # scale down if > 110% of median
+HEIGHT_OUTLIER_THRESHOLD = 1.15  # scale down if > 115% of median
 
 # Stroke weight harmonization
-STROKE_WEIGHT_SHIFT_STRENGTH = 0.7  # blend factor toward global median
+STROKE_WEIGHT_SHIFT_STRENGTH = 0.85  # blend factor toward global median
 
 # Gray-box defense thresholds
 BACKGROUND_PERCENTILE = 90

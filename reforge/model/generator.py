@@ -145,7 +145,16 @@ def apply_ink_threshold(img: np.ndarray, bg_estimate: float) -> np.ndarray:
 
 
 def body_zone_noise_removal(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray:
-    """Layer 2: Blank columns without sufficient body-zone ink."""
+    """Layer 2: Blank columns without sufficient body-zone ink.
+
+    Uses connected-component analysis on strong ink (< 128) to preserve
+    columns that are part of the same character as body-zone-valid columns,
+    even if those specific columns lack body-zone ink (e.g. crossbar of "T",
+    ascenders of "t", "l"). Uses strong ink for connectivity to avoid
+    chaining through diffusion noise.
+    """
+    import cv2
+
     h, w = img.shape[:2]
     body_top = int(h * BODY_ZONE_TOP)
     body_bottom = int(h * BODY_ZONE_BOTTOM)
@@ -154,21 +163,47 @@ def body_zone_noise_removal(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray
     col_ink_ratio = np.mean(body_zone, axis=0)
     valid_cols = col_ink_ratio >= BODY_ZONE_INK_THRESHOLD
 
+    # Use strong ink (< 128) for connected-component analysis to avoid
+    # gray noise chaining into large components
+    strong_ink = (img < 128).astype(np.uint8) * 255
+    num_labels, labels = cv2.connectedComponents(strong_ink)
+
+    # Find which components touch body-zone-valid columns
+    preserved_labels = set()
+    for c in range(w):
+        if valid_cols[c]:
+            col_labels = labels[:, c]
+            preserved_labels.update(col_labels[col_labels > 0])
+
+    # Build mask of columns to preserve: body-zone valid OR part of a
+    # preserved component
+    preserved_cols = valid_cols.copy()
+    if preserved_labels:
+        labels_arr = np.array(list(preserved_labels))
+        for c in range(w):
+            if not preserved_cols[c]:
+                col_labels = labels[:, c]
+                if np.any(np.isin(col_labels, labels_arr)):
+                    preserved_cols[c] = True
+
     result = img.copy()
     for c in range(w):
-        if not valid_cols[c]:
+        if not preserved_cols[c]:
             result[:, c] = 255
     return result
 
 
 def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray:
-    """Layer 3: Discard body-column clusters separated by large gaps from main cluster."""
-    h, w = img.shape[:2]
-    body_top = int(h * BODY_ZONE_TOP)
-    body_bottom = int(h * BODY_ZONE_BOTTOM)
-    body_zone = ink_mask[body_top:body_bottom, :]
+    """Layer 3: Discard ink clusters separated by large gaps from main cluster.
 
-    col_has_ink = np.any(body_zone, axis=0)
+    Uses full ink mask (not just body zone) for column detection so that
+    ascenders, crossbars, and other features outside the body zone are
+    counted as ink presence, preventing character clipping.
+    """
+    h, w = img.shape[:2]
+
+    # Use full ink mask for column presence, not just body zone
+    col_has_ink = np.any(ink_mask, axis=0)
 
     # Find connected runs of ink columns
     clusters = []
@@ -201,6 +236,34 @@ def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray) -> np.ndarray
     return result
 
 
+def _word_gray_cleanup(img: np.ndarray) -> np.ndarray:
+    """Remove gray fringe pixels not adjacent to strong ink at word level.
+
+    Similar to halo_cleanup but operates on the raw 64x256 word image
+    before composition, using a smaller dilation radius suited to the
+    smaller pixel scale.
+    """
+    import cv2
+
+    strong_ink = img < 128
+    if not np.any(strong_ink):
+        return img
+
+    strong_ink_uint8 = strong_ink.astype(np.uint8) * 255
+    # Smaller dilation for word-level (2px vs 4px for halo_cleanup)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    dilated = cv2.dilate(strong_ink_uint8, kernel)
+    near_ink = dilated > 0
+
+    result = img.copy()
+    # Only clean mid-to-light gray (160-220), preserving darker gray near ink
+    # boundaries that metrics count as ink (< 180)
+    gray_pixels = (img >= 160) & (img < 220)
+    cleanup_mask = gray_pixels & ~near_ink
+    result[cleanup_mask] = 255
+    return result
+
+
 def postprocess_word(img: np.ndarray) -> np.ndarray:
     """Apply all 5 gray-box defense layers to a generated word image.
 
@@ -222,6 +285,10 @@ def postprocess_word(img: np.ndarray) -> np.ndarray:
 
     # Layer 3: Isolated cluster filtering
     img = isolated_cluster_filter(img, ink_mask)
+
+    # Layer 3b: Word-level gray fringe cleanup
+    # Remove gray pixels (128-220) not adjacent to strong ink (< 128)
+    img = _word_gray_cleanup(img)
 
     # Layer 4 (compositor ink-only) is applied during composition in render.py
 
@@ -360,6 +427,9 @@ def generate_word(
 
     Long words (>10 chars) are split, generated as chunks, and stitched.
 
+    Candidates with OCR accuracy below 0.3 are rejected; up to 2 extra
+    retries are attempted to find a readable result.
+
     Args:
         uncond_context: Pre-tokenized unconditional context for CFG.
             Build once with tokenizer(" ", ...) and reuse across all words.
@@ -391,11 +461,38 @@ def generate_word(
         return best_img
 
     if len(chunks) == 1:
-        return _generate_chunk(word)
+        best = _generate_chunk(word)
+
+        # OCR-based rejection: retry if accuracy is too low
+        ocr_fn = _get_ocr_fn()
+        if ocr_fn is not None:
+            max_retries = 2
+            for _ in range(max_retries):
+                acc = ocr_fn(best, word)
+                if acc >= 0.3:
+                    break
+                # Retry with fresh generation
+                retry = _generate_chunk(word)
+                retry_acc = ocr_fn(retry, word)
+                if retry_acc > acc:
+                    best = retry
+                    if retry_acc >= 0.3:
+                        break
+
+        return best
 
     # Multi-chunk: generate each, normalize heights, baseline-align, stitch
     chunk_images = [_generate_chunk(chunk) for chunk in chunks]
     return stitch_chunks(chunk_images)
+
+
+def _get_ocr_fn():
+    """Return ocr_accuracy function if available, else None."""
+    try:
+        from reforge.evaluate.ocr import ocr_accuracy
+        return ocr_accuracy
+    except ImportError:
+        return None
 
 
 def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
