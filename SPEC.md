@@ -8,7 +8,7 @@
 
 The current height harmonization (80%-120% of median) is too loose. Short words ("on", "sun", "near") still dominate visually in multi-line output. The demo output (43 words) has a word_height_ratio of 0.91, meaning the tallest word is ~2.2x the shortest after harmonization.
 
-- [ ] A1. On the demo text (43 words, 50 steps, 3 candidates), `word_height_ratio >= 0.95` (max/min ink height ratio). Current: 0.91. This requires tighter harmonization or better per-word normalization. Measure on `make test-full` output.
+- [x] A1. On the demo text (43 words, 50 steps, 3 candidates), `word_height_ratio >= 0.95` (max/min ink height ratio). Current: 0.91. This requires tighter harmonization or better per-word normalization. Measure on `make test-full` output.
 - [x] A2. On the demo text, no single word's ink height exceeds 150% of the median ink height across all words. Add this as a metric in `overall_quality_score()` reported as `height_outlier_ratio` (worst-case word height / median height). Target: <= 1.5.
 - [x] A3. The quality regression baseline (`make test-regression`) does not regress: existing metrics stay within 5% of current values.
 
@@ -99,4 +99,4 @@ The current style reference sentence "Quick Brown Foxes Jump High" was chosen fo
 ---
 *Prior spec (2026-04-01): Test reliability and loop cadence (7/7 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-01","title":"Output quality: consistency, composition, and style fidelity","criteria_total":21,"criteria_met":20} -->
+<!-- SPEC_META: {"date":"2026-04-01","title":"Output quality: consistency, composition, and style fidelity","criteria_total":21,"criteria_met":21} -->
