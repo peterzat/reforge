@@ -12,19 +12,26 @@ from reforge.config import (
     COMPOSITOR_INK_THRESHOLD,
     DEFAULT_PAGE_WIDTH,
     LINE_SPACING,
+    MARGIN_V_RATIO,
     PAGE_MARGIN,
     PARAGRAPH_SPACING,
 )
-from reforge.compose.layout import compute_word_positions, detect_baseline
+from reforge.compose.layout import (
+    compute_margins,
+    compute_page_width,
+    compute_word_positions,
+    detect_baseline,
+)
 from reforge.model.generator import halo_cleanup
 
 
 def compose_words(
     word_images: list,
     words: list,
-    page_width: int = DEFAULT_PAGE_WIDTH,
+    page_width: int | None = None,
     upscale_factor: int = 2,
     return_positions: bool = False,
+    page_ratio: str = "auto",
 ) -> Image.Image | tuple:
     """Compose word images onto a canvas with baseline alignment.
 
@@ -33,15 +40,34 @@ def compose_words(
     Args:
         word_images: List of grayscale uint8 arrays (or None for paragraph break).
         words: List of word strings (or None for paragraph break).
-        page_width: Canvas width in pixels.
+        page_width: Canvas width in pixels. If None with page_ratio="auto",
+            computed dynamically based on text volume.
         upscale_factor: Upscale factor for final output.
         return_positions: If True, return (image, adjusted_positions) tuple.
+        page_ratio: "auto" for dynamic page width, or explicit width override.
 
     Returns:
         PIL Image in mode "L" (grayscale), or tuple of (Image, positions)
         if return_positions is True. Positions reflect baseline-adjusted y values.
     """
-    positions = compute_word_positions(word_images, words, page_width)
+    # Compute dynamic page width if not explicitly set
+    if page_width is None:
+        if page_ratio == "auto":
+            real_imgs = [img for img in word_images if img is not None]
+            if real_imgs:
+                avg_w = float(np.mean([img.shape[1] for img in real_imgs]))
+                avg_h = float(np.mean([img.shape[0] for img in real_imgs]))
+                page_width = compute_page_width(len(real_imgs), avg_w, avg_h)
+            else:
+                page_width = DEFAULT_PAGE_WIDTH
+        else:
+            page_width = DEFAULT_PAGE_WIDTH
+
+    # Compute proportional horizontal margin
+    margin_h = int(page_width * 0.06)
+    margin_h = max(int(page_width * 0.05), min(margin_h, int(page_width * 0.08)))
+
+    positions = compute_word_positions(word_images, words, page_width, margin_h=margin_h)
 
     if not positions:
         return Image.new("L", (page_width, 100), 255)
@@ -87,7 +113,11 @@ def compose_words(
         bottom = y_adjusted + img.shape[0]
         max_y = max(max_y, bottom)
 
-    canvas_h = int(max_y + PAGE_MARGIN)
+    content_h = int(max_y)
+    # Proportional vertical margin (3-5% of estimated page height)
+    margin_v = max(int(content_h * 0.04), int(content_h * 0.03))
+    margin_v = min(margin_v, int(content_h * 0.06))
+    canvas_h = content_h + 2 * margin_v
     canvas = np.full((canvas_h, page_width), 255, dtype=np.uint8)
 
     # Composite each word (Layer 4: ink-only compositing)
@@ -101,7 +131,7 @@ def compose_words(
         line_num = pos["line"]
         shared_bl = line_baselines[line_num]
         word_bl = baselines.get(idx, img.shape[0] - 1)
-        y_adjusted = pos["y"] + (shared_bl - word_bl)
+        y_adjusted = pos["y"] + (shared_bl - word_bl) + margin_v
 
         # Record baseline-adjusted position
         adj = dict(pos)

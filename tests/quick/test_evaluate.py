@@ -91,6 +91,136 @@ class TestBackgroundCleanliness:
 
 
 @pytest.mark.quick
+class TestHeightOutlierRatio:
+    def test_uniform_heights(self):
+        """Uniform height words return 1.0."""
+        from reforge.evaluate.visual import compute_height_outlier_ratio
+        words = []
+        for _ in range(5):
+            img = np.full((40, 100), 255, dtype=np.uint8)
+            img[10:30, 10:90] = 60
+            words.append(img)
+        assert compute_height_outlier_ratio(words) == 1.0
+
+    def test_outlier_detected(self):
+        """A 2x height outlier returns 2.0."""
+        from reforge.evaluate.visual import compute_height_outlier_ratio
+        normal = []
+        for _ in range(4):
+            img = np.full((40, 100), 255, dtype=np.uint8)
+            img[10:30, 10:90] = 60  # 20px ink height
+            normal.append(img)
+        big = np.full((80, 100), 255, dtype=np.uint8)
+        big[5:45, 10:90] = 60  # 40px ink height
+        normal.append(big)
+        ratio = compute_height_outlier_ratio(normal)
+        assert ratio == pytest.approx(2.0, abs=0.1)
+
+    def test_in_quality_score(self):
+        """height_outlier_ratio appears in overall_quality_score when word_imgs given."""
+        from reforge.evaluate.visual import overall_quality_score
+        words = []
+        for _ in range(3):
+            img = np.full((40, 100), 255, dtype=np.uint8)
+            img[10:30, 10:90] = 60
+            words.append(img)
+        page = np.full((100, 400), 255, dtype=np.uint8)
+        page[20:60, 20:380] = 60
+        result = overall_quality_score(page, word_imgs=words)
+        assert "height_outlier_ratio" in result
+        assert result["height_outlier_ratio"] == pytest.approx(1.0, abs=0.01)
+
+
+@pytest.mark.quick
+class TestCompositionScore:
+    def test_square_image_scores_higher(self):
+        """Near-square image with good margins scores well."""
+        from reforge.evaluate.visual import check_composition_score
+        img = np.full((400, 400), 255, dtype=np.uint8)
+        positions = [
+            {"x": 24, "y": 16, "width": 60, "height": 30, "line": 0, "is_paragraph_start": True},
+            {"x": 100, "y": 16, "width": 60, "height": 30, "line": 0, "is_paragraph_start": False},
+        ]
+        score = check_composition_score(img, positions)
+        assert score > 0.5
+
+    def test_very_wide_image_scores_lower(self):
+        """Very wide image (landscape) should score lower on aspect ratio."""
+        from reforge.evaluate.visual import check_composition_score
+        img = np.full((100, 1000), 255, dtype=np.uint8)
+        positions = [
+            {"x": 50, "y": 5, "width": 60, "height": 30, "line": 0, "is_paragraph_start": True},
+        ]
+        score = check_composition_score(img, positions)
+        # Still produces a score, but aspect sub-score is lower
+        assert score < 0.9
+
+    def test_in_quality_score(self):
+        """composition_score appears when word_positions given."""
+        from reforge.evaluate.visual import overall_quality_score
+        img = np.full((400, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 60
+        positions = [
+            {"x": 24, "y": 20, "width": 60, "height": 30, "line": 0, "is_paragraph_start": True},
+        ]
+        result = overall_quality_score(img, word_positions=positions)
+        assert "composition_score" in result
+
+
+@pytest.mark.quick
+class TestStyleSimilarity:
+    def test_identical_images(self):
+        """Identical images score near 1.0."""
+        from reforge.evaluate.visual import compute_style_similarity
+        img = np.full((40, 100), 255, dtype=np.uint8)
+        img[10:30, 20:80] = 60
+        score = compute_style_similarity(img, [img, img])
+        assert score > 0.9
+
+    def test_different_brightness(self):
+        """Very different ink brightness scores lower."""
+        from reforge.evaluate.visual import compute_style_similarity
+        light = np.full((40, 100), 255, dtype=np.uint8)
+        light[10:30, 20:80] = 150
+        dark = np.full((40, 100), 255, dtype=np.uint8)
+        dark[10:30, 20:80] = 20
+        score = compute_style_similarity(light, [dark])
+        assert score < 0.8
+
+    def test_in_quality_score(self):
+        """style_fidelity appears when style_reference_imgs given."""
+        from reforge.evaluate.visual import overall_quality_score
+        gen = np.full((40, 100), 255, dtype=np.uint8)
+        gen[10:30, 20:80] = 60
+        ref = np.full((40, 100), 255, dtype=np.uint8)
+        ref[10:30, 20:80] = 60
+        page = np.full((100, 400), 255, dtype=np.uint8)
+        page[20:60, 20:380] = 60
+        result = overall_quality_score(
+            page, word_imgs=[gen], style_reference_imgs=[ref],
+        )
+        assert "style_fidelity" in result
+        assert result["style_fidelity"] > 0.8
+
+
+@pytest.mark.quick
+class TestPresets:
+    def test_presets_have_required_keys(self):
+        """Each preset has steps, guidance_scale, candidates."""
+        from reforge.config import PRESETS
+        for name, preset in PRESETS.items():
+            assert "steps" in preset, f"{name} missing steps"
+            assert "guidance_scale" in preset, f"{name} missing guidance_scale"
+            assert "candidates" in preset, f"{name} missing candidates"
+
+    def test_preset_names(self):
+        from reforge.config import PRESETS
+        assert "draft" in PRESETS
+        assert "fast" in PRESETS
+        assert "quality" in PRESETS
+
+
+@pytest.mark.quick
 class TestOverallQuality:
     def test_returns_dict(self):
         """overall_quality_score returns dict with expected keys."""

@@ -23,10 +23,13 @@ BASELINE_PATH = os.path.join(os.path.dirname(__file__), "quality_baseline.json")
 # Fixed test configuration
 SEED = 42
 TEST_WORDS = ["Quick", "brown", "foxes", "jump", "high"]
-NUM_STEPS = 20
-GUIDANCE_SCALE = 3.0
+
+from reforge.config import PRESET_FAST
+NUM_STEPS = PRESET_FAST["steps"]
+GUIDANCE_SCALE = PRESET_FAST["guidance_scale"]
 
 # Metrics that must not regress (any drop below baseline fails the test)
+# Metrics where higher is better (regression = value drops)
 TRACKED_METRICS = [
     "overall",
     "gray_boxes",
@@ -34,6 +37,11 @@ TRACKED_METRICS = [
     "background_cleanliness",
     "stroke_weight_consistency",
     "word_height_ratio",
+]
+
+# Metrics where lower is better (regression = value increases)
+TRACKED_METRICS_INVERTED = [
+    "height_outlier_ratio",
 ]
 
 # Tolerance: allow up to this much regression before failing
@@ -116,7 +124,7 @@ class TestQualityRegression:
             # First run: record baseline
             saved = _save_baseline(scores)
             print(f"Recorded initial baseline to {BASELINE_PATH}")
-            for k in TRACKED_METRICS:
+            for k in TRACKED_METRICS + TRACKED_METRICS_INVERTED:
                 if k in scores:
                     print(f"  {k}: {scores[k]:.4f}")
             return
@@ -133,6 +141,17 @@ class TestQualityRegression:
                 if current < recorded - REGRESSION_TOLERANCE:
                     regressions.append(
                         f"{metric}: {current:.4f} < baseline {recorded:.4f} "
+                        f"(delta {current - recorded:+.4f})"
+                    )
+        for metric in TRACKED_METRICS_INVERTED:
+            if metric not in scores or metric not in baseline_metrics:
+                continue
+            current = scores[metric]
+            recorded = baseline_metrics[metric]
+            if isinstance(current, (int, float)) and isinstance(recorded, (int, float)):
+                if current > recorded + REGRESSION_TOLERANCE:
+                    regressions.append(
+                        f"{metric}: {current:.4f} > baseline {recorded:.4f} "
                         f"(delta {current - recorded:+.4f})"
                     )
 

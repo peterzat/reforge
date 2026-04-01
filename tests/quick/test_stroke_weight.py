@@ -78,14 +78,15 @@ class TestHeightHarmonization:
         assert result[2].shape[0] > small.shape[0]
 
     def test_near_median_words_unchanged(self):
-        """Words within 80-120% of median height are not scaled."""
+        """Words within the harmonization band are not scaled."""
         from reforge.quality.harmonize import harmonize_heights
 
+        # Two words with ink heights close to each other (both within 5% of median)
         w1 = np.full((50, 100), 255, dtype=np.uint8)
-        w1[5:45, 10:90] = 60
+        w1[5:45, 10:90] = 60  # 40px ink height
 
-        w2 = np.full((55, 100), 255, dtype=np.uint8)
-        w2[5:50, 10:90] = 60
+        w2 = np.full((51, 100), 255, dtype=np.uint8)
+        w2[5:46, 10:90] = 60  # 41px ink height
 
         result = harmonize_heights([w1, w2])
         # Both near median, neither should change

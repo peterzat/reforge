@@ -448,6 +448,7 @@ def generate_word(
     guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
     device: str = "cuda",
+    style_reference_imgs: list[np.ndarray] | None = None,
 ) -> np.ndarray:
     """Generate a single word image with best-of-N candidate selection.
 
@@ -459,6 +460,9 @@ def generate_word(
     Args:
         uncond_context: Pre-tokenized unconditional context for CFG.
             Build once with tokenizer(" ", ...) and reuse across all words.
+        style_reference_imgs: Raw grayscale style word images for tiebreaking.
+            When two candidates have quality scores within 0.05, the one
+            with higher style similarity wins.
     """
     from reforge.quality.score import quality_score
 
@@ -468,8 +472,7 @@ def generate_word(
         canvas_width = compute_canvas_width(len(chunk_text))
         text_ctx = tokenizer(chunk_text, return_tensors="pt", padding="max_length", max_length=16)
 
-        best_img = None
-        best_score = -1
+        candidates = []
         for _ in range(num_candidates):
             img = ddim_sample(
                 unet, vae, text_ctx, style_features,
@@ -481,10 +484,22 @@ def generate_word(
             )
             img = postprocess_word(img)
             score = quality_score(img)
-            if score > best_score:
-                best_score = score
-                best_img = img
-        return best_img
+            candidates.append((img, score))
+
+        # Style similarity tiebreaker: among candidates within 0.05
+        # of the best quality score, prefer higher style similarity
+        best_score = max(s for _, s in candidates)
+        if style_reference_imgs is not None and len(candidates) > 1:
+            from reforge.evaluate.visual import compute_style_similarity
+            tied = [(img, s) for img, s in candidates if s >= best_score - 0.05]
+            if len(tied) > 1:
+                best_img = max(
+                    tied,
+                    key=lambda x: compute_style_similarity(x[0], style_reference_imgs),
+                )[0]
+                return best_img
+
+        return max(candidates, key=lambda x: x[1])[0]
 
     if len(chunks) == 1:
         best = _generate_chunk(word)

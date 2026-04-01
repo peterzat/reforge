@@ -9,32 +9,32 @@
 The current height harmonization (80%-120% of median) is too loose. Short words ("on", "sun", "near") still dominate visually in multi-line output. The demo output (43 words) has a word_height_ratio of 0.91, meaning the tallest word is ~2.2x the shortest after harmonization.
 
 - [ ] A1. On the demo text (43 words, 50 steps, 3 candidates), `word_height_ratio >= 0.95` (max/min ink height ratio). Current: 0.91. This requires tighter harmonization or better per-word normalization. Measure on `make test-full` output.
-- [ ] A2. On the demo text, no single word's ink height exceeds 150% of the median ink height across all words. Add this as a metric in `overall_quality_score()` reported as `height_outlier_ratio` (worst-case word height / median height). Target: <= 1.5.
-- [ ] A3. The quality regression baseline (`make test-regression`) does not regress: existing metrics stay within 5% of current values.
+- [x] A2. On the demo text, no single word's ink height exceeds 150% of the median ink height across all words. Add this as a metric in `overall_quality_score()` reported as `height_outlier_ratio` (worst-case word height / median height). Target: <= 1.5.
+- [x] A3. The quality regression baseline (`make test-regression`) does not regress: existing metrics stay within 5% of current values.
 
 #### B. Composition and page proportions
 
 The output should look like a handwritten note, not a wide spreadsheet. A note on paper has portrait or near-square proportions, generous margins, and natural line spacing.
 
-- [ ] B1. The pipeline accepts a `--page-ratio` CLI argument (default: auto). When set to auto, the compositor targets a width:height ratio between 0.7 and 1.3 (near-square to mild portrait/landscape) by adjusting `DEFAULT_PAGE_WIDTH` based on text length. Short text (1-5 words) should produce a compact result; long text (40+ words) should produce a page-like layout.
-- [ ] B2. Margins are proportional to page width: left/right margins are 5-8% of page width, top/bottom margins are 3-5% of page height. Current fixed 30px margins look thin on 1600px output and thick on small output.
-- [ ] B3. The demo output (43 words, 3 paragraphs) has an aspect ratio between 0.7:1 and 1.3:1 (width:height). Current: 1.39:1 (too wide).
-- [ ] B4. Add `composition_score` to `overall_quality_score()` that measures: (a) aspect ratio proximity to target, (b) margin proportion, (c) line fill consistency (lines shouldn't be wildly different lengths, except last lines of paragraphs). Score 0-1, threshold >= 0.6 on demo text.
+- [x] B1. The pipeline accepts a `--page-ratio` CLI argument (default: auto). When set to auto, the compositor targets a width:height ratio between 0.7 and 1.3 (near-square to mild portrait/landscape) by adjusting `DEFAULT_PAGE_WIDTH` based on text length. Short text (1-5 words) should produce a compact result; long text (40+ words) should produce a page-like layout.
+- [x] B2. Margins are proportional to page width: left/right margins are 5-8% of page width, top/bottom margins are 3-5% of page height. Current fixed 30px margins look thin on 1600px output and thick on small output.
+- [x] B3. The demo output (43 words, 3 paragraphs) has an aspect ratio between 0.7:1 and 1.3:1 (width:height). Current: 1.39:1 (too wide).
+- [x] B4. Add `composition_score` to `overall_quality_score()` that measures: (a) aspect ratio proximity to target, (b) margin proportion, (c) line fill consistency (lines shouldn't be wildly different lengths, except last lines of paragraphs). Score 0-1, threshold >= 0.6 on demo text.
 
 #### C. Style fidelity metric
 
 The generated words should resemble the input writer's style. We cannot change the model, but we can (a) measure how well style transferred, and (b) use style similarity in best-of-N candidate selection. Per-word comparison against style reference words on extractable features: stroke weight, slant angle, x-height proportion.
 
-- [ ] C1. Add `compute_style_similarity(generated_word_img, style_reference_imgs) -> float` to `reforge/evaluate/visual.py`. Compare: median stroke weight (ink brightness), estimated slant angle (via projection or Hough transform), and x-height to total-height ratio. Return 0-1 score. Validate with a quick test using synthetic images.
-- [ ] C2. Report `style_fidelity` (mean style similarity across generated words) in `overall_quality_score()` output. Do not include it in the overall weighted score yet (observation-only for this spec). This avoids gating on a metric we haven't validated.
-- [ ] C3. In `generate_word()` best-of-N selection, add style similarity as a tiebreaker: when two candidates have quality scores within 0.05 of each other, prefer the one with higher style similarity. This uses the style fidelity signal without letting it override readability.
+- [x] C1. Add `compute_style_similarity(generated_word_img, style_reference_imgs) -> float` to `reforge/evaluate/visual.py`. Compare: median stroke weight (ink brightness), estimated slant angle (via projection or Hough transform), and x-height to total-height ratio. Return 0-1 score. Validate with a quick test using synthetic images.
+- [x] C2. Report `style_fidelity` (mean style similarity across generated words) in `overall_quality_score()` output. Do not include it in the overall weighted score yet (observation-only for this spec). This avoids gating on a metric we haven't validated.
+- [x] C3. In `generate_word()` best-of-N selection, add style similarity as a tiebreaker: when two candidates have quality scores within 0.05 of each other, prefer the one with higher style similarity. This uses the style fidelity signal without letting it override readability.
 
 #### D. Claude multimodal quality review
 
 Formalize the existing pattern (user inspects output, identifies issues) into a repeatable development tool. This is a workflow improvement, not a runtime gate.
 
-- [ ] D1. Add `make review` target that runs demo.sh then prints the output path and quality metrics in a format suitable for pasting into a Claude conversation for visual review. Include the image path, all metric values, and the text that was generated. No automation of the Claude call itself (that would require API access and is out of scope).
-- [ ] D2. Document the review workflow in CLAUDE.md: after `make test-full`, run `make review`, paste output + image into Claude conversation, ask for visual assessment. Findings become items for the next spec.
+- [x] D1. Add `make review` target that runs demo.sh then prints the output path and quality metrics in a format suitable for pasting into a Claude conversation for visual review. Include the image path, all metric values, and the text that was generated. No automation of the Claude call itself (that would require API access and is out of scope).
+- [x] D2. Document the review workflow in CLAUDE.md: after `make test-full`, run `make review`, paste output + image into Claude conversation, ask for visual assessment. Findings become items for the next spec.
 
 #### E. Generation settings optimization
 
@@ -48,16 +48,16 @@ The three primary generation knobs (DDIM steps, guidance scale, num candidates) 
 | Guidance scale | 3.0 | 3.0 | ~2x when >1.0 (two UNet passes per step) |
 | Candidates | 1-2 | 3 | ~linear (each candidate = full DDIM loop) |
 
-- [ ] E1. **Sweep DDIM steps.** Using the 5-word regression baseline (seed 42), run A/B experiments at steps = {10, 15, 20, 30, 40, 50} with guidance_scale=3.0, candidates=1. Record per-step: overall quality score, OCR accuracy, stroke weight consistency, and wall-clock time. Identify the knee of the quality/time curve. Save results to `experiments/output/steps_sweep.json`.
-- [ ] E2. **Sweep guidance scale.** At the optimal step count from E1, sweep guidance_scale = {1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0} with candidates=1. Record same metrics. CFG=1.0 (disabled) is already tested in the A/B harness; include it as a reference point. Save results to `experiments/output/guidance_sweep.json`.
-- [ ] E3. **Sweep candidates.** At optimal steps and guidance from E1/E2, sweep candidates = {1, 2, 3, 5} on 10 diverse words (mix of short/long, common/uncommon). Record quality metrics and total generation time. Identify diminishing returns. Save results to `experiments/output/candidates_sweep.json`.
-- [ ] E4. **Establish per-tier presets.** Based on E1-E3 results, define named presets in config.py:
+- [x] E1. **Sweep DDIM steps.** Using the 5-word regression baseline (seed 42), run A/B experiments at steps = {10, 15, 20, 30, 40, 50} with guidance_scale=3.0, candidates=1. Record per-step: overall quality score, OCR accuracy, stroke weight consistency, and wall-clock time. Identify the knee of the quality/time curve. Save results to `experiments/output/steps_sweep.json`.
+- [x] E2. **Sweep guidance scale.** At the optimal step count from E1, sweep guidance_scale = {1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0} with candidates=1. Record same metrics. CFG=1.0 (disabled) is already tested in the A/B harness; include it as a reference point. Save results to `experiments/output/guidance_sweep.json`.
+- [x] E3. **Sweep candidates.** At optimal steps and guidance from E1/E2, sweep candidates = {1, 2, 3, 5} on 10 diverse words (mix of short/long, common/uncommon). Record quality metrics and total generation time. Identify diminishing returns. Save results to `experiments/output/candidates_sweep.json`.
+- [x] E4. **Establish per-tier presets.** Based on E1-E3 results, define named presets in config.py:
   - `PRESET_FAST`: for medium tests and inner-loop iteration. Target: <1s per word, acceptable quality (overall > 0.85).
   - `PRESET_QUALITY`: for demo and final output. Target: best achievable quality, reasonable time (<3s per word).
   - `PRESET_DRAFT`: for quick smoke tests where generation is needed but quality doesn't matter. Target: <0.3s per word.
   Document the rationale (which sweep results drove each choice) in a comment block in config.py.
-- [ ] E5. **Apply presets to test tiers.** Update test fixtures and demo.sh to use the named presets instead of ad hoc values. Medium tests use PRESET_FAST. Full e2e tests use PRESET_FAST (they validate pipeline correctness, not output quality). demo.sh uses PRESET_QUALITY. The word clipping diagnostic uses PRESET_QUALITY (it needs realistic generation to diagnose real clipping). Verify all test tiers still pass and timings are within budget (quick: <10s, medium: <2min, full: <5min).
-- [ ] E6. **Add `--preset` CLI argument.** Accept `--preset fast|quality|draft` as an alternative to specifying `--steps`, `--guidance-scale`, `--candidates` individually. `--preset` sets all three; individual flags override preset values. Default preset is `quality`.
+- [x] E5. **Apply presets to test tiers.** Update test fixtures and demo.sh to use the named presets instead of ad hoc values. Medium tests use PRESET_FAST. Full e2e tests use PRESET_FAST (they validate pipeline correctness, not output quality). demo.sh uses PRESET_QUALITY. The word clipping diagnostic uses PRESET_QUALITY (it needs realistic generation to diagnose real clipping). Verify all test tiers still pass and timings are within budget (quick: <10s, medium: <2min, full: <5min).
+- [x] E6. **Add `--preset` CLI argument.** Accept `--preset fast|quality|draft` as an alternative to specifying `--steps`, `--guidance-scale`, `--candidates` individually. `--preset` sets all three; individual flags override preset values. Default preset is `quality`.
 
 #### F. Style input optimization
 
@@ -73,10 +73,10 @@ The current style reference sentence "Quick Brown Foxes Jump High" was chosen fo
 - Minimum 4 chars per word (IAM training filter)
 - MobileNetV2 encoder architecture (pretrained, frozen)
 
-- [ ] F1. **Evaluate word choice coverage.** "Quick Brown Foxes Jump High" provides these stroke features: ascenders (k,h), descenders (p,g), round forms (o,e), diagonal strokes (x,w,k). Missing: the letter 't' (most common English letter, distinctive cross-stroke), 'a' and 'd' (common round+vertical combos), 'l' (pure vertical). Design 3 alternative 5-word sentences that maximize stroke diversity while meeting the >= 4 chars constraint. Generate the demo text with each sentence as style input (using the same hw-sample.png photo, re-segmented if needed, or new photos). Compare overall quality, OCR accuracy, and style fidelity (from C1) across all candidates. Save results to `experiments/output/word_choice_sweep.json`.
-- [ ] F2. **Evaluate preprocessing impact.** The style input pipeline is: photograph -> segment -> per-word normalize -> encode. Test whether preprocessing changes improve style encoding by running A/B experiments with variations: (a) tighter vs looser crop padding around segmented words, (b) stronger vs weaker contrast normalization (current CLAHE), (c) binarized input (pure black/white) vs grayscale. Use the demo text with PRESET_QUALITY settings. Measure output quality and style fidelity. Save results to `experiments/output/preprocess_sweep.json`.
-- [ ] F3. **Evaluate photo quality sensitivity.** Take 2-3 photos of the same handwriting under different conditions (good lighting vs poor, high-res vs downscaled, white paper vs lined paper). Run the demo text with each photo. If output quality varies significantly (overall score delta > 0.1), document the sensitivity and add input quality guidance to the CLI `--help` text. If output is robust to input quality, document that finding. Save results to `experiments/output/photo_quality_sweep.json`.
-- [ ] F4. **Apply findings.** If any experiment from F1-F3 produces a measurable improvement (overall score improvement > 0.05 or style fidelity improvement > 0.1), update the defaults: change the recommended reference sentence in CLAUDE.md and config.py, update preprocessing parameters, or add input quality validation. If the current setup is already near-optimal, document that conclusion in the experiment results.
+- [x] F1. **Evaluate word choice coverage.** "Quick Brown Foxes Jump High" provides these stroke features: ascenders (k,h), descenders (p,g), round forms (o,e), diagonal strokes (x,w,k). Missing: the letter 't' (most common English letter, distinctive cross-stroke), 'a' and 'd' (common round+vertical combos), 'l' (pure vertical). Design 3 alternative 5-word sentences that maximize stroke diversity while meeting the >= 4 chars constraint. Generate the demo text with each sentence as style input (using the same hw-sample.png photo, re-segmented if needed, or new photos). Compare overall quality, OCR accuracy, and style fidelity (from C1) across all candidates. Save results to `experiments/output/word_choice_sweep.json`.
+- [x] F2. **Evaluate preprocessing impact.** The style input pipeline is: photograph -> segment -> per-word normalize -> encode. Test whether preprocessing changes improve style encoding by running A/B experiments with variations: (a) tighter vs looser crop padding around segmented words, (b) stronger vs weaker contrast normalization (current CLAHE), (c) binarized input (pure black/white) vs grayscale. Use the demo text with PRESET_QUALITY settings. Measure output quality and style fidelity. Save results to `experiments/output/preprocess_sweep.json`.
+- [x] F3. **Evaluate photo quality sensitivity.** Take 2-3 photos of the same handwriting under different conditions (good lighting vs poor, high-res vs downscaled, white paper vs lined paper). Run the demo text with each photo. If output quality varies significantly (overall score delta > 0.1), document the sensitivity and add input quality guidance to the CLI `--help` text. If output is robust to input quality, document that finding. Save results to `experiments/output/photo_quality_sweep.json`.
+- [x] F4. **Apply findings.** If any experiment from F1-F3 produces a measurable improvement (overall score improvement > 0.05 or style fidelity improvement > 0.1), update the defaults: change the recommended reference sentence in CLAUDE.md and config.py, update preprocessing parameters, or add input quality validation. If the current setup is already near-optimal, document that conclusion in the experiment results.
 
 ### Context
 
@@ -99,4 +99,4 @@ The current style reference sentence "Quick Brown Foxes Jump High" was chosen fo
 ---
 *Prior spec (2026-04-01): Test reliability and loop cadence (7/7 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-01","title":"Output quality: consistency, composition, and style fidelity","criteria_total":21,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-01","title":"Output quality: consistency, composition, and style fidelity","criteria_total":21,"criteria_met":20} -->

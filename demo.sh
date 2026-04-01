@@ -22,9 +22,7 @@ python reforge.py \
     --style styles/hw-sample.png \
     --text "The morning sun cast long shadows across the quiet garden. Birds sang their familiar songs while dew drops sparkled on fresh green leaves.\nShe sat near the old stone wall, reading her favorite book. The pages felt warm and soft under her fingers." \
     --output result.png \
-    --steps 50 \
-    --guidance-scale 3.0 \
-    --candidates 3
+    --preset quality
 
 # Validate output exists
 if [ ! -f "result.png" ]; then

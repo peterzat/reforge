@@ -15,7 +15,9 @@
     "background_cleanliness": 1.0,
     "stroke_weight_consistency": 0.9057,
     "word_height_ratio": 1.0,
+    "height_outlier_ratio": 1.0,
     "baseline_alignment": 1.0,
+    "composition_score": 0.6933,
     "overall": 0.9843
   }
 }

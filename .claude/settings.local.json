@@ -31,7 +31,9 @@
       "Skill(codereview)",
       "Skill(security)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(./scripts/archive-output.sh:*)",
+      "Bash(md5sum:*)"
     ]
   }
 }

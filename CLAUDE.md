@@ -36,6 +36,7 @@ make test-ocr              # OCR accuracy only (GPU, ~14s)
 make test-medium           # medium tests (A/B harnesses, GPU, <2min)
 make test                  # alias for test-medium
 make test-full             # e2e tests + demo.sh (GPU + model weights, ~4.5min)
+make review                # run demo + print metrics for visual review
 
 # Run quick tests (mocked, <10s, no GPU)
 python -m pytest tests/quick/ -x -q
@@ -85,6 +86,17 @@ The full medium suite (~2min) is for development iteration, not gating. Coderevi
 For autonomous iteration, the inner loop is: edit, `make test-quick`, `make test-regression`, repeat. Run `make test` only when the change is ready for full validation.
 
 GPU compute is plentiful (20GB VRAM, ~3.5GB used by DiffusionPen). Run GPU tests aggressively as part of the development loop. Do not be conservative about GPU test execution; the experiment-driven workflow depends on fast, frequent GPU runs for signal.
+
+### Quality review workflow
+
+After `make test-full` or when evaluating output quality:
+
+1. Run `make review` (runs demo.sh, prints metrics in paste-friendly format)
+2. Copy the printed output and open `result.png`
+3. Paste both into a Claude conversation for visual assessment
+4. Findings become items for the next spec
+
+The review identifies issues that CV metrics miss: letter formation quality, natural spacing feel, overall "handwritten note" impression. This is a development workflow, not a runtime gate.
 
 ## Architecture
 

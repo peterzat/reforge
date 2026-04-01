@@ -7,6 +7,8 @@ import os
 import pytest
 import torch
 
+from reforge.config import PRESET_FAST
+
 pytestmark = [pytest.mark.full, pytest.mark.gpu]
 
 SKIP_REASON = "Requires CUDA GPU and model weights"
@@ -23,8 +25,8 @@ class TestE2EPipeline:
             style_path="styles/hw-sample.png",
             text="Hello world from reforge",
             output_path=output_path,
-            num_steps=20,
-            num_candidates=1,
+            num_steps=PRESET_FAST["steps"],
+            num_candidates=PRESET_FAST["candidates"],
             device="cuda",
         )
 
@@ -63,8 +65,8 @@ class TestE2EPipeline:
             style_path="styles/hw-sample.png",
             text="First paragraph here\nSecond paragraph here",
             output_path=output_path,
-            num_steps=20,
-            num_candidates=1,
+            num_steps=PRESET_FAST["steps"],
+            num_candidates=PRESET_FAST["candidates"],
             device="cuda",
         )
 
@@ -114,8 +116,8 @@ class TestE2EPipeline:
             style_path="styles/hw-sample.png",
             text=text,
             output_path=output_path,
-            num_steps=20,
-            num_candidates=1,
+            num_steps=PRESET_FAST["steps"],
+            num_candidates=PRESET_FAST["candidates"],
             device="cuda",
         )
 

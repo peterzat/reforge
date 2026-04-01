@@ -47,6 +47,7 @@ def run(
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
     device: str | None = None,
     verbose: bool = True,
+    page_ratio: str = "auto",
 ) -> dict:
     """Run the full generation pipeline.
 
@@ -183,6 +184,7 @@ def run(
             guidance_scale=guidance_scale,
             num_candidates=num_candidates,
             device=device,
+            style_reference_imgs=word_imgs_raw,
         )
         generated_images.append(img)
 
@@ -212,6 +214,7 @@ def run(
 
     output_img, word_positions = compose_words(
         generated_images, flat_words, return_positions=True,
+        page_ratio=page_ratio,
     )
     output_img.save(output_path)
 
@@ -222,6 +225,7 @@ def run(
     real_word_imgs = [img for img in generated_images if img is not None]
     quality = overall_quality_score(
         output_array, real_word_imgs, word_positions, words=real_words,
+        style_reference_imgs=word_imgs_raw,
     )
 
     # --- Summary ---

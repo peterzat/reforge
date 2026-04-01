@@ -25,26 +25,42 @@ def main():
         help="Output PNG path (default: result.png)."
     )
     parser.add_argument(
-        "--steps", type=int, default=50,
-        help="DDIM sampling steps (default: 50)."
+        "--preset", type=str, default="quality",
+        choices=["draft", "fast", "quality"],
+        help="Generation preset (default: quality). Sets steps, guidance, candidates."
     )
     parser.add_argument(
-        "--guidance-scale", type=float, default=3.0,
-        help="CFG guidance scale (default: 3.0, set 1.0 to disable)."
+        "--steps", type=int, default=None,
+        help="DDIM sampling steps (overrides preset)."
     )
     parser.add_argument(
-        "--candidates", type=int, default=3,
-        help="Best-of-N candidates per word (default: 3)."
+        "--guidance-scale", type=float, default=None,
+        help="CFG guidance scale (overrides preset, set 1.0 to disable)."
+    )
+    parser.add_argument(
+        "--candidates", type=int, default=None,
+        help="Best-of-N candidates per word (overrides preset)."
     )
     parser.add_argument(
         "--device", type=str, default=None,
         help="Torch device (default: auto-detect cuda/cpu)."
+    )
+    parser.add_argument(
+        "--page-ratio", type=str, default="auto",
+        help="Page aspect ratio mode. 'auto' targets near-square output (default: auto)."
     )
 
     args = parser.parse_args()
 
     # Handle escaped newlines in text
     text = args.text.replace("\\n", "\n")
+
+    # Resolve preset + individual overrides
+    from reforge.config import PRESETS
+    preset = PRESETS[args.preset]
+    num_steps = args.steps if args.steps is not None else preset["steps"]
+    guidance_scale = args.guidance_scale if args.guidance_scale is not None else preset["guidance_scale"]
+    num_candidates = args.candidates if args.candidates is not None else preset["candidates"]
 
     from reforge.pipeline import run
 
@@ -53,10 +69,11 @@ def main():
         style_image_paths=args.style_images,
         text=text,
         output_path=args.output,
-        num_steps=args.steps,
-        guidance_scale=args.guidance_scale,
-        num_candidates=args.candidates,
+        num_steps=num_steps,
+        guidance_scale=guidance_scale,
+        num_candidates=num_candidates,
         device=args.device,
+        page_ratio=args.page_ratio,
     )
 
 

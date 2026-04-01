@@ -6,12 +6,21 @@ import pytest
 from reforge.config import (
     DEFAULT_PAGE_WIDTH,
     LINE_SPACING,
+    MAX_PAGE_WIDTH,
+    MIN_PAGE_WIDTH,
     PAGE_MARGIN,
     PARAGRAPH_INDENT,
     PARAGRAPH_SPACING,
+    TARGET_ASPECT_MAX,
+    TARGET_ASPECT_MIN,
     WORD_SPACING,
 )
-from reforge.compose.layout import compute_word_positions, detect_baseline
+from reforge.compose.layout import (
+    compute_margins,
+    compute_page_width,
+    compute_word_positions,
+    detect_baseline,
+)
 
 
 def _fake_word(w=60, h=30):
@@ -131,6 +140,52 @@ class TestComputeWordPositionsParagraphs:
     def test_empty_input(self):
         pos = compute_word_positions([], [])
         assert pos == []
+
+
+@pytest.mark.quick
+class TestComputePageWidth:
+    def test_few_words_narrow_page(self):
+        """3 short words should produce a narrow page."""
+        pw = compute_page_width(word_count=3, avg_word_width=60, avg_word_height=30)
+        assert pw <= DEFAULT_PAGE_WIDTH
+        assert pw >= MIN_PAGE_WIDTH
+
+    def test_many_words_wider_page(self):
+        """43 words should produce a wider page, but in bounds."""
+        pw = compute_page_width(word_count=43, avg_word_width=60, avg_word_height=30)
+        assert MIN_PAGE_WIDTH <= pw <= MAX_PAGE_WIDTH
+
+    def test_aspect_ratio_in_range(self):
+        """Computed page width should target near-square output for typical text."""
+        pw = compute_page_width(word_count=20, avg_word_width=60, avg_word_height=30)
+        # Estimate the resulting aspect ratio
+        total_w = 20 * 60 + 19 * WORD_SPACING
+        margin_h = int(pw * 0.06)
+        usable = pw - 2 * margin_h
+        n_lines = max(1, int(np.ceil(total_w / usable)))
+        est_h = n_lines * (30 + LINE_SPACING)
+        ratio = pw / max(1, est_h)
+        # Should be reasonably close to the target range
+        assert 0.5 <= ratio <= 2.0
+
+    def test_empty_input(self):
+        """Zero words returns default."""
+        pw = compute_page_width(word_count=0, avg_word_width=60, avg_word_height=30)
+        assert pw == DEFAULT_PAGE_WIDTH
+
+
+@pytest.mark.quick
+class TestComputeMargins:
+    def test_margins_in_range(self):
+        """Margins should be proportional to dimensions."""
+        mh, mv = compute_margins(800, 600)
+        assert 800 * 0.05 <= mh <= 800 * 0.08
+        assert 600 * 0.03 <= mv <= 600 * 0.05
+
+    def test_small_page(self):
+        mh, mv = compute_margins(300, 200)
+        assert mh >= int(300 * 0.05)
+        assert mv >= int(200 * 0.03)
 
 
 @pytest.mark.quick
