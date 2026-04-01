@@ -1,57 +1,40 @@
-## Spec -- 2026-04-01 -- Readable output: fix clipped characters, add OCR validation, repair quality score
+## Spec -- 2026-04-01 -- Word clipping: diagnose and fix truncated characters
 
-**Goal:** Make every generated word fully readable by fixing the left-character clipping bug ("The" renders as "he"), adding OCR-based accuracy measurement so the autonomous loop can detect and reject unreadable words, and repairing the overall quality score so it reflects actual output quality rather than passing on broken output.
+**Goal:** Words in the generated output are missing characters at the left edge, right edge, or both. "morning" renders as "mor", "quiet" as "ciet", "favorite" as "vorite", "fingers" as "ingers". The user sees white regions where ink should be. Diagnose whether the cause is generation (canvas too narrow, model not placing ink), postprocessing (defense layers blanking legitimate ink), or composition (clipping during layout), then fix it so every word is fully rendered and readable.
 
 ### Acceptance Criteria
 
-#### Character clipping fix
-
-- [x] The word "The" generates with all three characters visible and OCR-readable (no left-edge clipping of the "T") across 5 consecutive runs with the default style
-- [x] The word "the" generates with all three characters visible and OCR-readable across 5 consecutive runs with the default style
-- [x] Single-character words ("I", "A") generate with the character visible and not blanked by postprocessing
-- [x] No postprocessing defense layer (body-zone noise removal, isolated-cluster filter, word-level gray cleanup, compositor ink threshold) removes ink pixels that are contiguous with the main ink body of the word
-
-#### OCR accuracy measurement
-
-- [x] An OCR evaluation function exists that takes a word image (numpy array) and the intended text, returns a character-level accuracy score in [0, 1] (1.0 = perfect match)
-- [x] The OCR function uses a pretrained model (not a hand-rolled heuristic) capable of reading single handwritten words; the model runs on CPU without requiring additional GPU VRAM during inference
-- [x] `overall_quality_score()` incorporates OCR accuracy when a target word is provided, weighting it as the single most important factor (readability matters more than aesthetics)
-- [x] `demo.sh` prints per-word OCR accuracy alongside existing quality metrics
-- [x] A quick test validates the OCR function against a synthetic word image with known text
-
-#### Ink contrast consistency
-
-- [x] After harmonization, the standard deviation of median ink brightness across all words in a 10-word sequence is less than 15 brightness levels (currently allowed up to 25)
-- [x] Stroke weight harmonization shift strength is tunable via config and validated by a medium-tier A/B test comparing before/after consistency scores
-
-#### Quality score repair
-
-- [x] `overall_quality_score()` returns a score below 0.5 when any word in the output has OCR accuracy below 0.5 (unreadable words must tank the overall score)
-- [x] `overall_quality_score()` returns a score below 0.5 when more than 20% of word images contain fewer ink pixels than expected for their target text (detecting blank or near-blank generations)
-- [x] The quality gate in `demo.sh` fails if per-word OCR accuracy averaged across all words drops below 0.6
-- [x] A quick test validates that `overall_quality_score()` correctly penalizes a composed image containing one blank/empty word among otherwise good words
-
-#### Autonomous improvement loop
-
-- [x] The `generate_word()` function rejects candidates where OCR accuracy for the target word is below 0.3, generating a replacement candidate (up to 2 retries beyond num_candidates) before accepting the best available
-- [x] The A/B harness can compare OCR accuracy distributions (not just visual quality scores) between experiment arms, enabling parameter searches that optimize for readability
-- [x] Medium tests include an OCR accuracy assertion: generating "The quick brown" (3 words) must achieve average per-word OCR accuracy above 0.5
+- [ ] A diagnostic script or test exists that, given a word image and its target text, reports: (a) whether ink extends to within 5px of the left/right canvas edge before postprocessing, (b) how many ink columns each postprocessing layer removes from the left 25% and right 25% of the image, (c) OCR accuracy before vs. after postprocessing. This instrument is the foundation for root-cause analysis and must exist before any fix is attempted.
+- [ ] Running the diagnostic on at least 10 words from the demo text identifies which layer(s) are responsible for the majority of character loss (generation, body-zone removal, isolated-cluster filter, word-level gray cleanup, font normalization, or compositor ink threshold). The finding is recorded in a comment or log, not just observed interactively.
+- [ ] After the fix, demo.sh produces output where every word achieves OCR accuracy >= 0.5 (per-word, not just average). Currently roughly half the words score below 0.5 due to clipping.
+- [ ] After the fix, no word in the demo output loses more than 1 character from either edge compared to its target text, as measured by OCR. Words like "morning" must not render as "mor".
+- [ ] The fix does not reintroduce gray-box artifacts. The existing `check_gray_boxes()` test must still pass, and the quick test suite (`tests/quick/`) must still pass without modification.
+- [ ] A medium-tier test generates at least 5 words of varying length (3-8 chars) and asserts that per-word OCR accuracy averages above 0.6 and no single word scores below 0.3. This replaces or extends the existing medium OCR test.
+- [ ] The diagnostic instrument is preserved as a reusable function (not a throwaway script) so future postprocessing changes can be regression-tested against it.
 
 ### Context
 
-**Inspection findings (2026-04-01).** Human inspection of demo.sh output revealed: (1) no gray boxes (prior defense layers working), (2) perfect background cleanliness, (3) ink contrast improved but still variable, (4) many words unreadable or partially occluded, (5) "the"/"The" consistently renders as "he" with the first character clipped, (6) the overall quality score passes despite visibly broken output.
+**What the output looks like (2026-04-01).** Inspecting result.png shows approximately half of all words are truncated. The pattern is a mix of left-side and right-side clipping: "morning" -> "mor", "shadows" -> "shado" (right-side); "quiet" -> "ciet", "songs" -> "ongs", "fingers" -> "ingers" (left-side); some words lose characters from both sides. The missing regions appear as white space, consistent with either the model not generating ink in that area or postprocessing blanking columns to 255.
 
-**Root cause analysis: character clipping.** The "T" in "The" is likely being removed by body-zone noise removal (Layer 2) or isolated-cluster filtering (Layer 3). The capital T has a thin vertical stem that may not pass the body-zone ink threshold (5% of body-zone rows), causing the column to be blanked. The lowercase "t" has a similar risk with its crossbar extending above the body zone. The fix should preserve columns that are contiguous with the main ink body, even if their individual body-zone ink ratio is low. This is the highest-priority fix because it likely affects many words with ascenders or thin initial strokes (t, T, l, f, i, etc.).
+**Candidate root causes (must be confirmed by diagnostic, not assumed).**
 
-**Root cause analysis: quality score.** The overall quality score averages component scores (gray_boxes, ink_contrast, background_cleanliness) that are all aesthetic rather than functional. A page where every word is illegible but has good contrast and clean background scores well. The score must incorporate readability (OCR accuracy) as the dominant factor. Without this, the autonomous improvement loop optimizes for the wrong thing.
+1. Canvas width too narrow. The 256px canvas fits ~8 characters naturally. `compute_canvas_width()` only widens for 9-10 char words. But many 5-7 char words are also clipped on the right. This could mean the model sometimes places ink too large or too spread out, running off the right edge.
 
-**OCR model selection.** TrOCR (microsoft/trocr-small-handwritten) is a transformer-based model pretrained on handwritten text recognition. It runs on CPU, handles single-word images, and is available via HuggingFace transformers (already a dependency). It is the natural choice: no new dependencies, no additional GPU VRAM, and it is specifically trained on handwritten text similar to DiffusionPen output. Alternative: PaddleOCR or EasyOCR, but these add heavy dependencies for marginal benefit on single-word English handwriting.
+2. Body-zone noise removal (Layer 2). This layer blanks columns where body-zone ink ratio is below 5% (`BODY_ZONE_INK_THRESHOLD`). The connected-component preservation logic was added to fix left-clipping of "T", but it uses strong ink (< 128) for connectivity. If edge characters are rendered as medium-gray (128-180), they will not form connected components with the main body, and their columns will be blanked.
 
-**Coding practices (from zat.env).** Work in small increments. Fix the character clipping first (it affects the most words). Then add OCR measurement (it gives the loop a signal). Then repair the quality score (it makes the loop act on the signal). Then wire into the autonomous loop (the loop can now self-improve). Run tests after each increment. If an OCR model choice proves too slow or inaccurate, try a lighter alternative before over-engineering.
+3. Isolated-cluster filter (Layer 3). Discards ink clusters separated by >= 20px gaps from the main cluster. If a character is separated from the rest by a wide gap (common with DiffusionPen's variable spacing), it gets removed entirely.
 
-**What this spec does not prescribe.** It does not specify which postprocessing layers to modify, what threshold values to use, or how to restructure the body-zone algorithm. Those are implementation decisions to be discovered by reading the code, testing hypotheses, and measuring results. The spec defines what the output must look like (readable words, accurate scores) and what measurement tools must exist (OCR function, improved quality score).
+4. Word-level gray cleanup (Layer 3b). Removes gray pixels (160-220) not adjacent to strong ink (< 128) within a 5x5 dilation radius. Edge characters that are faint could be removed here.
+
+5. Font normalization. `normalize_font_size()` scales images using `cv2.resize()` with `INTER_AREA`. The scale factor clamp of 0.3-1.2 and the area-per-char target could result in images being scaled down, with edge pixels lost to interpolation at the boundary.
+
+6. Compositor ink threshold. `COMPOSITOR_INK_THRESHOLD = 200` means any pixel >= 200 is not composited. Faint edge strokes above this threshold are invisible in the final output.
+
+**Investigation approach.** The diagnostic instrument should run on raw VAE output (before any postprocessing) and after each layer, measuring ink extent and OCR accuracy at each stage. This will show exactly where characters are being lost. Only after the cause is confirmed should fixes be attempted. If the cause is generation (canvas too narrow), the fix is in `compute_canvas_width()` or how the model is conditioned. If the cause is postprocessing, the fix is in the specific defense layer(s). Multiple causes are likely; the diagnostic will reveal their relative contribution.
+
+**Coding practices (from zat.env).** Work in small increments: build the diagnostic first, observe the data, then fix one cause at a time. Run tests after each change. If a fix causes regression (gray boxes, test failures), revert and try a different approach. Two consecutive failed attempts means stop and re-evaluate.
 
 ---
-*Prior spec (2026-04-01): Quality convergence: from scaffold to readable handwriting (20/20 criteria met).*
+*Prior spec (2026-04-01): Readable output: fix clipped characters, add OCR validation, repair quality score (18/18 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-01","title":"Readable output: fix clipped characters, add OCR validation, repair quality score","criteria_total":18,"criteria_met":18} -->
+<!-- SPEC_META: {"date":"2026-04-01","title":"Word clipping: diagnose and fix truncated characters","criteria_total":7,"criteria_met":0} -->

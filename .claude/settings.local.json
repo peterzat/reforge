@@ -29,7 +29,18 @@
       "Bash(.venv/bin/python -m pytest tests/full/ --collect-only -q 2>&1)",
       "Bash(.venv/bin/python -m pytest tests/medium/test_generation.py -x -s 2>&1)",
       "Bash(.venv/bin/python -m pytest tests/full/test_e2e.py -x -s 2>&1)",
-      "Skill(codereview)"
+      "Skill(codereview)",
+      "Bash(python -m pytest tests/quick/test_tier0_metrics.py tests/quick/test_tier1_metrics.py -x -q)",
+      "Bash(python -m pytest tests/medium/ -x -q --timeout=600)",
+      "Bash(python -m pytest tests/medium/ -x -q)",
+      "Bash(python -m pytest tests/full/ -x -q)",
+      "Bash(python -m pytest tests/quick/test_ocr.py -x -q)",
+      "Bash(python -m pytest tests/quick/ -q)",
+      "Bash(python -m pytest tests/full/ -q)",
+      "Bash(python -m pytest tests/ -x -q)",
+      "Bash(./demo.sh)",
+      "Bash(echo $TZ)",
+      "Bash(find reforge/ -name __pycache__ -type d -exec rm -rf {} +)"
     ]
   }
 }
