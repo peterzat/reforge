@@ -1,0 +1,15 @@
+#!/bin/bash
+# Pre-commit hook: runs quick tests before allowing commit.
+# Installed automatically by `make setup-hooks` or `./scripts/setup-hooks.sh`.
+
+# Activate venv if available
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+fi
+
+echo "Running quick tests..."
+python -m pytest tests/quick/ -x -q
+if [ $? -ne 0 ]; then
+    echo "Quick tests failed. Commit blocked."
+    exit 1
+fi
