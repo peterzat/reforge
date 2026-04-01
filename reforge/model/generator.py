@@ -3,8 +3,12 @@
 Implements all five gray-box defense layers in postprocessing.
 """
 
+import warnings
+
 import numpy as np
 import torch
+
+warnings.filterwarnings("ignore", message=".*model-agnostic default.*max_length.*")
 import torch.nn.functional as F
 
 from reforge.config import (
