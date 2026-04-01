@@ -1,0 +1,16 @@
+#!/bin/bash
+# Pre-push hook: runs quality regression test before allowing push.
+# The pre-commit hook catches logic errors (quick tests, 0.8s).
+# This hook catches quality regressions (GPU inference, ~14s).
+# Full medium suite (~2min) is for development iteration, not gating.
+
+if [ -f .venv/bin/activate ]; then
+    source .venv/bin/activate
+fi
+
+echo "Running regression baseline test..."
+python -m pytest tests/medium/test_quality_regression.py -x -q
+if [ $? -ne 0 ]; then
+    echo "Quality regression test failed. Push blocked."
+    exit 1
+fi

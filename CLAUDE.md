@@ -24,7 +24,7 @@ All commands assume an activated venv. Always use `.venv/bin/python` (or activat
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-make setup-hooks          # install pre-commit hook (runs quick tests on every commit)
+make setup-hooks          # install git hooks (pre-commit: quick tests, pre-push: regression)
 
 # Demo (end-to-end, uses hw-sample.png)
 ./demo.sh
@@ -71,7 +71,18 @@ python experiments/ab_harness.py --style styles/hw-sample.png --experiment combi
 | Full validation | `make test` | ~2 min | After completing a fix or feature |
 | Pre-commit gate | `make test-full` | ~4.5 min | Before committing (includes demo.sh visual output) |
 
-The pre-commit hook runs quick tests automatically on every commit. For autonomous iteration, the inner loop is: edit, `make test-quick`, `make test-regression`, repeat. Run `make test` only when the change is ready for full validation.
+### Git hook gating strategy
+
+Two hooks gate the commit/push flow, each targeting a different failure class:
+
+| Hook | Runs | Time | What it catches |
+|------|------|------|-----------------|
+| pre-commit | `make test-quick` | 0.8s | Logic errors, API breakage (mocked, no GPU) |
+| pre-push | `make test-regression` | ~14s | Quality regressions (real GPU inference against baseline) |
+
+The full medium suite (~2min) is for development iteration, not gating. Codereview (pre-push, via Claude Code skill) is a static quality review and does not run tests. When adding new test tiers or gating infrastructure, preserve this separation: fast logic checks at commit time, quality regression at push time, everything else during development.
+
+For autonomous iteration, the inner loop is: edit, `make test-quick`, `make test-regression`, repeat. Run `make test` only when the change is ready for full validation.
 
 ## Architecture
 
