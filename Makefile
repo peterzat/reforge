@@ -10,6 +10,7 @@ test-full:
 	.venv/bin/python -m pytest tests/full/ -x -s
 	./demo.sh
 	cp result.png docs/best-output.png
+	./scripts/archive-output.sh
 
 test-regression:
 	.venv/bin/python -m pytest tests/medium/test_quality_regression.py -x -s

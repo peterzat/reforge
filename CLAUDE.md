@@ -84,6 +84,8 @@ The full medium suite (~2min) is for development iteration, not gating. Coderevi
 
 For autonomous iteration, the inner loop is: edit, `make test-quick`, `make test-regression`, repeat. Run `make test` only when the change is ready for full validation.
 
+GPU compute is plentiful (20GB VRAM, ~3.5GB used by DiffusionPen). Run GPU tests aggressively as part of the development loop. Do not be conservative about GPU test execution; the experiment-driven workflow depends on fast, frequent GPU runs for signal.
+
 ## Architecture
 
 ```
@@ -121,6 +123,12 @@ tests/
   medium/                A/B harness tests, optional GPU, <2min
   full/                  E2E tests, requires GPU + model weights, <10min
   fixtures/              Synthetic test images
+docs/
+  best-output.png        Current demo output (referenced by README)
+  OUTPUT_HISTORY.md      Timestamped archive of demo outputs with metrics
+  output-history/        Archived output PNGs (one per make test-full run)
+scripts/
+  archive-output.sh      Captures output + git state + metrics into history
 ```
 
 ### Data flow

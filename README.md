@@ -14,6 +14,8 @@ The system is built on [DiffusionPen](https://github.com/koninik/DiffusionPen) (
 <img src="docs/best-output.png" alt="Generated output" width="360">
 </p>
 
+[Output history](docs/OUTPUT_HISTORY.md) tracks quality improvement over time.
+
 ```bash
 python reforge.py \
     --style styles/hw-sample.png \
