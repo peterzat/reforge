@@ -261,7 +261,7 @@ These are lessons learned from the penforge predecessor. Each describes a real p
 **Required solution:** Unified height-based normalization:
 - Short words (1-3 chars): normalize by ink height (target ~32px)
 - Long words (4+ chars): normalize by ink height (target ~35px, slightly higher to account for denser ink)
-- Cross-word pass: scale DOWN words >105% of median height, scale UP words <92% of median height (preserve aspect ratio)
+- Cross-word pass: scale DOWN words >105% of median height, scale UP words <93% of median height (preserve aspect ratio)
 - Previous dual strategy (height for short, area for long) created a discontinuity that caused wild height variation on multi-line text
 
 ### Stroke weight variation (global harmonization)
@@ -368,7 +368,7 @@ markers =
 - Do NOT apply morphological cleanup to the full sentence image. Only per-word.
 - Do NOT use `ckpt.pt`. Use `ema_ckpt.pt`.
 - Do NOT use a single threshold for gray-box removal. Multi-layer defense is required.
-- Do NOT scale UP words during harmonization unless they are below 92% of median height. The undersize threshold prevents excessive height variance while preserving natural proportions for near-median words.
+- Do NOT scale UP words during harmonization unless they are below 93% of median height. The undersize threshold prevents excessive height variance while preserving natural proportions for near-median words.
 - Do NOT split long words without ensuring each chunk is >= 4 chars.
 - Do NOT align stitched chunks at the top. Align at the bottom (baseline).
 - Do NOT use fixed background threshold (e.g., 200). Use adaptive 90th-percentile estimation.
