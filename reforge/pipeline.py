@@ -45,7 +45,7 @@ def run(
     num_steps: int = DEFAULT_DDIM_STEPS,
     guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
-    device: str = "cuda",
+    device: str | None = None,
     verbose: bool = True,
 ) -> dict:
     """Run the full generation pipeline.
@@ -67,6 +67,8 @@ def run(
     import cv2
 
     # --- Validate device ---
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA requested but not available. "

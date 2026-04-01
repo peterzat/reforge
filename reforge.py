@@ -37,8 +37,8 @@ def main():
         help="Best-of-N candidates per word (default: 3)."
     )
     parser.add_argument(
-        "--device", type=str, default="cuda",
-        help="Torch device (default: cuda)."
+        "--device", type=str, default=None,
+        help="Torch device (default: auto-detect cuda/cpu)."
     )
 
     args = parser.parse_args()
