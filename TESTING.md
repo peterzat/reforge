@@ -1,74 +1,78 @@
 ## Test Strategy Review -- 2026-04-01
 
-**Summary:** Three-tier test strategy (quick/medium/full) with a DAG: running a higher tier automatically includes all lower tiers. 40 quick tests (CPU-only, <1s), 6 medium tests (GPU, A/B quality assertions), 1 full e2e test (GPU, pipeline + CV assertions). Total: 47 tests. Medium tests assert quality improvement (CFG effectiveness, postprocessing defense, harmonization consistency), not just crash-freedom.
+**Summary:** Three-tier test strategy (quick/medium/full) with 102 quick tests (CPU-only, 0.89s measured), 30 medium tests (GPU, A/B quality + regression + OCR), and 3 full e2e tests. Total: 135 tests collected. Quick tests cover all CPU-side logic with synthetic data. Medium tests assert quality improvement via CV metrics and regression baselines. A pre-commit hook runs quick tests on every commit. A Makefile provides discoverable entry points for all tiers plus targeted inner-loop targets (test-regression, test-ocr). The current SPEC.md (test reliability and loop cadence) has all 7 criteria met. Test strategy is appropriate for this project's current stage.
 
-**Test infrastructure found:** pytest 8.x, pytest.ini with 4 custom markers, root conftest.py implementing tier DAG, session-scoped GPU fixtures in tests/medium/conftest.py, A/B experiment harness (`experiments/ab_harness.py`), CV evaluation module for autonomous quality scoring. No CI, no pre-commit hooks.
+**Test infrastructure found:** pytest 8.x, pytest.ini with 4 custom markers (quick/medium/full/gpu), root conftest.py implementing tier DAG (medium includes quick, full includes both), session-scoped GPU fixtures in tests/medium/conftest.py, pre-commit hook (.githooks/pre-commit via core.hooksPath), Makefile with test-quick/test-regression/test-ocr/test-medium/test-full targets, A/B experiment harness (experiments/ab_harness.py), CV evaluation module for autonomous quality scoring, quality regression baseline (tests/medium/quality_baseline.json). No CI, no coverage tooling.
 
 ### Findings
 
 ```
-[WARN] automatic-test-execution -- No mechanism runs tests automatically
-  Current state: No CI pipeline (.github/workflows/ absent), no pre-commit hooks
-    (only sample hooks in .git/hooks/), no Makefile with test targets, no tox/nox.
-    Tests run only when manually invoked via `python -m pytest`.
-  Recommendation: Add a pre-commit hook that runs `pytest tests/quick/ -x -q`
-    (sub-second, no friction). If the project moves to a remote, add a CI workflow
-    that runs quick tests on push and medium/full on GPU runners.
+[WARN] ci-pipeline -- No CI pipeline for remote collaboration
+  Current state: No .github/workflows/, .gitlab-ci.yml, or equivalent CI config.
+    Tests run locally via pre-commit hook (quick tier) and manual Makefile targets.
+    This is appropriate while the project is single-developer, but would become
+    a gap if the project gains collaborators or is pushed to a shared remote.
+  Recommendation: Defer until the project is pushed to a remote. At that point,
+    add a CI workflow that runs quick tests on every push and medium tests on
+    GPU runners for PRs. No action needed now.
 ```
 
 ```
-[FIXED] medium-tier-coverage -- Medium tier now has 6 tests with quality assertions
-  Fixed 2026-04-01: Expanded from 1 test to 6 across three test classes:
-    - TestCFGQuality (2): asserts CFG=3.0 improves ink contrast over CFG=1.0,
-      and produces clean backgrounds.
-    - TestPostprocessingEffectiveness (2): asserts postprocessing improves background
-      cleanliness, and eliminates gray box artifacts on short words.
-    - TestHarmonizationEffectiveness (2): asserts harmonization improves stroke weight
-      consistency, and produces reasonable word height ratios.
-  Session-scoped fixtures in tests/medium/conftest.py avoid reloading models per test.
-```
-
-```
-[NOTE] fixtures-directory-empty -- tests/fixtures/ exists but is empty
-  Current state: All test data is created inline as synthetic numpy arrays. This works
-    and is self-contained, but means each test reconstructs similar word-like images
-    independently.
-  Recommendation: Extract common synthetic image builders (e.g., "word image with ink
-    region," "sentence image with N words") into a conftest.py or a shared fixture
-    module. This reduces duplication and makes tests easier to read. Not urgent since
-    the inline approach is working.
+[WARN] diagnostic-test-runtime -- test_word_clipping_diagnostic.py generates 12 words individually
+  Current state: tests/medium/test_word_clipping_diagnostic.py generates 12 words
+    individually with no best-of-N selection via direct ddim_sample + postprocess_word
+    calls (not generate_word). This is the slowest medium test by a wide margin.
+    The test is diagnostic (always passes if 10+ words are analyzed) and writes
+    results to diagnostic_results.json. Not a correctness issue, but contributes
+    disproportionate runtime to the medium tier.
+  Recommendation: Low priority. The diagnostic test is run infrequently and its
+    runtime is acceptable for its purpose (root-cause analysis).
 ```
 
 ```
 [NOTE] coverage-tracking -- No coverage measurement configured
-  Current state: No .coveragerc, no [tool.coverage] in any config file, no coverage
-    reporting in any command documented in CLAUDE.md.
-  Recommendation: Add `pytest-cov` and a coverage target for the quick tier. This is
-    not critical at this stage, but becomes useful once the module count grows. The
-    quick tests cover the main CPU modules (preprocess, quality, evaluate, compose,
-    validation, config) but gaps are hard to see without measurement.
+  Current state: No .coveragerc, no [tool.coverage], no pytest-cov. The quick tests
+    cover all CPU modules (preprocess, quality, evaluate, compose, validation, config)
+    but coverage gaps are invisible without measurement.
+  Recommendation: Add pytest-cov and a coverage target for the quick tier when the
+    module count grows beyond current size. Not urgent.
 ```
 
 ```
-[FIXED] e2e-test-quality-assertions -- Full e2e test now includes CV quality assertions
-  Fixed 2026-04-01: Added assertions for check_gray_boxes (must be False),
-    check_ink_contrast (> 0.3), and check_background_cleanliness (> 0.3) to the
-    e2e pipeline test.
+[NOTE] quality-baseline-isolation -- quality_baseline.json is a committed, mutable test artifact
+  Current state: tests/medium/quality_baseline.json is committed to git and is updated
+    in-place by test_quality_regression.py when the overall score improves (ratchet
+    upward). This means running the medium test suite can produce a dirty working tree
+    even when all tests pass. The file is intentionally committed (it records the
+    quality floor), but the auto-update behavior means the test has a side effect
+    on the working tree.
+  Recommendation: Acceptable for the current workflow where the developer reviews
+    and commits baseline updates. If this becomes friction, separate the "update
+    baseline" action into a distinct command (e.g., make update-baseline) rather
+    than having it happen as a side effect of test execution.
 ```
 
 ```
-[NEW] test-tier-dag -- Higher tiers automatically include lower tiers
-  Added 2026-04-01: Root conftest.py implements a tier DAG via pytest_configure.
-    `pytest tests/medium/` collects quick + medium tests (46 total).
-    `pytest tests/full/` collects quick + medium + full tests (47 total).
-    `pytest tests/quick/` collects only quick tests (40 total).
-    This ensures regressions in lower tiers are always caught when running higher tiers.
+[NOTE] diagnostic-test-writes-to-source-tree -- test_word_clipping_diagnostic.py writes results to tests/medium/
+  Current state: test_word_clipping_diagnostic.py writes diagnostic_results.json to
+    tests/medium/ (line 116). This file is not gitignored (confirmed: git check-ignore
+    returns exit 1). The test always passes (it is diagnostic, not assertive beyond
+    word count), so it silently pollutes the working tree.
+  Recommendation: Add tests/medium/diagnostic_results.json to .gitignore, or write
+    to tests/medium/output/ which is already covered by the tests/*/output/ gitignore
+    pattern.
 ```
 
 ### Status of Prior Recommendations
 
-Initial review was 2026-03-31. Two WARN findings fixed 2026-04-01, one NOTE fixed, one new feature added.
+From the prior 2026-04-01 review:
+- **OPEN** (carried forward): ci-pipeline. Still no CI. Appropriate for single-developer stage.
+- **REVISED**: diagnostic-test-model-duplication renamed to diagnostic-test-runtime. Prior concern about duplicate model loading was resolved (test uses shared session fixtures). Restated as a runtime observation.
+- **OPEN** (carried forward): coverage-tracking. Still no coverage tooling.
+- **OPEN** (carried forward): quality-baseline-isolation. Still auto-updates on test run.
+- **OPEN** (carried forward): diagnostic-test-writes-to-source-tree. diagnostic_results.json still not gitignored.
 
 ---
+*Prior review (2026-04-01): Three-tier strategy with 135 tests. Two WARNs (no CI, diagnostic test runtime). Four NOTEs (no coverage, baseline mutability, diagnostic writes to source tree, spec criteria bookkeeping).*
 
-<!-- TESTING_META: {"date":"2026-04-01","commit":"8787490","block":0,"warn":1,"note":2,"fixed":3} -->
+<!-- TESTING_META: {"date":"2026-04-01","commit":"12e887f","block":0,"warn":2,"note":3} -->

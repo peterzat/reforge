@@ -51,7 +51,7 @@ class TestCFGQuality:
         img = generate_word(
             "World", unet, vae, tokenizer, style_features,
             uncond_context=uncond_context,
-            num_steps=20, guidance_scale=3.0, num_candidates=1, device=device,
+            num_steps=20, guidance_scale=3.0, num_candidates=2, device=device,
         )
         cleanliness = check_background_cleanliness(img)
 

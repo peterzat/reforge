@@ -24,9 +24,18 @@ All commands assume an activated venv. Always use `.venv/bin/python` (or activat
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+make setup-hooks          # install pre-commit hook (runs quick tests on every commit)
 
 # Demo (end-to-end, uses hw-sample.png)
 ./demo.sh
+
+# Run tests via Makefile
+make test-quick            # quick tests (mocked, <10s, no GPU)
+make test-regression       # quality regression baseline only (GPU, ~14s)
+make test-ocr              # OCR accuracy only (GPU, ~14s)
+make test-medium           # medium tests (A/B harnesses, GPU, <2min)
+make test                  # alias for test-medium
+make test-full             # e2e tests + demo.sh (GPU + model weights, ~4.5min)
 
 # Run quick tests (mocked, <10s, no GPU)
 python -m pytest tests/quick/ -x -q
@@ -52,6 +61,18 @@ python experiments/ab_harness.py --style styles/hw-sample.png --experiment postp
 python experiments/ab_harness.py --style styles/hw-sample.png --experiment combined
 ```
 
+### Development loop cadence
+
+| Stage | Command | Time | When |
+|-------|---------|------|------|
+| Edit check | `make test-quick` | 0.8s | After every code change |
+| Parameter tuning | `make test-regression` | ~14s | After changing config values |
+| OCR check | `make test-ocr` | ~14s | After changes to generation or postprocessing |
+| Full validation | `make test` | ~2 min | After completing a fix or feature |
+| Pre-commit gate | `make test-full` | ~4.5 min | Before committing (includes demo.sh visual output) |
+
+The pre-commit hook runs quick tests automatically on every commit. For autonomous iteration, the inner loop is: edit, `make test-quick`, `make test-regression`, repeat. Run `make test` only when the change is ready for full validation.
+
 ## Architecture
 
 ```
@@ -71,7 +92,7 @@ reforge/
   quality/
     score.py             Per-word quality scoring (background, ink, edges, height)
     harmonize.py         Cross-word height + stroke weight harmonization
-    font_scale.py        Length-aware font normalization (height vs area strategy)
+    font_scale.py        Length-aware font normalization (unified height strategy)
   evaluate/
     visual.py            CV-based quality evaluation (gray boxes, contrast, alignment, etc.)
     compare.py           A/B comparison image generation with labels
@@ -206,10 +227,11 @@ These are lessons learned from the penforge predecessor. Each describes a real p
 
 **Root cause:** Area-per-char metric explodes for single-char words.
 
-**Required solution:** Dual normalization strategy:
-- Short words (1-3 chars): normalize by ink height (target ~24px)
-- Long words (4+ chars): normalize by area per character (target ~1500 px^2)
-- Cross-word pass: scale DOWN words >120% of median height (never scale UP, preserve aspect ratio)
+**Required solution:** Unified height-based normalization:
+- Short words (1-3 chars): normalize by ink height (target ~32px)
+- Long words (4+ chars): normalize by ink height (target ~35px, slightly higher to account for denser ink)
+- Cross-word pass: scale DOWN words >120% of median height, scale UP words <80% of median height (preserve aspect ratio)
+- Previous dual strategy (height for short, area for long) created a discontinuity that caused wild height variation on multi-line text
 
 ### Stroke weight variation (global harmonization)
 
@@ -315,7 +337,7 @@ markers =
 - Do NOT apply morphological cleanup to the full sentence image. Only per-word.
 - Do NOT use `ckpt.pt`. Use `ema_ckpt.pt`.
 - Do NOT use a single threshold for gray-box removal. Multi-layer defense is required.
-- Do NOT scale UP small words during harmonization. Only scale down outliers.
+- Do NOT scale UP words during harmonization unless they are below 80% of median height. The undersize threshold prevents excessive height variance while preserving natural proportions for near-median words.
 - Do NOT split long words without ensuring each chunk is >= 4 chars.
 - Do NOT align stitched chunks at the top. Align at the bottom (baseline).
 - Do NOT use fixed background threshold (e.g., 200). Use adaptive 90th-percentile estimation.

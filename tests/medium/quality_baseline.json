@@ -13,9 +13,9 @@
     "gray_boxes": 1.0,
     "ink_contrast": 1.0,
     "background_cleanliness": 1.0,
-    "stroke_weight_consistency": 0.9277,
-    "word_height_ratio": 0.2432,
-    "baseline_alignment": 0.381,
-    "overall": 0.7587
+    "stroke_weight_consistency": 0.9057,
+    "word_height_ratio": 1.0,
+    "baseline_alignment": 1.0,
+    "overall": 0.9843
   }
 }

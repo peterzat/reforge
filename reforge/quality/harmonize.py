@@ -7,7 +7,11 @@ Height: scale DOWN outliers > 120% of median height (never scale up).
 import cv2
 import numpy as np
 
-from reforge.config import HEIGHT_OUTLIER_THRESHOLD, STROKE_WEIGHT_SHIFT_STRENGTH
+from reforge.config import (
+    HEIGHT_OUTLIER_THRESHOLD,
+    HEIGHT_UNDERSIZE_THRESHOLD,
+    STROKE_WEIGHT_SHIFT_STRENGTH,
+)
 
 
 def compute_ink_median(img: np.ndarray) -> float:
@@ -58,8 +62,10 @@ def compute_ink_height(img: np.ndarray) -> int:
 
 
 def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
-    """Scale DOWN words that exceed 120% of median height. Never scale up.
+    """Scale words toward median height to reduce height variance.
 
+    Scale DOWN words above HEIGHT_OUTLIER_THRESHOLD (120%) of median.
+    Scale UP words below HEIGHT_UNDERSIZE_THRESHOLD (80%) of median.
     Preserves aspect ratio during scaling.
     """
     if not word_images:
@@ -67,19 +73,27 @@ def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
 
     heights = [compute_ink_height(img) for img in word_images]
     median_h = float(np.median(heights))
-    threshold = median_h * HEIGHT_OUTLIER_THRESHOLD
+    upper = median_h * HEIGHT_OUTLIER_THRESHOLD
+    lower = median_h * HEIGHT_UNDERSIZE_THRESHOLD
 
     result = []
     for img, h in zip(word_images, heights):
-        if h <= threshold:
+        if lower <= h <= upper:
             result.append(img)
             continue
 
-        # Scale down to threshold height
-        scale = threshold / h
+        if h > upper:
+            # Scale down to upper threshold
+            target = upper
+        else:
+            # Scale up to lower threshold
+            target = lower
+
+        scale = target / h
         new_h = max(1, int(img.shape[0] * scale))
         new_w = max(1, int(img.shape[1] * scale))
-        scaled = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+        scaled = cv2.resize(img, (new_w, new_h), interpolation=interp)
         result.append(scaled)
 
     return result

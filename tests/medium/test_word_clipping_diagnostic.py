@@ -27,49 +27,7 @@ DEMO_WORDS = [
 ]
 
 
-@pytest.fixture(scope="module")
-def model_suite():
-    """Load all models once for the module."""
-    from reforge.model.encoder import StyleEncoder
-    from reforge.model.weights import (
-        download_style_encoder_weights,
-        download_unet_weights,
-        load_tokenizer,
-        load_unet,
-        load_vae,
-    )
-
-    device = "cuda"
-    style_ckpt = download_style_encoder_weights()
-    encoder = StyleEncoder(checkpoint_path=style_ckpt).to(device)
-
-    import cv2
-    from reforge.preprocess.normalize import preprocess_words
-    from reforge.preprocess.segment import segment_sentence_image
-
-    style_img = cv2.imread("styles/hw-sample.png", cv2.IMREAD_GRAYSCALE)
-    word_imgs = segment_sentence_image(style_img)
-    style_tensors = preprocess_words(word_imgs)
-    style_features = encoder.encode(style_tensors)
-
-    unet_ckpt = download_unet_weights()
-    unet = load_unet(unet_ckpt, device=device)
-    vae = load_vae(device=device)
-    tokenizer = load_tokenizer()
-
-    uncond_context = tokenizer(" ", return_tensors="pt", padding="max_length", max_length=16)
-
-    return {
-        "unet": unet,
-        "vae": vae,
-        "tokenizer": tokenizer,
-        "style_features": style_features,
-        "uncond_context": uncond_context,
-        "device": device,
-    }
-
-
-def generate_raw_word(word, model_suite):
+def generate_raw_word(word, unet, vae, tokenizer, style_features, uncond_context, device):
     """Generate a single word and return BOTH raw VAE output and postprocessed."""
     from reforge.model.generator import (
         compute_canvas_width,
@@ -78,25 +36,25 @@ def generate_raw_word(word, model_suite):
     )
 
     canvas_width = compute_canvas_width(len(word))
-    text_ctx = model_suite["tokenizer"](
+    text_ctx = tokenizer(
         word, return_tensors="pt", padding="max_length", max_length=16
     )
 
     raw_img = ddim_sample(
-        model_suite["unet"],
-        model_suite["vae"],
+        unet,
+        vae,
         text_ctx,
-        model_suite["style_features"],
-        uncond_context=model_suite["uncond_context"],
+        style_features,
+        uncond_context=uncond_context,
         canvas_width=canvas_width,
-        device=model_suite["device"],
+        device=device,
     )
 
     postprocessed = postprocess_word(raw_img)
     return raw_img, postprocessed
 
 
-def test_diagnose_word_clipping(model_suite):
+def test_diagnose_word_clipping(unet, vae, tokenizer, style_features, uncond_context, device):
     """Run diagnostic on demo words, log which layers cause clipping."""
     from reforge.evaluate.diagnostic import diagnose_postprocessing, format_diagnostic
 
@@ -112,7 +70,9 @@ def test_diagnose_word_clipping(model_suite):
     test_words = DEMO_WORDS[:12]
 
     for word in test_words:
-        raw_img, postprocessed = generate_raw_word(word, model_suite)
+        raw_img, postprocessed = generate_raw_word(
+            word, unet, vae, tokenizer, style_features, uncond_context, device
+        )
         diag = diagnose_postprocessing(raw_img, target_word=word)
         summary = diag["summary"]
 

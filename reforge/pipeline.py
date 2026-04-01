@@ -210,15 +210,15 @@ def run(
     # --- Compose ---
     from reforge.compose.render import compose_words
 
-    output_img = compose_words(generated_images, flat_words)
+    output_img, word_positions = compose_words(
+        generated_images, flat_words, return_positions=True,
+    )
     output_img.save(output_path)
 
     # --- Evaluate ---
-    from reforge.compose.layout import compute_word_positions
     from reforge.evaluate.visual import overall_quality_score
 
     output_array = np.array(output_img)
-    word_positions = compute_word_positions(generated_images, flat_words)
     real_word_imgs = [img for img in generated_images if img is not None]
     quality = overall_quality_score(
         output_array, real_word_imgs, word_positions, words=real_words,

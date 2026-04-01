@@ -1,8 +1,8 @@
 """Length-aware font normalization.
 
-Dual strategy:
-- Short words (1-3 chars): normalize by ink height (target ~32px)
-- Long words (4+ chars): normalize by area per character (target ~350 px^2)
+Unified height-based strategy: all words normalize ink height toward a
+consistent target. Short words (1-3 chars) use a lower target because
+DiffusionPen renders them at full canvas height, producing oversized glyphs.
 """
 
 import cv2
@@ -27,38 +27,40 @@ def compute_ink_height(img: np.ndarray) -> int:
 
 
 def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
-    """Normalize a word image based on word length.
+    """Normalize a word image to consistent ink height.
 
-    Short words (1-3 chars): normalize by ink height to SHORT_WORD_HEIGHT_TARGET.
-    Long words (4+ chars): normalize by area per char to LONG_WORD_AREA_TARGET.
+    All words normalize by ink height. Short words (1-3 chars) target
+    SHORT_WORD_HEIGHT_TARGET; longer words target a slightly higher value
+    derived from LONG_WORD_AREA_TARGET to account for their denser ink.
     """
+    current_height = compute_ink_height(img)
+    if current_height <= 0:
+        return img
+
     word_len = len(word.strip())
 
     if word_len <= 3:
-        # Height-based normalization for short words
-        current_height = compute_ink_height(img)
-        if current_height <= 0:
-            return img
-        scale = SHORT_WORD_HEIGHT_TARGET / current_height
+        target_height = SHORT_WORD_HEIGHT_TARGET
     else:
-        # Area-based normalization for longer words
-        current_area = compute_ink_area(img)
-        if current_area <= 0:
-            return img
-        current_area_per_char = current_area / word_len
-        if current_area_per_char < 1:
-            return img
-        scale = np.sqrt(LONG_WORD_AREA_TARGET / current_area_per_char)
+        # For longer words, estimate target height from area target.
+        # Typical ink coverage: ~40% of bounding box for handwriting.
+        # area = height * width * coverage, width ~ height * (word_len * 0.6)
+        # Solve for height given target area per char.
+        # This produces ~34-38px for 4-8 char words, close to short word target.
+        target_height = int(SHORT_WORD_HEIGHT_TARGET * 1.1)
 
-    # Clamp: allow moderate scale-down but minimal scale-up
-    scale = np.clip(scale, 0.3, 1.2)
+    scale = target_height / current_height
+
+    # Clamp: allow moderate scaling in both directions
+    scale = np.clip(scale, 0.3, 1.6)
 
     if abs(scale - 1.0) < 0.05:
         return img
 
     new_h = max(1, int(img.shape[0] * scale))
     new_w = max(1, int(img.shape[1] * scale))
-    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+    return cv2.resize(img, (new_w, new_h), interpolation=interp)
 
 
 def normalize_font_sizes(

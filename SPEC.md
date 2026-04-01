@@ -1,36 +1,46 @@
-## Spec -- 2026-04-01 -- Baseline alignment fix and test automation
+## Spec -- 2026-04-01 -- Test reliability and loop cadence
 
-**Goal:** Two independent improvements. (A) Fix the baseline alignment regression: `word_height_ratio` is 0.24 and `baseline_alignment` is 0.38, both indicating that words on the same line have wildly different sizes and vertical positions. Words like "Quick" (with a descender on Q) and "high" (with an ascender) should sit on a shared baseline, not bounce around. (B) Add automatic test execution so quick tests run on every commit without manual invocation, and medium tests are easy to trigger.
+**Goal:** Make the test suite reliable for autonomous iteration and document which tests to run at each stage of the spec/implement/test loop. Fix the one flaky test, add targeted Makefile targets for the inner tuning loop, and document cadence in CLAUDE.md.
 
 ### Acceptance Criteria
 
-#### A. Baseline alignment and word height consistency
+#### A. Fix flaky test
 
-- [ ] After the fix, the quality regression test baseline shows `baseline_alignment >= 0.55` (currently 0.38). The metric measures per-line standard deviation of word bottom positions; 0.55 corresponds to roughly 4-5px std dev, which is visually acceptable.
-- [ ] After the fix, the quality regression test baseline shows `word_height_ratio >= 0.40` (currently 0.24). This metric scores max/min ink height ratio across words; 0.40 corresponds to a ratio under 1.6x, meaning the tallest word is at most 60% taller than the shortest.
-- [ ] The fix does not regress OCR accuracy. Average per-word OCR in the medium test must remain above 0.6 and no single word below 0.3.
-- [ ] The fix does not reintroduce gray-box artifacts. Quick tests must pass without modification.
-- [ ] demo.sh output is visually inspected and words on the same line sit on a consistent baseline, with no word more than ~2x the height of its neighbors.
+- [x] `test_cfg_produces_clean_background` passes reliably when run from the full tier (`make test-full`). Currently fails intermittently due to nondeterministic generation with a single candidate and a tight threshold (0.2). Fix by using `num_candidates=2` so best-of-2 selection reduces variance.
+- [x] `make test-full` passes twice in a row (consecutive runs, no code changes between them). This confirms no order-dependent or nondeterministic failures remain.
 
-#### B. Automatic test execution
+#### B. Targeted Makefile targets for inner loop
 
-- [ ] A git pre-commit hook runs `pytest tests/quick/ -x -q` and blocks the commit if quick tests fail. The hook must be installed automatically (not require manual setup) via a mechanism documented in CLAUDE.md.
-- [ ] A `make test` target (or equivalent simple command) runs the full medium test suite including GPU tests. A `make test-quick` target runs only quick tests.
-- [ ] The Makefile (or equivalent) is documented in CLAUDE.md and README.md.
+- [x] `make test-regression` runs only `test_quality_regression.py` (~14s including model load). This is the inner-loop test for parameter tuning: change a config value, run this, check if the baseline improved.
+- [x] `make test-ocr` runs only `test_ocr_quality.py` (~14s). For verifying OCR accuracy after changes that affect generation or postprocessing.
+- [x] All new targets are added to the `.PHONY` declaration.
+
+#### C. Document loop cadence in CLAUDE.md
+
+- [x] CLAUDE.md Commands section includes a "Development loop" subsection documenting which tests to run when, with measured timings:
+  - Inner loop (editing code): `make test-quick` (0.8s)
+  - Parameter tuning: `make test-regression` (~14s)
+  - Feature complete: `make test` (2 min)
+  - Pre-commit gate: `make test-full` (4.5 min, includes demo.sh + visual output)
+- [x] The cadence section is concise (a table or short list, not paragraphs).
 
 ### Context
 
-**Alignment regression.** The `baseline_alignment` metric dropped from 0.75 to 0.38 between quality baseline recordings. The `word_height_ratio` is 0.24 (max/min ratio around 4:1). `check_baseline_alignment()` measures the standard deviation of word bottom positions per line; 10px std dev scores 0.0. The composition system detects baselines per word via top-down density scanning and aligns words on a shared per-line baseline, but if words have very different heights (due to weak font normalization), the alignment suffers because the baseline detection gives different results for different-height words.
+**Flaky test.** `test_cfg_produces_clean_background` in `tests/medium/test_ab_harness.py` generates "World" with `num_candidates=1` and asserts `check_background_cleanliness > 0.2`. With no seed and a single candidate, the result varies enough to occasionally fail. The failure is order-dependent: it reproduces when medium tests run after full e2e tests via the tier DAG. The fix is `num_candidates=2`, which matches other tests in the same file that already use multiple candidates for robustness.
 
-The likely root cause chain: font normalization is too conservative (scale clamped to [0.3, 1.2], area target 350 px^2/char) -> some words are much taller than others -> height harmonization only scales down outliers above 115% of median -> words with 50-80% of median height are left small -> composition aligns baselines but the height difference makes the std dev of bottom positions large.
+**Loop cadence.** Measured timings show that the full medium suite (2 min) is too slow for rapid parameter iteration, but a single regression test (~14s) gives fast feedback on quality changes. The current Makefile only exposes coarse-grained targets (quick/medium/full). Adding `test-regression` and `test-ocr` enables a faster inner loop without running all 30 medium tests.
 
-Investigation should start with the font normalization parameters (`LONG_WORD_AREA_TARGET`, `SHORT_WORD_HEIGHT_TARGET`, `HEIGHT_OUTLIER_THRESHOLD`) and height harmonization logic in `harmonize.py`. The diagnostic instrument can help trace which words have extreme height ratios.
+**Timing budget for autonomous coding.** The loop cadence is:
+1. Edit code (seconds)
+2. `make test-quick` to catch syntax/logic errors (0.8s)
+3. `make test-regression` to check quality impact (14s)
+4. If good, `make test` for full validation (2 min)
+5. If good, commit (pre-commit hook re-runs quick tests)
+6. Periodically, `make test-full` for visual regression check (4.5 min)
 
-**Test automation.** Currently tests only run when manually invoked. TESTING.md flags this as a WARN. A pre-commit hook for quick tests adds sub-second feedback on every commit. A Makefile provides discoverable entry points for the medium and full tiers. This is straightforward infrastructure work.
-
-**Coding practices (from zat.env).** Alignment fix: change one parameter at a time, run medium tests after each change, revert on regression. Two failed attempts means stop and re-evaluate. Automation: keep it simple, no external dependencies beyond make and git hooks.
+Total cycle time for a parameter change: ~15s (steps 1-3). Full validation: ~2.5 min. This supports rapid autonomous iteration.
 
 ---
-*Prior spec (2026-04-01): Word clipping: diagnose and fix truncated characters (7/7 criteria met).*
+*Prior spec (2026-04-01): Baseline alignment fix and test automation (8/8 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-01","title":"Baseline alignment fix and test automation","criteria_total":8,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-01","title":"Test reliability and loop cadence","criteria_total":7,"criteria_met":7} -->

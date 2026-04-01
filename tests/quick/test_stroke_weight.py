@@ -60,8 +60,8 @@ class TestHeightHarmonization:
         # Normal words unchanged
         assert result[0].shape[0] == normal1.shape[0]
 
-    def test_never_scales_up(self):
-        """Small words are never scaled up."""
+    def test_scales_up_undersized_words(self):
+        """Words below 80% of median height are scaled up."""
         from reforge.quality.harmonize import harmonize_heights
 
         big1 = np.full((60, 100), 255, dtype=np.uint8)
@@ -74,5 +74,20 @@ class TestHeightHarmonization:
         small[5:25, 10:90] = 60
 
         result = harmonize_heights([big1, big2, small])
-        # Small word should NOT be scaled up
-        assert result[2].shape[0] == small.shape[0]
+        # Small word (ink height 20, median ink height 50) should be scaled up
+        assert result[2].shape[0] > small.shape[0]
+
+    def test_near_median_words_unchanged(self):
+        """Words within 80-120% of median height are not scaled."""
+        from reforge.quality.harmonize import harmonize_heights
+
+        w1 = np.full((50, 100), 255, dtype=np.uint8)
+        w1[5:45, 10:90] = 60
+
+        w2 = np.full((55, 100), 255, dtype=np.uint8)
+        w2[5:50, 10:90] = 60
+
+        result = harmonize_heights([w1, w2])
+        # Both near median, neither should change
+        assert result[0].shape[0] == w1.shape[0]
+        assert result[1].shape[0] == w2.shape[0]

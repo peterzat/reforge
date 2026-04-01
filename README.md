@@ -102,9 +102,9 @@ DiffusionPen generates dark-gray backgrounds (~150-175 brightness) around word i
 
 After generation and postprocessing, words are normalized for visual consistency:
 
-**Font size normalization** uses a dual strategy. Short words (1-3 characters) are normalized by ink height to a 32px target, preventing single characters from filling the entire 64x256 canvas. Longer words (4+ characters) are normalized by ink area per character to 350 px^2, producing consistent visual density. Scale factors are clamped to [0.3, 1.2].
+**Font size normalization** uses a dual strategy. Short words (1-3 characters) are normalized by ink height to a 32px target, preventing single characters from filling the entire 64x256 canvas. Longer words (4+ characters) are normalized by ink area per character to 550 px^2, producing consistent visual density. Scale factors are clamped to [0.3, 1.6].
 
-**Height harmonization** scales down any word whose ink height exceeds 115% of the median across all words. It never scales up, preserving the model's natural proportions for smaller words.
+**Height harmonization** scales words toward the median ink height. Words exceeding 120% of median are scaled down; words below 80% of median are scaled up. This two-sided approach reduces the height variance that causes uneven baselines.
 
 **Stroke weight harmonization** computes the median ink brightness for each word, then shifts each word's ink toward the global median with a blend factor of 0.85. This reduces the jarring effect of adjacent words having inconsistent line thickness.
 
@@ -144,9 +144,16 @@ Every quality dimension is reduced to a float in [0, 1]. The agent reads numbers
 
 | Tier | Runtime | GPU | What it validates |
 |------|---------|-----|-------------------|
-| **Quick** (101 tests) | <1s | No | All metric functions, scoring logic, layout, preprocessing, charset validation. Everything mocked. Runs on every change. |
+| **Quick** (102 tests) | <1s | No | All metric functions, scoring logic, layout, preprocessing, charset validation. Everything mocked. Runs on every commit (pre-commit hook). |
 | **Medium** (30 tests) | ~2 min | Yes | Real model generation with quality assertions. A/B comparisons, OCR accuracy gates, quality regression tracking. |
 | **Full** (e2e) | ~10 min | Yes | Complete pipeline with real style images. Visual output saved to `tests/full/output/` for inspection. |
+
+```bash
+make test-quick     # quick tests only
+make test           # medium tests (default)
+make test-full      # full e2e tests
+make setup-hooks    # install pre-commit hook (runs quick tests on every commit)
+```
 
 ### The feedback loop
 
