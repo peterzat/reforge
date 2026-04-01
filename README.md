@@ -6,13 +6,13 @@ The system is built on [DiffusionPen](https://github.com/koninik/DiffusionPen) (
 
 ## Example
 
-**Style input** (a photograph of 5 handwritten words):
+**Style input** (a photograph of 5 handwritten words) **->** **Generated output** (43 words, two paragraphs):
 
-![Style sample](docs/hw-sample.png)
-
-**Generated output** (43 words, two paragraphs):
-
-![Generated output](docs/best-output.png)
+<p>
+<img src="docs/hw-sample.png" alt="Style sample" width="360">
+&nbsp;&nbsp;&rarr;&nbsp;&nbsp;
+<img src="docs/best-output.png" alt="Generated output" width="360">
+</p>
 
 ```bash
 python reforge.py \
