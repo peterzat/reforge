@@ -9,16 +9,7 @@ import cv2
 import numpy as np
 
 from reforge.config import SHORT_WORD_HEIGHT_TARGET
-
-
-def compute_ink_height(img: np.ndarray) -> int:
-    """Compute vertical extent of ink."""
-    ink_rows = np.any(img < 180, axis=1)
-    if not np.any(ink_rows):
-        return img.shape[0]
-    first = np.argmax(ink_rows)
-    last = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
-    return max(1, last - first + 1)
+from reforge.quality.ink_metrics import compute_ink_height  # noqa: F401 (re-exported)
 
 
 def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:

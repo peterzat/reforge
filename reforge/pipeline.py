@@ -234,7 +234,7 @@ def run(
     _log(f"Output: {output_path} ({output_img.width}x{output_img.height}, {size_str})", verbose)
 
     if verbose:
-        parts = [f"{k}={v:.2f}" for k, v in quality.items() if k != "overall"]
+        parts = [f"{k}={v:.2f}" for k, v in quality.items() if k != "overall" and isinstance(v, (int, float))]
         _log(f"Quality: {quality['overall']:.2f} ({' '.join(parts)})", verbose)
 
     return {

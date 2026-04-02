@@ -155,6 +155,22 @@ class TestCompositionScore:
         # Still produces a score, but aspect sub-score is lower
         assert score < 0.9
 
+    def test_diagnostics_populated(self):
+        """diagnostics dict is populated with sub-scores."""
+        from reforge.evaluate.visual import check_composition_score
+        img = np.full((400, 400), 255, dtype=np.uint8)
+        positions = [
+            {"x": 24, "y": 16, "width": 60, "height": 30, "line": 0, "is_paragraph_start": True},
+            {"x": 100, "y": 16, "width": 60, "height": 30, "line": 0, "is_paragraph_start": False},
+        ]
+        diag = {}
+        check_composition_score(img, positions, diagnostics=diag)
+        assert "aspect_score" in diag
+        assert "margin_score" in diag
+        assert "fill_score" in diag
+        assert "aspect_ratio" in diag
+        assert "margins" in diag
+
     def test_in_quality_score(self):
         """composition_score appears when word_positions given."""
         from reforge.evaluate.visual import overall_quality_score
@@ -413,3 +429,105 @@ class TestLedger:
         runs = recent_runs(path, n=3)
         assert len(runs) == 3
         assert runs[0]["scores"]["overall"] == 0.7
+
+
+@pytest.mark.quick
+class TestDriftDetection:
+    def test_stable_metric_no_drift(self, tmp_path):
+        """Stable metric returns False."""
+        from reforge.evaluate.ledger import append_entry, detect_drift
+        path = str(tmp_path / "ledger.jsonl")
+        for _ in range(5):
+            append_entry(path, {"overall": 0.90})
+        drifted, first, last = detect_drift(path, "overall")
+        assert not drifted
+        assert first == 0.90
+        assert last == 0.90
+
+    def test_declining_metric_detected(self, tmp_path):
+        """Declining metric returns True."""
+        from reforge.evaluate.ledger import append_entry, detect_drift
+        path = str(tmp_path / "ledger.jsonl")
+        for val in [0.90, 0.88, 0.86, 0.82, 0.80]:
+            append_entry(path, {"overall": val})
+        drifted, first, last = detect_drift(path, "overall")
+        assert drifted
+        assert first == 0.90
+        assert last == 0.80
+
+    def test_insufficient_data_no_drift(self, tmp_path):
+        """Fewer than 2 runs returns False with None values."""
+        from reforge.evaluate.ledger import append_entry, detect_drift
+        path = str(tmp_path / "ledger.jsonl")
+        append_entry(path, {"overall": 0.90})
+        drifted, first, last = detect_drift(path, "overall")
+        assert not drifted
+        assert first is None
+        assert last is None
+
+    def test_missing_metric_no_drift(self, tmp_path):
+        """Missing metric returns False."""
+        from reforge.evaluate.ledger import append_entry, detect_drift
+        path = str(tmp_path / "ledger.jsonl")
+        for _ in range(5):
+            append_entry(path, {"ink_contrast": 0.90})
+        drifted, first, last = detect_drift(path, "overall")
+        assert not drifted
+
+    def test_custom_threshold(self, tmp_path):
+        """Custom threshold is respected."""
+        from reforge.evaluate.ledger import append_entry, detect_drift
+        path = str(tmp_path / "ledger.jsonl")
+        for val in [0.90, 0.88, 0.86, 0.85, 0.84]:
+            append_entry(path, {"overall": val})
+        # 0.06 decline < default 0.08 threshold
+        drifted, _, _ = detect_drift(path, "overall")
+        assert not drifted
+        # But with a tighter threshold it is detected
+        drifted, _, _ = detect_drift(path, "overall", threshold=0.05)
+        assert drifted
+
+
+@pytest.mark.quick
+class TestExperimentLog:
+    def test_log_and_query(self, tmp_path):
+        """log_experiment writes and query_experiments reads."""
+        from reforge.evaluate.experiments import log_experiment, query_experiments
+        path = str(tmp_path / "exp.jsonl")
+        log_experiment(
+            area="harmonization", change="tightened thresholds",
+            expected="better ratio", metrics_before={"score": 0.9},
+            metrics_after={"score": 1.0}, verdict="revert",
+            lesson="metric gaming", log_path=path,
+        )
+        log_experiment(
+            area="generation", change="more steps",
+            expected="better quality", metrics_before={"score": 0.8},
+            metrics_after={"score": 0.85}, verdict="keep",
+            lesson="worth the time cost", log_path=path,
+        )
+        all_entries = query_experiments(log_path=path)
+        assert len(all_entries) == 2
+
+        harm = query_experiments(area="harmonization", log_path=path)
+        assert len(harm) == 1
+        assert harm[0]["verdict"] == "revert"
+
+        kept = query_experiments(verdict="keep", log_path=path)
+        assert len(kept) == 1
+        assert kept[0]["area"] == "generation"
+
+    def test_query_empty_log(self, tmp_path):
+        """Querying nonexistent log returns empty list."""
+        from reforge.evaluate.experiments import query_experiments
+        result = query_experiments(log_path=str(tmp_path / "nope.jsonl"))
+        assert result == []
+
+    def test_backfill_entry_exists(self):
+        """The A1 backfill entry exists in docs/experiment-log.jsonl."""
+        from reforge.evaluate.experiments import query_experiments
+        entries = query_experiments(area="harmonization")
+        assert len(entries) >= 1
+        a1 = entries[0]
+        assert a1["verdict"] == "revert"
+        assert "gaming" in a1["lesson"].lower()

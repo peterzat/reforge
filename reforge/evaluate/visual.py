@@ -303,6 +303,7 @@ def compute_style_similarity(
 def check_composition_score(
     img: np.ndarray,
     word_positions: list[dict],
+    diagnostics: dict | None = None,
 ) -> float:
     """Measure composition quality: aspect ratio, margins, line fill consistency.
 
@@ -310,6 +311,9 @@ def check_composition_score(
     - Aspect ratio proximity to 1.0 (0.7-1.3 range is ideal)
     - Margin proportion check
     - Line fill consistency (non-final lines should have similar fill)
+
+    Args:
+        diagnostics: If provided (dict), filled with sub-score breakdown.
 
     Returns 0-1 score.
     """
@@ -337,19 +341,21 @@ def check_composition_score(
         top_margin = min_y / h if h > 0 else 0
         bottom_margin = (h - max_y) / h if h > 0 else 0
 
-        # Target: left/right 5-8%, top/bottom 3-5%
+        # Target: left/right 3-12%, top/bottom 2-8%
+        # Scoring: full credit inside range, gradual penalty outside with
+        # 0.10 denominator (reaching 0 at 10% beyond the range boundary).
         def _margin_score(actual, low, high):
             if low <= actual <= high:
                 return 1.0
             dist = min(abs(actual - low), abs(actual - high))
-            return max(0.0, 1.0 - dist / 0.05)
+            return max(0.0, 1.0 - dist / 0.10)
 
-        margin_score = np.mean([
-            _margin_score(left_margin, 0.05, 0.08),
-            _margin_score(right_margin, 0.05, 0.08),
-            _margin_score(top_margin, 0.03, 0.05),
-            _margin_score(bottom_margin, 0.03, 0.05),
-        ])
+        margin_score = float(np.mean([
+            _margin_score(left_margin, 0.03, 0.12),
+            _margin_score(right_margin, 0.03, 0.12),
+            _margin_score(top_margin, 0.02, 0.08),
+            _margin_score(bottom_margin, 0.02, 0.08),
+        ]))
     else:
         margin_score = 0.5
 
@@ -363,8 +369,6 @@ def check_composition_score(
 
     if len(lines) > 1:
         # Compute fill ratio per line, excluding last line of each paragraph
-        # Identify paragraph-final lines: lines where the next line is a different paragraph
-        # or is the last line overall
         para_starts = {p.get("line", 0) for p in word_positions if p.get("is_paragraph_start", False)}
         para_final_lines = set()
         sorted_lines = sorted(lines.keys())
@@ -373,12 +377,20 @@ def check_composition_score(
                 para_final_lines.add(ln)
         para_final_lines.add(sorted_lines[-1])  # last line overall
 
-        usable_width = w * 0.88  # approximate usable width (minus margins)
+        # Derive usable width from actual margin positions instead of hardcoded 0.88
+        if word_positions:
+            usable_width = w - min_x - (w - max(p["x"] + p.get("width", 0) for p in word_positions))
+            # Fall back to content-bounds-based estimate if it looks wrong
+            if usable_width <= 0:
+                usable_width = w * 0.88
+        else:
+            usable_width = w * 0.88
+
         fill_ratios = []
-        for ln, positions in lines.items():
+        for ln, line_positions in lines.items():
             if ln in para_final_lines:
                 continue
-            total_word_w = sum(p.get("width", 0) for p in positions)
+            total_word_w = sum(p.get("width", 0) for p in line_positions)
             fill = total_word_w / usable_width if usable_width > 0 else 0
             fill_ratios.append(fill)
 
@@ -389,7 +401,22 @@ def check_composition_score(
     else:
         fill_score = 1.0
 
-    return float(np.mean([aspect_score, margin_score, fill_score]))
+    score = float(np.mean([aspect_score, margin_score, fill_score]))
+
+    if diagnostics is not None:
+        diagnostics["aspect_score"] = round(aspect_score, 4)
+        diagnostics["margin_score"] = round(margin_score, 4)
+        diagnostics["fill_score"] = round(fill_score, 4)
+        diagnostics["aspect_ratio"] = round(ratio, 4)
+        if word_positions:
+            diagnostics["margins"] = {
+                "left": round(left_margin, 4),
+                "right": round(right_margin, 4),
+                "top": round(top_margin, 4),
+                "bottom": round(bottom_margin, 4),
+            }
+
+    return score
 
 
 def compute_height_outlier_ratio(word_imgs: list[np.ndarray]) -> float:
@@ -463,6 +490,7 @@ def overall_quality_score(
         if ocr_scores is not None:
             scores["ocr_accuracy"] = ocr_scores["mean"]
             scores["ocr_min"] = ocr_scores["min"]
+            scores["ocr_per_word"] = ocr_scores["per_word"]
 
             # Blank word detection: words with < 50% of expected ink pixels
             blank_ratio = _blank_word_ratio(word_imgs, words)
@@ -491,24 +519,21 @@ def overall_quality_score(
     scores["gate_details"] = gate_details
 
     # Continuous metrics: weighted average
-    weights = dict(QUALITY_CONTINUOUS_WEIGHTS)
-    has_ocr = "ocr_accuracy" in scores
-
-    if not has_ocr:
-        # Redistribute OCR weight proportionally to other available metrics
-        ocr_w = weights.pop("ocr_accuracy", 0.0)
-        available = {k: v for k, v in weights.items() if k in scores}
-        if available:
-            total_avail = sum(available.values())
-            for k in available:
-                weights[k] += ocr_w * (available[k] / total_avail)
+    # Only include weights for metrics that are present in scores.
+    # Missing metrics (e.g. OCR when words not provided, style_fidelity
+    # when style refs not provided) have their weight redistributed
+    # proportionally to the remaining metrics.
+    weights = {k: v for k, v in QUALITY_CONTINUOUS_WEIGHTS.items() if k in scores}
+    total_w = sum(weights.values())
+    if total_w > 0 and total_w < 1.0:
+        scale = 1.0 / total_w
+        weights = {k: v * scale for k, v in weights.items()}
 
     weighted_sum = 0.0
     weight_total = 0.0
     for metric, w in weights.items():
-        if metric in scores:
-            weighted_sum += w * scores[metric]
-            weight_total += w
+        weighted_sum += w * scores[metric]
+        weight_total += w
 
     if weight_total > 0:
         overall = weighted_sum / weight_total

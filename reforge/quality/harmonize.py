@@ -12,6 +12,7 @@ from reforge.config import (
     HEIGHT_UNDERSIZE_THRESHOLD,
     STROKE_WEIGHT_SHIFT_STRENGTH,
 )
+from reforge.quality.ink_metrics import compute_ink_height
 
 
 def compute_ink_median(img: np.ndarray) -> float:
@@ -49,16 +50,6 @@ def harmonize_stroke_weight(word_images: list[np.ndarray]) -> list[np.ndarray]:
         result.append(adjusted)
 
     return result
-
-
-def compute_ink_height(img: np.ndarray) -> int:
-    """Compute the ink height of a word image."""
-    ink_rows = np.any(img < 180, axis=1)
-    if not np.any(ink_rows):
-        return img.shape[0]
-    first = np.argmax(ink_rows)
-    last = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
-    return last - first + 1
 
 
 def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:

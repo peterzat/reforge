@@ -25,8 +25,14 @@ pytestmark = [pytest.mark.medium, pytest.mark.gpu]
 
 SKIP_REASON = "Requires CUDA GPU"
 BASELINE_PATH = os.path.join(os.path.dirname(__file__), "quality_baseline.json")
-REFERENCE_IMAGE_PATH = os.path.join(os.path.dirname(__file__), "reference_output.png")
 LEDGER_PATH = os.path.join(os.path.dirname(__file__), "quality_ledger.jsonl")
+
+# SSIM reference image update procedure:
+#   The reference image is only updated via an explicit command:
+#     pytest tests/medium/test_quality_regression.py --update-reference -x -s
+#   This requires the regression test to pass first (all metrics non-regressing).
+#   Never auto-update the reference as a side effect of running tests.
+REFERENCE_IMAGE_PATH = os.path.join(os.path.dirname(__file__), "reference_output.png")
 
 # SSIM threshold: identical seed/model should produce near-identical output.
 # Allow for minor floating-point variation across runs.
@@ -49,6 +55,8 @@ TRACKED_METRICS = [
     "stroke_weight_consistency",
     "word_height_ratio",
     "composition_score",
+    "ocr_accuracy",
+    "style_fidelity",
 ]
 
 # Metrics where lower is better (regression = value increases)
@@ -60,7 +68,10 @@ TRACKED_METRICS_INVERTED = [
 REGRESSION_TOLERANCE = 0.05
 
 
-def _generate_test_words(unet, vae, tokenizer, style_features, uncond_context, device):
+def _generate_test_words(
+    unet, vae, tokenizer, style_features, uncond_context, device,
+    style_word_images=None,
+):
     """Generate test words with fixed seed for reproducibility."""
     from reforge.evaluate.visual import overall_quality_score
     from reforge.model.generator import generate_word
@@ -82,16 +93,17 @@ def _generate_test_words(unet, vae, tokenizer, style_features, uncond_context, d
 
     imgs = harmonize_words(imgs)
 
-    # Compose for full-image metrics
-    from reforge.compose.layout import compute_word_positions
+    # Compose for full-image metrics (use actual positions from compositor)
     from reforge.compose.render import compose_words
 
-    composed = compose_words(imgs, TEST_WORDS, upscale_factor=1)
+    composed, positions = compose_words(
+        imgs, TEST_WORDS, upscale_factor=1, return_positions=True,
+    )
     composed_arr = np.array(composed)
-    positions = compute_word_positions(imgs, TEST_WORDS)
 
     scores = overall_quality_score(
         composed_arr, word_imgs=imgs, word_positions=positions,
+        words=TEST_WORDS, style_reference_imgs=style_word_images,
     )
     return scores, imgs, composed_arr
 
@@ -174,10 +186,12 @@ def _check_all_non_regressing(scores, baseline_metrics):
 class TestQualityRegression:
     def test_no_metric_regression(
         self, request, unet, vae, tokenizer, style_features, uncond_context, device,
+        style_word_images,
     ):
         """Generate fixed words, compute metrics, compare against baseline."""
         scores, imgs, composed = _generate_test_words(
             unet, vae, tokenizer, style_features, uncond_context, device,
+            style_word_images=style_word_images,
         )
 
         # Record to ledger
@@ -206,6 +220,15 @@ class TestQualityRegression:
             scores, baseline_metrics,
         )
 
+        # OCR min gate: any word with OCR < 0.3 is an immediate failure
+        ocr_min = scores.get("ocr_min")
+        if ocr_min is not None and ocr_min < 0.3:
+            per_word = scores.get("ocr_per_word", [])
+            pytest.fail(
+                f"OCR min gate failed: worst word OCR = {ocr_min:.3f} (threshold: 0.3). "
+                f"Per-word OCR: {per_word}"
+            )
+
         if not all_ok:
             msg = "Quality regressions detected:\n" + "\n".join(
                 f"  - {r}" for r in regressions
@@ -232,6 +255,17 @@ class TestQualityRegression:
 
             pytest.fail(msg)
 
+        # Check for drift across recent runs (soft gate: warn, don't fail)
+        from reforge.evaluate.ledger import detect_drift
+        for metric in TRACKED_METRICS:
+            drifted, first_val, last_val = detect_drift(LEDGER_PATH, metric)
+            if drifted:
+                print(
+                    f"WARNING: drift detected in {metric}: "
+                    f"{first_val:.4f} -> {last_val:.4f} "
+                    f"(declined {first_val - last_val:.4f} over recent runs)"
+                )
+
         # Auto-update only when EVERY metric is non-regressing and at least
         # one metric improved beyond tolerance
         if improvements:
@@ -242,6 +276,7 @@ class TestQualityRegression:
 
     def test_pixel_level_regression(
         self, request, unet, vae, tokenizer, style_features, uncond_context, device,
+        style_word_images,
     ):
         """Compare generated output against stored reference image using SSIM."""
         from reforge.evaluate.reference import compute_ssim
@@ -250,6 +285,7 @@ class TestQualityRegression:
 
         _, imgs, composed = _generate_test_words(
             unet, vae, tokenizer, style_features, uncond_context, device,
+            style_word_images=style_word_images,
         )
 
         if not os.path.exists(REFERENCE_IMAGE_PATH) or force_update:

@@ -111,55 +111,80 @@ The overall quality score is now 0.90 (down from insensitive 0.984). The weakest
 
 ### Acceptance Criteria
 
+#### H. Test discipline during implementation
+
+Every criterion in this spec (A through G) touches scoring, metrics, or infrastructure. The zat.env coding practices require tests to accompany every functional change, and the reforge project has a well-structured three-tier test system with a clear cadence table. But there is no structural enforcement that implementation of A-G actually follows the test cadence. The A1 regression (metric gaming) is a case study: the change passed existing tests but no new test verified visual output quality. This section makes the test loop explicit and verifiable.
+
+- [x] H1. Every commit that changes code under `reforge/` includes a corresponding test change (new test, updated assertion, or updated baseline) in the same commit, or documents in the commit message why no test change is needed (e.g., "refactor only, existing tests cover"). Verify by inspecting the git log for all commits made while implementing criteria A-G.
+- [x] H2. No criterion in this spec is marked complete without `make test-quick` run after each code change and `make test-regression` after each parameter or config change, per the CLAUDE.md cadence table. Verification: the quality ledger (`tests/medium/quality_ledger.jsonl`) has entries timestamped during the implementation window for each criterion that touches generation or scoring.
+- [x] H3. When a new metric is added to `overall_quality_score()` (criteria B1, C1, C3), a corresponding quick test validates the metric computation on synthetic data, and a regression baseline entry tracks the metric's value on real generation output. No metric is added without both layers.
+- [x] H4. When a new test artifact is introduced (criteria D1 demo baseline, D2 SSIM reference, F1 experiment log), `make test-quick` and `make test-regression` still pass without the artifact present (graceful degradation or skip). Test artifacts must not create hard dependencies that break the fast inner loop.
+- [x] H5. The pre-commit hook (`make test-quick`, 0.8s) and pre-push hook (`make test-regression`, ~14s) continue to pass at every commit throughout implementation. No commit bypasses hooks (no `--no-verify`). Verify by checking that no commit in the implementation range has a gap in the quality ledger where a push occurred without a preceding regression entry.
+
 #### A. Composition score improvement
 
 The composition_score (0.69) is the weakest continuous metric and has 0.20 weight in the overall score. It is the biggest lever for overall improvement. The score is the mean of three sub-scores: aspect ratio proximity to 1.0, margin proportion (5-8% horizontal, 3-5% vertical), and line fill consistency. The margin scoring function (`_margin_score` in `reforge/evaluate/visual.py:341`) penalizes any deviation from the target range at 1/0.05 = 20x rate, which is harsh. The line fill computation uses a fixed 0.88 usable-width estimate that may not match actual margins.
 
-- [ ] A1. Diagnose which sub-score(s) are dragging composition_score down. Add diagnostic output to the regression test that prints aspect_score, margin_score, and fill_score separately when run with `-s`. Identify the primary bottleneck.
-- [ ] A2. If margins are the bottleneck: widen the acceptable margin range or soften the penalty curve. The current 5-8% horizontal range with a 20x penalty cliff was set without calibration. Measure actual margins on the 5-word and 43-word outputs and adjust the target range to encompass them. The range should reflect what looks good, not an arbitrary target.
-- [ ] A3. If line fill is the bottleneck: fix the usable-width estimate. Currently hardcoded at `w * 0.88`; it should derive from actual margin positions. Natural handwriting has line-length variation; the penalty for inconsistency (std / 0.3) may be too strict.
-- [ ] A4. After fixes, composition_score >= 0.80 on the 5-word regression baseline. Verify the demo output (43 words) also improves. Do not game this: if the score improves but the output looks worse, revert.
+- [x] A1. Diagnose which sub-score(s) are dragging composition_score down. Add diagnostic output to the regression test that prints aspect_score, margin_score, and fill_score separately when run with `-s`. Identify the primary bottleneck.
+- [x] A2. If margins are the bottleneck: widen the acceptable margin range or soften the penalty curve. The current 5-8% horizontal range with a 20x penalty cliff was set without calibration. Measure actual margins on the 5-word and 43-word outputs and adjust the target range to encompass them. The range should reflect what looks good, not an arbitrary target.
+- [x] A3. If line fill is the bottleneck: fix the usable-width estimate. Currently hardcoded at `w * 0.88`; it should derive from actual margin positions. Natural handwriting has line-length variation; the penalty for inconsistency (std / 0.3) may be too strict.
+- [x] A4. After fixes, composition_score >= 0.80 on the 5-word regression baseline. Verify the demo output (43 words) also improves. Do not game this: if the score improves but the output looks worse, revert.
 
 #### B. OCR in the regression baseline
 
 The regression test (`tests/medium/test_quality_regression.py`) generates 5 words but doesn't pass `words` to `overall_quality_score`, so OCR accuracy is never computed in the baseline. OCR is the most meaningful quality signal: it measures whether generated words are readable. It would have caught the A1 regression ("The" rendered as "Tle").
 
-- [ ] B1. Pass `TEST_WORDS` to `overall_quality_score` in the regression test so OCR accuracy is computed. Add `ocr_accuracy` to `TRACKED_METRICS`. Rebaseline.
-- [ ] B2. Add `ocr_min` as a gate: if any word has OCR < 0.3, the regression test fails regardless of other metrics. This catches single-word unreadability that the mean OCR score would average away.
-- [ ] B3. Verify that the regression test time stays under 20s with OCR added (OCR uses TrOCR model loading).
+- [x] B1. Pass `TEST_WORDS` to `overall_quality_score` in the regression test so OCR accuracy is computed. Add `ocr_accuracy` to `TRACKED_METRICS`. Rebaseline.
+- [x] B2. Add `ocr_min` as a gate: if any word has OCR < 0.3, the regression test fails regardless of other metrics. This catches single-word unreadability that the mean OCR score would average away.
+- [x] B3. Verify that the regression test time stays under 20s with OCR added (OCR uses TrOCR model loading).
 
 #### C. Style fidelity evaluation
 
 Style fidelity is computed when style reference images are provided but is currently observation-only (excluded from the overall score). The regression test doesn't pass style references, so it's never computed there.
 
-- [ ] C1. Pass style reference images (the segmented words from hw-sample.png) to `overall_quality_score` in the regression test. Record `style_fidelity` in the baseline. This is observation-only initially.
-- [ ] C2. Run the regression test 5 times and measure style_fidelity variance. If the variance is low (std < 0.05), it's stable enough to track as a regression metric. If high, keep it observation-only and document why.
-- [ ] C3. If stable (C2 passes): add `style_fidelity` to `QUALITY_CONTINUOUS_WEIGHTS` with weight 0.10, redistributing from other metrics (reduce baseline_alignment to 0.05 and composition_score to 0.15, since baseline_alignment tends to saturate). Rebaseline.
+- [x] C1. Pass style reference images (the segmented words from hw-sample.png) to `overall_quality_score` in the regression test. Record `style_fidelity` in the baseline. This is observation-only initially.
+- [x] C2. Run the regression test 5 times and measure style_fidelity variance. If the variance is low (std < 0.05), it's stable enough to track as a regression metric. If high, keep it observation-only and document why.
+- [x] C3. If stable (C2 passes): add `style_fidelity` to `QUALITY_CONTINUOUS_WEIGHTS` with weight 0.10, redistributing from other metrics (reduce baseline_alignment to 0.05 and composition_score to 0.15, since baseline_alignment tends to saturate). Rebaseline.
 
 #### D. Full-output quality gate
 
 The regression test covers 5 words with seed 42. The demo generates 43 words across 3 paragraphs with PRESET_QUALITY (50 steps, 3 candidates). A change could pass the 5-word test but degrade the full output. `make test-full` runs demo.sh but only checks that the pipeline completes and basic thresholds are met (ink_contrast > 0.3).
 
-- [ ] D1. Add a quality baseline for the full demo output. Store in `tests/full/demo_baseline.json` with the same format as the medium baseline. The full test compares against this baseline with the same tolerance (0.05). Use `--update-demo-baseline` to regenerate.
-- [ ] D2. Add SSIM comparison for the demo output against a stored reference image (`tests/full/demo_reference.png`). Threshold: 0.70 (looser than the 5-word test because 43 words with 3 candidates introduces more stochasticity).
-- [ ] D3. The full test must stay under 5 minutes. If adding the quality gate pushes it over, reduce demo text length or candidates rather than removing the gate.
+- [x] D1. Add a quality baseline for the full demo output. Store in `tests/full/demo_baseline.json` with the same format as the medium baseline. The full test compares against this baseline with the same tolerance (0.05). Use `--update-demo-baseline` to regenerate.
+- [x] D2. Add SSIM comparison for the demo output against a stored reference image (`tests/full/demo_reference.png`). Threshold: 0.70 (looser than the 5-word test because 43 words with 3 candidates introduces more stochasticity).
+- [x] D3. The full test must stay under 5 minutes. If adding the quality gate pushes it over, reduce demo text length or candidates rather than removing the gate.
 
 #### E. Trend detection from quality ledger
 
 The quality ledger (`tests/medium/quality_ledger.jsonl`) records metrics per regression test run. `metric_trend()` and `recent_runs()` exist in `reforge/evaluate/ledger.py` but nothing uses them. A slow downward drift across multiple runs (each within the 0.05 tolerance) would accumulate undetected.
 
-- [ ] E1. Add `detect_drift(ledger_path, metric, window, threshold)` to `reforge/evaluate/ledger.py`. Returns True if the metric has declined by more than `threshold` over the last `window` runs (comparing first vs last in the window). Default window=5, threshold=0.08.
-- [ ] E2. At the end of the regression test, check for drift on all continuous metrics. If drift is detected, print a warning (not a failure) with the metric name, trend values, and how much it declined. This is a soft gate: it alerts but doesn't block.
-- [ ] E3. Add a quick test that validates `detect_drift` on synthetic ledger data: stable metrics return False, declining metrics return True, insufficient data returns False.
+- [x] E1. Add `detect_drift(ledger_path, metric, window, threshold)` to `reforge/evaluate/ledger.py`. Returns True if the metric has declined by more than `threshold` over the last `window` runs (comparing first vs last in the window). Default window=5, threshold=0.08.
+- [x] E2. At the end of the regression test, check for drift on all continuous metrics. If drift is detected, print a warning (not a failure) with the metric name, trend values, and how much it declined. This is a soft gate: it alerts but doesn't block.
+- [x] E3. Add a quick test that validates `detect_drift` on synthetic ledger data: stable metrics return False, declining metrics return True, insufficient data returns False.
 
 #### F. Structured experiment log
 
 When parameter changes are tried and kept or reverted, the lesson lives in git history and prose memory files. A future agent session can read memory but can't query "what parameter changes have been tried for harmonization and what happened?" A structured log enables learning from past experiments.
 
-- [ ] F1. Create `docs/experiment-log.jsonl` with one entry per experiment outcome. Schema: `{"date", "area" (e.g. "harmonization", "generation", "postprocessing"), "change" (what was tried), "expected" (what we expected), "metrics_before" (dict), "metrics_after" (dict), "verdict" ("keep"|"revert"|"modify"), "lesson" (what we learned)}`. This file is committed to git.
-- [ ] F2. Backfill the A1 incident as the first entry: area="harmonization", change="tightened thresholds from 110%/88% to 105%/93%", expected="word_height_ratio >= 0.95", metrics_before={word_height_ratio: 0.91, overall: 0.984}, metrics_after={word_height_ratio: 1.00, overall: 0.999}, verdict="revert", lesson="metric gaming: visual quality degraded despite score improvement; thresholds must not be tightened beyond 110%/88%".
-- [ ] F3. Add a helper function `reforge/evaluate/experiments.py:log_experiment()` that appends to the log and prints a summary. Wire it into the development workflow: after any A/B experiment that results in a keep or revert decision, call `log_experiment()`.
-- [ ] F4. Add a query function `reforge/evaluate/experiments.py:query_experiments(area=None, verdict=None)` that filters the log. A future agent session can call `query_experiments(area="harmonization")` to see what's been tried.
+- [x] F1. Create `docs/experiment-log.jsonl` with one entry per experiment outcome. Schema: `{"date", "area" (e.g. "harmonization", "generation", "postprocessing"), "change" (what was tried), "expected" (what we expected), "metrics_before" (dict), "metrics_after" (dict), "verdict" ("keep"|"revert"|"modify"), "lesson" (what we learned)}`. This file is committed to git.
+- [x] F2. Backfill the A1 incident as the first entry: area="harmonization", change="tightened thresholds from 110%/88% to 105%/93%", expected="word_height_ratio >= 0.95", metrics_before={word_height_ratio: 0.91, overall: 0.984}, metrics_after={word_height_ratio: 1.00, overall: 0.999}, verdict="revert", lesson="metric gaming: visual quality degraded despite score improvement; thresholds must not be tightened beyond 110%/88%".
+- [x] F3. Add a helper function `reforge/evaluate/experiments.py:log_experiment()` that appends to the log and prints a summary. Wire it into the development workflow: after any A/B experiment that results in a keep or revert decision, call `log_experiment()`.
+- [x] F4. Add a query function `reforge/evaluate/experiments.py:query_experiments(area=None, verdict=None)` that filters the log. A future agent session can call `query_experiments(area="harmonization")` to see what's been tried.
+
+#### G. Consolidate duplicated `compute_ink_height()`
+
+The `/architect` review (2026-04-02) identified that `compute_ink_height()` is defined identically in both `reforge/quality/font_scale.py` (line 14) and `reforge/quality/harmonize.py` (line 54). Both compute the vertical ink extent using the same logic (`img < 180` threshold, find first/last ink row). The `font_scale.py` version wraps the return in `max(1, ...)` while `harmonize.py` does not, but the intent is the same. Callers exist in both modules internally, plus two test files that import from `font_scale.py`.
+
+- [x] G1. A single `compute_ink_height()` definition exists in the `reforge/quality/` package. Both `font_scale.py` and `harmonize.py` import from the shared location. The `max(1, ...)` guard from `font_scale.py` is preserved (it prevents division-by-zero downstream).
+- [x] G2. All existing callers (`font_scale.normalize_font_size`, `harmonize.harmonize_heights`, `tests/quick/test_tier0_metrics.py`, `tests/medium/test_quality_thresholds.py`) work without changes to their import paths or call signatures. If the canonical import path changes, update callers.
+- [x] G3. `make test-quick` passes after the consolidation.
+
+#### I. Output history and reference image integrity
+
+The output history (`docs/OUTPUT_HISTORY.md`) is the primary human-facing record of quality over time and the tool that actually caught the A1 regression. But the archive script runs `overall_quality_score` on the composed flat image without passing `word_imgs` or `words`, so it captures only 3 metrics (overall, ink_contrast, background_cleanliness), all of which saturate near 1.0. The three existing history entries all show `overall=0.999`, which is useless as a diagnostic. Separately, SSIM reference images have no update discipline: if a reference is updated during a regression, pixel-level comparison becomes self-referential.
+
+- [x] I1. The archive script (`scripts/archive-output.sh`) captures the full set of continuous metrics from the most recent regression baseline (`tests/medium/quality_baseline.json`) alongside the demo output, rather than re-scoring the composed image. The archived entry includes at minimum: overall, composition_score, stroke_weight_consistency, word_height_ratio, and ocr_accuracy (when present in the baseline). If the baseline file does not exist, fall back to the current image-only scoring with a note in the metrics field.
+- [x] I2. SSIM reference images (`tests/medium/reference_output.png` and, once added, `tests/full/demo_reference.png`) are only updated via an explicit command (`--update-reference` flag or equivalent). The update requires a passing regression test (all metrics non-regressing within tolerance). Reference images are never auto-updated as a side effect of running tests. Document the update procedure in a comment in the regression test file.
 
 ### Context
 
@@ -173,10 +198,14 @@ When parameter changes are tried and kept or reverted, the lesson lives in git h
 
 **Why structured experiment logging matters.** The autonomous coding loop tries things, measures results, and decides whether to keep or revert. Without a structured record, each session starts fresh: it can read memory ("don't tighten harmonization") but can't query the full history of what was tried and why. This is how institutional knowledge accumulates in a coding loop that doesn't have a persistent human memory.
 
+**Why the output history needs real metrics.** The archive is the one record a human reviews when something looks wrong. During the A1 incident, all three history entries showed overall=0.999, which communicated nothing. The regression baseline already has trustworthy, comprehensive metrics. Copying them into the archive entry costs nothing and makes the history useful for debugging without re-running inference.
+
+**Why SSIM reference update discipline matters.** The SSIM check is a defense layer against visual regression. If a reference image is updated to match degraded output (intentionally or as a side effect), the defense layer is neutralized. The baseline already has strict update gating (all metrics non-regressing + explicit flag). SSIM references need the same discipline, otherwise they are the weak link in the chain.
+
 **Relationship to QA infrastructure overhaul.** This session restructured the scoring (gate/continuous split), fixed baseline management (strict auto-update), added SSIM comparison, added A/B baseline floors, and created the quality ledger. That work made the metrics trustworthy. This spec makes the metrics comprehensive (OCR, style fidelity, full output) and the learning loop durable (trend detection, experiment log).
 
 ---
 *Prior spec (2026-04-02): Output quality: consistency, composition, and style fidelity (21/21 criteria met, A1 closed as infeasible).*
 *Prior spec (2026-04-01): Test reliability and loop cadence (7/7 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-02","title":"Quality assurance trust and scoring accuracy","criteria_total":20,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-02","title":"Quality assurance trust and scoring accuracy","criteria_total":30,"criteria_met":30,"status":"closed"} -->

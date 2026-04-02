@@ -69,6 +69,35 @@ def recent_runs(ledger_path: str, n: int = 10) -> list[dict]:
     return entries[-n:]
 
 
+def detect_drift(
+    ledger_path: str,
+    metric: str,
+    window: int = 5,
+    threshold: float = 0.08,
+) -> tuple[bool, float | None, float | None]:
+    """Check if a metric has declined over a window of recent runs.
+
+    Compares the metric value in the first run of the window against the
+    last run. Returns (drifted, first_value, last_value). If insufficient
+    data (fewer than 2 runs with the metric), returns (False, None, None).
+    """
+    runs = recent_runs(ledger_path, window)
+    values = []
+    for run in runs:
+        v = run.get("scores", {}).get(metric)
+        if v is not None and isinstance(v, (int, float)):
+            values.append(float(v))
+
+    if len(values) < 2:
+        return False, None, None
+
+    first_val = values[0]
+    last_val = values[-1]
+    decline = first_val - last_val
+
+    return decline > threshold, first_val, last_val
+
+
 def metric_trend(ledger_path: str, metric: str, n: int = 20) -> list[tuple[str, float]]:
     """Return (timestamp, value) pairs for a metric over the last n runs."""
     runs = recent_runs(ledger_path, n)

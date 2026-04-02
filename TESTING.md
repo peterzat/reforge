@@ -1,32 +1,31 @@
-## Test Strategy Review -- 2026-04-01
+## Test Strategy Review -- 2026-04-02
 
-**Summary:** Three-tier test strategy (quick/medium/full) with 102 quick tests (CPU-only, 0.89s measured), 30 medium tests (GPU, A/B quality + regression + OCR), and 3 full e2e tests. Total: 135 tests collected. Quick tests cover all CPU-side logic with synthetic data. Medium tests assert quality improvement via CV metrics and regression baselines. A pre-commit hook runs quick tests on every commit. A Makefile provides discoverable entry points for all tiers plus targeted inner-loop targets (test-regression, test-ocr). The current SPEC.md (test reliability and loop cadence) has all 7 criteria met. Test strategy is appropriate for this project's current stage.
+**Summary:** Three-tier test strategy (quick/medium/full) with 133 quick tests (CPU-only, 0.86s measured), 31 medium tests (GPU, A/B quality + regression + OCR + diagnostic), and 3 full e2e tests. Total: 167 tests collected. Quick tests cover all CPU-side logic with synthetic data. Medium tests assert quality improvement via CV metrics, regression baselines, SSIM reference comparison, and OCR accuracy. Pre-commit hook gates on quick tests; pre-push hook gates on quality regression. A Makefile provides discoverable entry points for all tiers plus targeted inner-loop targets (test-regression, test-ocr). The current SPEC.md (QA trust and scoring accuracy, 23 criteria, 0 met) is new work, not yet reflected in tests, which is expected. Test strategy is appropriate for this project's current stage.
 
-**Test infrastructure found:** pytest 8.x, pytest.ini with 4 custom markers (quick/medium/full/gpu), root conftest.py implementing tier DAG (medium includes quick, full includes both), session-scoped GPU fixtures in tests/medium/conftest.py, pre-commit hook (.githooks/pre-commit via core.hooksPath), Makefile with test-quick/test-regression/test-ocr/test-medium/test-full targets, A/B experiment harness (experiments/ab_harness.py), CV evaluation module for autonomous quality scoring, quality regression baseline (tests/medium/quality_baseline.json). No CI, no coverage tooling.
+**Test infrastructure found:** pytest 8.x, pytest.ini with 4 custom markers (quick/medium/full/gpu), root conftest.py implementing tier DAG (medium includes quick, full includes both), session-scoped GPU fixtures in tests/medium/conftest.py, pre-commit hook (.githooks/pre-commit via core.hooksPath), pre-push hook (.githooks/pre-push running regression test), Makefile with test-quick/test-regression/test-ocr/test-medium/test-full/review targets, A/B experiment harness (experiments/ab_harness.py), CV evaluation module for autonomous quality scoring, quality regression baseline (tests/medium/quality_baseline.json), SSIM reference image (tests/medium/reference_output.png), quality ledger (tests/medium/quality_ledger.jsonl). No CI, no coverage tooling.
 
 ### Findings
 
 ```
 [WARN] ci-pipeline -- No CI pipeline for remote collaboration
   Current state: No .github/workflows/, .gitlab-ci.yml, or equivalent CI config.
-    Tests run locally via pre-commit hook (quick tier) and manual Makefile targets.
-    This is appropriate while the project is single-developer, but would become
-    a gap if the project gains collaborators or is pushed to a shared remote.
+    Tests run locally via pre-commit hook (quick tier), pre-push hook (regression),
+    and manual Makefile targets. Appropriate while single-developer.
   Recommendation: Defer until the project is pushed to a remote. At that point,
     add a CI workflow that runs quick tests on every push and medium tests on
     GPU runners for PRs. No action needed now.
 ```
 
 ```
-[WARN] diagnostic-test-runtime -- test_word_clipping_diagnostic.py generates 12 words individually
-  Current state: tests/medium/test_word_clipping_diagnostic.py generates 12 words
-    individually with no best-of-N selection via direct ddim_sample + postprocess_word
-    calls (not generate_word). This is the slowest medium test by a wide margin.
-    The test is diagnostic (always passes if 10+ words are analyzed) and writes
-    results to diagnostic_results.json. Not a correctness issue, but contributes
-    disproportionate runtime to the medium tier.
-  Recommendation: Low priority. The diagnostic test is run infrequently and its
-    runtime is acceptable for its purpose (root-cause analysis).
+[WARN] duplicate-gpu-generation -- test_quality_regression.py generates 5 words twice
+  Current state: test_no_metric_regression and test_pixel_level_regression both call
+    _generate_test_words() independently, each generating 5 words on GPU with
+    identical seed. The output is deterministic, so the second call duplicates ~7s
+    of GPU work. The CODEREVIEW.md (2026-04-02) also flagged this. A class-scoped
+    fixture or module-level cache sharing the result would halve regression test
+    runtime (~14s down to ~7s).
+  Recommendation: Extract _generate_test_words result into a class-scoped fixture.
+    This is the highest-value test performance improvement available.
 ```
 
 ```
@@ -40,39 +39,38 @@
 
 ```
 [NOTE] quality-baseline-isolation -- quality_baseline.json is a committed, mutable test artifact
-  Current state: tests/medium/quality_baseline.json is committed to git and is updated
+  Current state: tests/medium/quality_baseline.json is committed to git and updated
     in-place by test_quality_regression.py when the overall score improves (ratchet
-    upward). This means running the medium test suite can produce a dirty working tree
-    even when all tests pass. The file is intentionally committed (it records the
-    quality floor), but the auto-update behavior means the test has a side effect
-    on the working tree.
-  Recommendation: Acceptable for the current workflow where the developer reviews
-    and commits baseline updates. If this becomes friction, separate the "update
-    baseline" action into a distinct command (e.g., make update-baseline) rather
-    than having it happen as a side effect of test execution.
+    upward). Running the medium suite can produce a dirty working tree even when all
+    tests pass. Acceptable for the current workflow where the developer reviews and
+    commits baseline updates.
+  Recommendation: If this becomes friction, separate "update baseline" into a
+    distinct command (e.g., make update-baseline).
 ```
 
 ```
-[NOTE] diagnostic-test-writes-to-source-tree -- test_word_clipping_diagnostic.py writes results to tests/medium/
+[NOTE] diagnostic-results-not-gitignored -- diagnostic_results.json written to source tree
   Current state: test_word_clipping_diagnostic.py writes diagnostic_results.json to
-    tests/medium/ (line 116). This file is not gitignored (confirmed: git check-ignore
-    returns exit 1). The test always passes (it is diagnostic, not assertive beyond
-    word count), so it silently pollutes the working tree.
-  Recommendation: Add tests/medium/diagnostic_results.json to .gitignore, or write
-    to tests/medium/output/ which is already covered by the tests/*/output/ gitignore
-    pattern.
+    tests/medium/ (line 116). git check-ignore confirms this file is NOT gitignored
+    (exit code 1), despite being added to .gitignore in a prior session. The
+    .gitignore entry exists (line 12: tests/medium/diagnostic_results.json) but
+    git check-ignore still returns exit 1, suggesting the entry is not matching
+    correctly or the file is already tracked. The test always passes (diagnostic,
+    not assertive beyond word count), so it silently pollutes the working tree.
+  Recommendation: Verify the .gitignore entry is working. If the file is already
+    tracked, run git rm --cached to untrack it.
 ```
 
 ### Status of Prior Recommendations
 
 From the prior 2026-04-01 review:
 - **OPEN** (carried forward): ci-pipeline. Still no CI. Appropriate for single-developer stage.
-- **REVISED**: diagnostic-test-model-duplication renamed to diagnostic-test-runtime. Prior concern about duplicate model loading was resolved (test uses shared session fixtures). Restated as a runtime observation.
+- **REVISED**: diagnostic-test-runtime renamed to duplicate-gpu-generation. The prior concern about diagnostic test runtime is less important than the duplicate GPU work in the regression test itself, which is now also flagged by CODEREVIEW.md. The diagnostic test runtime is acceptable for its purpose.
 - **OPEN** (carried forward): coverage-tracking. Still no coverage tooling.
 - **OPEN** (carried forward): quality-baseline-isolation. Still auto-updates on test run.
-- **OPEN** (carried forward): diagnostic-test-writes-to-source-tree. diagnostic_results.json still not gitignored.
+- **OPEN** (refined): diagnostic-test-writes-to-source-tree. The .gitignore entry exists but git check-ignore reports it is not effective. Needs investigation.
 
 ---
-*Prior review (2026-04-01): Three-tier strategy with 135 tests. Two WARNs (no CI, diagnostic test runtime). Four NOTEs (no coverage, baseline mutability, diagnostic writes to source tree, spec criteria bookkeeping).*
+*Prior review (2026-04-01): Three-tier strategy with 135 tests. Two WARNs (no CI, diagnostic test runtime). Three NOTEs (no coverage, baseline mutability, diagnostic writes to source tree).*
 
-<!-- TESTING_META: {"date":"2026-04-01","commit":"12e887f","block":0,"warn":2,"note":3} -->
+<!-- TESTING_META: {"date":"2026-04-02","commit":"99cbfce","block":0,"warn":2,"note":3} -->

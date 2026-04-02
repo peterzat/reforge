@@ -1,37 +1,34 @@
-## Review -- 2026-04-02 (commit: 2978355)
+## Review -- 2026-04-02 (commit: 99cbfce)
 
-**Summary:** QA infrastructure overhaul: gate/continuous scoring split in `overall_quality_score`, SSIM reference comparison for pixel-level regression detection, quality ledger (append-only JSONL), A/B baseline floors, new quick tests for all new evaluation functions. 11 files changed across config, evaluate modules, and tests.
+**Summary:** Full review of spec implementation (QA trust and scoring accuracy, 30 criteria). 18 files changed: composition score recalibration (wider margin ranges, actual-width fill computation, diagnostics), OCR gating in regression baseline, style fidelity as weighted metric, drift detection from quality ledger, structured experiment log, `compute_ink_height()` consolidation, demo quality gate with SSIM for full tests, archive script rewrite to use regression baseline metrics, and weight redistribution generalization for missing metrics.
 
 ### Findings
 
 ```
-[BLOCK] reforge/evaluate/visual.py:513 -- overall_quality_score returns 0.5 when no continuous metrics available
-  Evidence: When called with only img (no word_imgs/word_positions), no continuous
-  metrics are populated, so weight_total=0 and overall defaults to 0.5. demo.sh
-  (line 52) calls overall_quality_score(arr) without word data, and its gate
-  (line 66) checks `scores['overall'] <= 0.5`, which trips on exactly 0.5.
-  make test-full runs demo.sh, so this breaks the full test tier.
-  Suggested fix: Fall back to mean of gate metric scores when no continuous
-  metrics are available.
+[NOTE] tests/medium/test_quality_regression.py -- duplicate GPU generation (carried forward)
+  Evidence: test_no_metric_regression and test_pixel_level_regression both call
+  _generate_test_words() independently with identical parameters and seed,
+  duplicating ~7s of GPU work. This was flagged in the prior review (2026-04-02)
+  and accepted. A class-scoped fixture sharing the result would halve regression
+  test runtime.
 ```
 
 ```
-[WARN] tests/medium/test_quality_regression.py:251 -- duplicate GPU generation in regression tests
-  Evidence: test_no_metric_regression and test_pixel_level_regression both call
-  _generate_test_words() independently, each generating 5 words on GPU with
-  identical seed. The output is deterministic, so the second call duplicates
-  ~7s of GPU work. A class-scoped fixture sharing the result would halve
-  regression test runtime.
-  Suggested fix: Extract _generate_test_words result into a class-scoped
-  fixture or module-level cache. Not auto-fixed because it requires
-  restructuring test setup.
+[NOTE] tests/full/test_e2e.py -- demo test generates output twice when both tests run
+  Evidence: test_demo_quality_baseline (line 190) always calls pipeline.run().
+  test_demo_ssim (line 267) checks if the output file exists and skips
+  re-generation if present. Within a class, pytest runs tests in definition
+  order, so this normally works. But if test_demo_quality_baseline is skipped
+  or fails after generating, test_demo_ssim may operate on stale output.
+  Low risk: both tests use identical parameters, and the SSIM threshold (0.70)
+  is loose enough to absorb stochastic variation.
 ```
 
 ### Fixes Applied
 
-- **BLOCK fix (visual.py:513):** Changed the `weight_total == 0` fallback from returning 0.5 to computing the mean of available gate metric scores. This matches the old behavior (mean of available component scores) and prevents demo.sh from hitting the `<= 0.5` quality gate on clean output. Quick tests (133/133) pass after fix.
+None.
 
 ---
-*Prior review (2026-04-01, commit b2bf61d): Refresh review of A1 revert. No issues found.*
+*Prior review (2026-04-02, commit 2978355): QA infrastructure overhaul. 1 BLOCK (overall_quality_score 0.5 fallback, auto-fixed) and 1 WARN (duplicate GPU generation in regression tests, accepted).*
 
-<!-- REVIEW_META: {"date":"2026-04-02","commit":"2978355","reviewed_up_to":"2978355e675856f2f6c0718515c96e5770c43863","base":"origin/main","tier":"full","block":1,"warn":1,"note":0} -->
+<!-- REVIEW_META: {"date":"2026-04-02","commit":"99cbfce","reviewed_up_to":"99cbfcecb8cf85b73dfd7fb8afc18aa45d6277fc","base":"origin/main","tier":"full","block":0,"warn":0,"note":2} -->

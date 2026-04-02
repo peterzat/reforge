@@ -116,13 +116,17 @@ QUALITY_GATES = {
 }
 
 # Continuous metrics: weighted into overall score (must sum to 1.0)
+# Style fidelity added after C2 variance test showed std=0 across 5 runs.
+# Reduced baseline_alignment (saturates at 1.0) and composition_score to
+# make room. OCR and stroke consistency remain the dominant signals.
 QUALITY_CONTINUOUS_WEIGHTS = {
     "stroke_weight_consistency": 0.20,
     "word_height_ratio": 0.15,
-    "composition_score": 0.20,
+    "composition_score": 0.15,
     "height_outlier_score": 0.15,  # derived from height_outlier_ratio
-    "baseline_alignment": 0.10,
+    "baseline_alignment": 0.05,
     "ocr_accuracy": 0.20,          # redistributed when unavailable
+    "style_fidelity": 0.10,        # redistributed when unavailable
 }
 
 # Model paths on HuggingFace

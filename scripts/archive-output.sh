@@ -70,26 +70,50 @@ fi
 # Style input used (default hw-sample.png, note for future multi-style support)
 STYLE_INPUT="styles/hw-sample.png"
 
-# Quality metrics from the image
+# Quality metrics: prefer the regression baseline (comprehensive, trustworthy)
+# over re-scoring the composed image (which lacks word_imgs/words context).
+BASELINE_FILE="tests/medium/quality_baseline.json"
 METRICS="$(.venv/bin/python3 -c "
-import numpy as np
-from PIL import Image
-from reforge.evaluate.visual import overall_quality_score
+import json, os
 
-img = Image.open('$SOURCE')
-arr = np.array(img.convert('L'))
-scores = overall_quality_score(arr)
+baseline_path = '$BASELINE_FILE'
+tracked = ('overall', 'composition_score', 'stroke_weight_consistency',
+           'word_height_ratio', 'ocr_accuracy', 'style_fidelity',
+           'ink_contrast', 'background_cleanliness')
 
-parts = []
-for k in ('overall', 'ink_contrast', 'word_height_ratio', 'stroke_weight_consistency',
-          'background_cleanliness', 'baseline_alignment', 'ocr_accuracy'):
-    if k in scores:
-        v = scores[k]
-        if isinstance(v, float):
-            parts.append(f'{k}={v:.3f}')
-        else:
-            parts.append(f'{k}={v}')
-print(', '.join(parts))
+if os.path.exists(baseline_path):
+    with open(baseline_path) as f:
+        data = json.load(f)
+    metrics = data.get('metrics', {})
+    parts = []
+    for k in tracked:
+        if k in metrics:
+            v = metrics[k]
+            if isinstance(v, float):
+                parts.append(f'{k}={v:.3f}')
+            else:
+                parts.append(f'{k}={v}')
+    if parts:
+        print(', '.join(parts))
+    else:
+        print('metrics unavailable (empty baseline)')
+else:
+    # Fall back to image-only scoring (no word_imgs context)
+    import numpy as np
+    from PIL import Image
+    from reforge.evaluate.visual import overall_quality_score
+    img = Image.open('$SOURCE')
+    arr = np.array(img.convert('L'))
+    scores = overall_quality_score(arr)
+    parts = []
+    for k in tracked:
+        if k in scores:
+            v = scores[k]
+            if isinstance(v, float):
+                parts.append(f'{k}={v:.3f}')
+            else:
+                parts.append(f'{k}={v}')
+    print(', '.join(parts) + ' (image-only, no baseline)')
 " 2>/dev/null || echo 'metrics unavailable')"
 
 # Initialize history file if it doesn't exist

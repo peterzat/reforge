@@ -26,6 +26,16 @@ def device():
 
 
 @pytest.fixture(scope="session")
+def style_word_images():
+    """Segmented style reference word images (numpy grayscale arrays)."""
+    from reforge.preprocess.segment import segment_sentence_image
+    style_img = cv2.imread("styles/hw-sample.png", cv2.IMREAD_GRAYSCALE)
+    words = segment_sentence_image(style_img)
+    assert len(words) == 5
+    return words
+
+
+@pytest.fixture(scope="session")
 def style_features(device):
     from reforge.model.encoder import StyleEncoder
     from reforge.model.weights import download_style_encoder_weights

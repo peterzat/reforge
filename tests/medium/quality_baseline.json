@@ -9,7 +9,7 @@
   ],
   "num_steps": 20,
   "guidance_scale": 3.0,
-  "updated_at": "2026-04-02T02:19:43.063047+00:00",
+  "updated_at": "2026-04-02T03:34:48.709602+00:00",
   "update_reason": "manual --update-baseline",
   "metrics": {
     "gray_boxes": 1.0,
@@ -18,9 +18,20 @@
     "stroke_weight_consistency": 0.9057,
     "word_height_ratio": 1.0,
     "height_outlier_ratio": 1.0,
+    "style_fidelity": 0.3857,
     "baseline_alignment": 1.0,
-    "composition_score": 0.6933,
+    "composition_score": 0.8547,
+    "ocr_accuracy": 0.9667,
+    "ocr_min": 0.8333,
+    "ocr_per_word": [
+      1.0,
+      1.0,
+      0.8333333333333334,
+      1.0,
+      1.0
+    ],
+    "blank_word_ratio": 1.0,
     "height_outlier_score": 1.0,
-    "overall": 0.8998
+    "overall": 0.8912
   }
 }
