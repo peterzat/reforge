@@ -510,7 +510,13 @@ def overall_quality_score(
             weighted_sum += w * scores[metric]
             weight_total += w
 
-    overall = weighted_sum / weight_total if weight_total > 0 else 0.5
+    if weight_total > 0:
+        overall = weighted_sum / weight_total
+    else:
+        # No continuous metrics available (e.g. called with only img, no word_imgs).
+        # Fall back to mean of gate metric scores so the result is meaningful.
+        gate_values = [scores[m] for m in QUALITY_GATES if m in scores]
+        overall = float(np.mean(gate_values)) if gate_values else 0.5
 
     # Apply gate cap
     overall = min(overall, gate_cap)
