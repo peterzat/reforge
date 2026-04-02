@@ -45,7 +45,7 @@ PRESETS = {"draft": PRESET_DRAFT, "fast": PRESET_FAST, "quality": PRESET_QUALITY
 VAE_SCALE_FACTOR = 0.18215
 
 # Font normalization
-SHORT_WORD_HEIGHT_TARGET = 32  # pixels, for 1-3 char words
+SHORT_WORD_HEIGHT_TARGET = 26  # pixels, for 1-3 char words
 LONG_WORD_AREA_TARGET = 550    # px^2 per char, for 4+ char words
 # A1 lesson: these thresholds must not be tightened beyond 1.10/0.88.
 # Tightening to 1.05/0.93 achieved word_height_ratio 1.00 but distorted
@@ -95,8 +95,10 @@ DEFAULT_PAGE_WIDTH = 800
 # Dynamic page sizing
 MIN_PAGE_WIDTH = 300
 MAX_PAGE_WIDTH = 1200
-TARGET_ASPECT_MIN = 0.7   # minimum width:height ratio
-TARGET_ASPECT_MAX = 1.3   # maximum width:height ratio
+TARGET_ASPECT_RATIO = 0.75  # 3:4 portrait (width:height)
+TARGET_ASPECT_MIN = 0.65   # minimum width:height ratio
+TARGET_ASPECT_MAX = 0.85   # maximum width:height ratio
+TARGET_WORDS_PER_LINE = 7.0  # target words per line (compensates for variable word widths)
 MARGIN_H_RATIO = 0.06     # left/right margin as fraction of page width (5-8% range)
 MARGIN_V_RATIO = 0.04     # top/bottom margin as fraction of page height (3-5% range)
 

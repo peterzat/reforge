@@ -48,7 +48,7 @@ def test_ruled_line_non_descending_words_same_y():
 
     imgs = [w1, w2, w3]
     words = ["test", "word", "here"]
-    _, positions = compose_words(imgs, words, page_width=400, upscale_factor=1, return_positions=True)
+    _, positions = compose_words(imgs, words, page_width=600, upscale_factor=1, return_positions=True)
 
     # All three should be on line 0
     assert all(p["line"] == 0 for p in positions)
@@ -71,7 +71,7 @@ def test_ruled_line_descending_word_extends_below():
 
     imgs = [w1, w2]
     words = ["test", "gypy"]
-    _, positions = compose_words(imgs, words, page_width=300, upscale_factor=1, return_positions=True)
+    _, positions = compose_words(imgs, words, page_width=600, upscale_factor=1, return_positions=True)
 
     # Both on line 0
     assert all(p["line"] == 0 for p in positions)

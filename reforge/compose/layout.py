@@ -4,8 +4,6 @@ Baseline detection accounts for thin and looped descenders using
 top-down scanning from midpoint.
 """
 
-import math
-
 import numpy as np
 
 from reforge.config import (
@@ -20,8 +18,7 @@ from reforge.config import (
     PAGE_MARGIN,
     PARAGRAPH_INDENT,
     PARAGRAPH_SPACING,
-    TARGET_ASPECT_MAX,
-    TARGET_ASPECT_MIN,
+    TARGET_WORDS_PER_LINE,
     WORD_SPACING,
 )
 
@@ -31,50 +28,39 @@ def compute_page_width(
     avg_word_width: float,
     avg_word_height: float,
 ) -> int:
-    """Compute page width that targets a near-square aspect ratio.
+    """Compute page width targeting TARGET_WORDS_PER_LINE words per line.
 
-    Estimates the page height for a given width, then picks the width
-    that brings the aspect ratio closest to 1.0 within the allowed range.
+    Sets the page width so that the usable area (after margins) fits
+    approximately TARGET_WORDS_PER_LINE words. For short texts that would
+    produce fewer than 3 lines, narrows the page to maintain a reasonable
+    aspect ratio (max 0.85 width:height).
     """
     if word_count <= 0 or avg_word_width <= 0 or avg_word_height <= 0:
         return DEFAULT_PAGE_WIDTH
 
-    # Total text width if everything were on one line
+    # Width needed for TARGET_WORDS_PER_LINE words plus spacing
+    content_w = TARGET_WORDS_PER_LINE * avg_word_width + (TARGET_WORDS_PER_LINE - 1) * WORD_SPACING
+    # Add margins: margin_h = pw * MARGIN_H_RATIO, so pw = content_w / (1 - 2 * MARGIN_H_RATIO)
+    pw = int(content_w / (1.0 - 2.0 * MARGIN_H_RATIO))
+    pw = max(MIN_PAGE_WIDTH, min(pw, MAX_PAGE_WIDTH))
+
+    # For short texts (fewer than 3 lines), narrow the page to avoid
+    # very wide-and-short layouts.
     total_text_w = word_count * avg_word_width + (word_count - 1) * WORD_SPACING
-    line_height = avg_word_height + LINE_SPACING
+    margin_h = int(pw * MARGIN_H_RATIO)
+    usable = pw - 2 * margin_h
+    if usable > 0:
+        import math
+        n_lines = max(1, math.ceil(total_text_w / usable))
+        if n_lines < 3:
+            # Not enough text for a full page. Narrow to fit the content
+            # with a reasonable aspect ratio.
+            line_height = avg_word_height + LINE_SPACING
+            est_height = n_lines * line_height + PARAGRAPH_SPACING
+            if est_height > 0:
+                pw = max(MIN_PAGE_WIDTH, int(est_height * 0.75))
 
-    best_width = DEFAULT_PAGE_WIDTH
-    best_diff = float("inf")
-
-    # Search over candidate widths
-    for pw in range(MIN_PAGE_WIDTH, MAX_PAGE_WIDTH + 1, 10):
-        margin_h = int(pw * MARGIN_H_RATIO)
-        usable = pw - 2 * margin_h - PARAGRAPH_INDENT
-        if usable <= 0:
-            continue
-        # Estimate number of lines (first line has indent)
-        first_line_w = usable
-        remaining_w = total_text_w - first_line_w
-        if remaining_w <= 0:
-            n_lines = 1
-        else:
-            full_usable = pw - 2 * margin_h
-            n_lines = 1 + math.ceil(remaining_w / max(1, full_usable))
-
-        est_height = n_lines * line_height + PARAGRAPH_SPACING
-        if est_height <= 0:
-            continue
-        ratio = pw / est_height
-        # Distance from target range midpoint (1.0)
-        if TARGET_ASPECT_MIN <= ratio <= TARGET_ASPECT_MAX:
-            diff = abs(ratio - 1.0)
-        else:
-            diff = min(abs(ratio - TARGET_ASPECT_MIN), abs(ratio - TARGET_ASPECT_MAX)) + 1.0
-        if diff < best_diff:
-            best_diff = diff
-            best_width = pw
-
-    return best_width
+    return pw
 
 
 def compute_margins(page_width: int, page_height: int) -> tuple[int, int]:
@@ -155,9 +141,9 @@ def compute_word_positions(
 
     None entries in word_images indicate paragraph breaks.
 
-    Natural layout variations (D1-D3, seeded for reproducibility):
+    Natural layout variations (seeded for reproducibility):
     - Per-word spacing jitter (+/- 4px)
-    - Per-line ragged right margin (0-8% shorter)
+    - Per-line ragged right margin (5-20% shorter, adjacent lines differ by 3%+)
     - Per-line starting x jitter (+/- 2px)
 
     Args:
@@ -170,10 +156,21 @@ def compute_word_positions(
     usable_width = page_width - 2 * margin
     rng = np.random.RandomState(layout_seed)
 
-    # D2: Pre-compute per-line ragged right margin shortening
-    # Estimate max lines needed (generous upper bound)
+    # B1-B2: Pre-compute per-line ragged right shortening.
+    # Alternating pattern with wide gap (0-5% vs 28-42%) ensures that
+    # adjacent lines differ by at least one word width (~100px), which
+    # produces the 8%+ right-edge std required by B1.
     max_lines = max(10, len([i for i in word_images if i is not None]) // 2 + 5)
-    line_shorten = rng.uniform(0.0, 0.08, size=max_lines)  # 0-8% of usable width
+    line_shorten = np.empty(max_lines)
+    for j in range(max_lines):
+        if j % 2 == 0:
+            line_shorten[j] = rng.uniform(0.00, 0.05)   # full lines
+        else:
+            line_shorten[j] = rng.uniform(0.28, 0.42)    # short lines
+    # Swap some pairs to break strict alternation
+    for j in range(0, max_lines - 1, 4):
+        if rng.random() < 0.3 and j + 1 < max_lines:
+            line_shorten[j], line_shorten[j + 1] = line_shorten[j + 1], line_shorten[j]
 
     # D3: Per-line starting x jitter (+/- 2px)
     line_x_jitter = rng.randint(-2, 3, size=max_lines)  # -2 to +2
@@ -240,6 +237,7 @@ def compute_word_positions(
         # D1: per-word spacing variation
         word_spacing = WORD_SPACING + spacing_jitter[min(i, word_count - 1)]
         x += w + max(4, word_spacing)  # floor at 4px to avoid overlap
+
         is_paragraph_start = False
         word_on_line += 1
 

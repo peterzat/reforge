@@ -11,8 +11,7 @@ from reforge.config import (
     PAGE_MARGIN,
     PARAGRAPH_INDENT,
     PARAGRAPH_SPACING,
-    TARGET_ASPECT_MAX,
-    TARGET_ASPECT_MIN,
+    TARGET_WORDS_PER_LINE,
     WORD_SPACING,
 )
 from reforge.compose.layout import (
@@ -159,23 +158,35 @@ class TestComputePageWidth:
         pw = compute_page_width(word_count=43, avg_word_width=60, avg_word_height=30)
         assert MIN_PAGE_WIDTH <= pw <= MAX_PAGE_WIDTH
 
-    def test_aspect_ratio_in_range(self):
-        """Computed page width should target near-square output for typical text."""
+    def test_words_per_line_near_target(self):
+        """Computed page width should fit ~TARGET_WORDS_PER_LINE words per line."""
         pw = compute_page_width(word_count=20, avg_word_width=60, avg_word_height=30)
-        # Estimate the resulting aspect ratio
-        total_w = 20 * 60 + 19 * WORD_SPACING
         margin_h = int(pw * 0.06)
         usable = pw - 2 * margin_h
-        n_lines = max(1, int(np.ceil(total_w / usable)))
-        est_h = n_lines * (30 + LINE_SPACING)
-        ratio = pw / max(1, est_h)
-        # Should be reasonably close to the target range
-        assert 0.5 <= ratio <= 2.0
+        words_per_line = usable / (60 + WORD_SPACING)
+        assert 4.5 <= words_per_line <= 7.0
 
     def test_empty_input(self):
         """Zero words returns default."""
         pw = compute_page_width(word_count=0, avg_word_width=60, avg_word_height=30)
         assert pw == DEFAULT_PAGE_WIDTH
+
+    def test_40_words_density_target(self):
+        """A5: 40-word input at post-normalization size produces enough width for 5-6 words/line.
+
+        The TARGET_WORDS_PER_LINE is set higher than the actual target (5-6)
+        to compensate for variable word widths. This test validates the
+        algorithm produces a page wide enough for the target density.
+        """
+        # Post-normalization: height target 26, long words ~29, avg_w ~100
+        pw = compute_page_width(word_count=40, avg_word_width=100, avg_word_height=28)
+        margin_h = int(pw * 0.06)
+        usable = pw - 2 * margin_h
+        words_per_line = usable / (100 + WORD_SPACING)
+        assert 5.0 <= words_per_line <= 8.0, (
+            f"Expected 5-8 words/line capacity, got {words_per_line:.1f} "
+            f"(page_width={pw}, usable={usable})"
+        )
 
 
 @pytest.mark.quick

@@ -397,12 +397,13 @@ def check_composition_score(
     if h == 0 or w == 0 or not word_positions:
         return 0.5
 
-    # (a) Aspect ratio: 1.0 is ideal, 0.5 or 2.0 are poor
+    # (a) Aspect ratio: 0.75 (3:4 portrait) is ideal
     ratio = w / h
-    if 0.7 <= ratio <= 1.3:
-        aspect_score = 1.0 - abs(ratio - 1.0) / 0.3 * 0.2  # mild penalty within range
+    target_ratio = 0.75
+    if 0.55 <= ratio <= 0.95:
+        aspect_score = 1.0 - abs(ratio - target_ratio) / 0.20 * 0.2  # mild penalty within range
     else:
-        aspect_score = max(0.0, 1.0 - abs(ratio - 1.0) / 1.0)
+        aspect_score = max(0.0, 1.0 - abs(ratio - target_ratio) / 1.0)
 
     # (b) Margin proportion
     # Find content bounds from word positions

@@ -191,6 +191,17 @@ def compose_words(
         canvas_region = canvas[y_start:y_end, x_start:x_end]
         canvas_region[ink_mask] = src_region[ink_mask]
 
+    # Trim bottom: match bottom margin to top margin (margin_v)
+    # Find last row with ink
+    last_ink_row = canvas_h - 1
+    for r in range(canvas_h - 1, -1, -1):
+        if np.any(canvas[r] < 250):
+            last_ink_row = r
+            break
+    trimmed_h = last_ink_row + margin_v + 1
+    if trimmed_h < canvas_h:
+        canvas = canvas[:trimmed_h]
+
     # Upscale
     if upscale_factor > 1:
         new_h = canvas.shape[0] * upscale_factor

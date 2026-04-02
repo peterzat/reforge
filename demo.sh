@@ -20,7 +20,7 @@ pip install -q -r requirements.txt
 # Generate handwritten note
 python reforge.py \
     --style styles/hw-sample.png \
-    --text "The morning sun cast long shadows across the quiet garden. Birds sang their familiar songs while dew drops sparkled on fresh green leaves.\nShe sat near the old stone wall, reading her favorite book. The pages felt warm and soft under her fingers." \
+    --text "I can't remember exactly, but it was a Thursday; the bakery on Birchwood had croissants so perfect they'd disappear by noon.\nWe grabbed two, maybe three? Katherine laughed and said something wonderful about mornings being too beautiful for ordinary breakfast." \
     --output result.png \
     --preset quality
 
