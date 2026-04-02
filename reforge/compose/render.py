@@ -95,16 +95,13 @@ def compose_words(
     if not positions:
         return Image.new("L", (page_width, 100), 255)
 
-    # Detect baselines and descender status for each word (F1/F2)
+    # Detect baselines for each word (F1)
     baselines = {}
-    descenders = {}
     for pos in positions:
         idx = pos["word_idx"]
         img = word_images[idx]
         if img is not None:
-            bl = detect_baseline(img)
-            baselines[idx] = bl
-            descenders[idx] = _has_descender(img, bl)
+            baselines[idx] = detect_baseline(img)
 
     # Group positions by line
     lines = {}
