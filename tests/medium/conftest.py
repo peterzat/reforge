@@ -7,6 +7,17 @@ import cv2
 SKIP_REASON = "Requires CUDA GPU"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--update-baseline", action="store_true", default=False,
+        help="Regenerate quality_baseline.json unconditionally",
+    )
+    parser.addoption(
+        "--update-reference", action="store_true", default=False,
+        help="Regenerate reference_output.png unconditionally",
+    )
+
+
 @pytest.fixture(scope="session")
 def device():
     if not torch.cuda.is_available():

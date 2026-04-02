@@ -468,25 +468,58 @@ def overall_quality_score(
             blank_ratio = _blank_word_ratio(word_imgs, words)
             scores["blank_word_ratio"] = 1.0 - blank_ratio
 
-    # Compute overall: OCR-weighted if available
-    # Exclude observation-only metrics from weighted score
-    _exclude = ("ocr_min", "blank_word_ratio", "height_outlier_ratio",
-                 "style_fidelity", "composition_score")
-    component_scores = [v for k, v in scores.items() if k not in _exclude]
-    if "ocr_accuracy" in scores:
-        # Weight OCR accuracy as 40% of overall, rest shares 60%
-        non_ocr = [v for k, v in scores.items()
-                   if k not in ("ocr_accuracy",) + _exclude]
-        non_ocr_mean = float(np.mean(non_ocr)) if non_ocr else 0.5
-        overall = 0.4 * scores["ocr_accuracy"] + 0.6 * non_ocr_mean
+    # Convert height_outlier_ratio (lower=better, >=1.0) to a 0-1 score
+    if "height_outlier_ratio" in scores:
+        ratio = scores["height_outlier_ratio"]
+        scores["height_outlier_score"] = max(0.0, 1.0 - (ratio - 1.0) / 0.5)
 
-        # Tank overall if any word is unreadable or blank
-        if scores.get("ocr_min", 1.0) < 0.5:
-            overall = min(overall, 0.45)
-        if scores.get("blank_word_ratio", 1.0) < 0.8:
-            overall = min(overall, 0.45)
-    else:
-        overall = float(np.mean(component_scores))
+    # Gate metrics: binary pass/fail, cap overall if failed
+    from reforge.config import QUALITY_GATES, QUALITY_CONTINUOUS_WEIGHTS
+
+    gate_details = {}
+    gate_cap = 1.0
+    for metric, spec in QUALITY_GATES.items():
+        if metric not in scores:
+            gate_details[metric] = True  # absent = pass (data not available)
+            continue
+        passed = scores[metric] >= spec["threshold"]
+        gate_details[metric] = passed
+        if not passed:
+            gate_cap = min(gate_cap, spec["cap"])
+
+    scores["gates_passed"] = all(gate_details.values())
+    scores["gate_details"] = gate_details
+
+    # Continuous metrics: weighted average
+    weights = dict(QUALITY_CONTINUOUS_WEIGHTS)
+    has_ocr = "ocr_accuracy" in scores
+
+    if not has_ocr:
+        # Redistribute OCR weight proportionally to other available metrics
+        ocr_w = weights.pop("ocr_accuracy", 0.0)
+        available = {k: v for k, v in weights.items() if k in scores}
+        if available:
+            total_avail = sum(available.values())
+            for k in available:
+                weights[k] += ocr_w * (available[k] / total_avail)
+
+    weighted_sum = 0.0
+    weight_total = 0.0
+    for metric, w in weights.items():
+        if metric in scores:
+            weighted_sum += w * scores[metric]
+            weight_total += w
+
+    overall = weighted_sum / weight_total if weight_total > 0 else 0.5
+
+    # Apply gate cap
+    overall = min(overall, gate_cap)
+
+    # Tank overall if any word is unreadable or blank
+    if scores.get("ocr_min", 1.0) < 0.5:
+        overall = min(overall, 0.45)
+    if scores.get("blank_word_ratio", 1.0) < 0.8:
+        overall = min(overall, 0.45)
 
     scores["overall"] = overall
     return scores

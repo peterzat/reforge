@@ -47,6 +47,10 @@ VAE_SCALE_FACTOR = 0.18215
 # Font normalization
 SHORT_WORD_HEIGHT_TARGET = 32  # pixels, for 1-3 char words
 LONG_WORD_AREA_TARGET = 550    # px^2 per char, for 4+ char words
+# A1 lesson: these thresholds must not be tightened beyond 1.10/0.88.
+# Tightening to 1.05/0.93 achieved word_height_ratio 1.00 but distorted
+# letterforms (over-normalization, "The" -> "Tle"). The honest 0.91 at
+# 1.10/0.88 produces visually better output.
 HEIGHT_OUTLIER_THRESHOLD = 1.10  # scale down if > 110% of median
 HEIGHT_UNDERSIZE_THRESHOLD = 0.88  # scale up if < 88% of median
 
@@ -94,13 +98,31 @@ MARGIN_V_RATIO = 0.04     # top/bottom margin as fraction of page height (3-5% r
 # Overlap blending for chunk stitching
 STITCH_OVERLAP_PX = 8
 
-# Quality scoring weights
+# Quality scoring weights (per-word candidate selection in quality/score.py)
 QUALITY_WEIGHTS = {
     "background": 0.20,
     "ink_density": 0.15,
     "edge_sharpness": 0.15,
     "height_consistency": 0.25,
     "contrast": 0.25,
+}
+
+# Overall quality score structure (evaluate/visual.py)
+# Gate metrics: binary pass/fail, cap overall if failed (not weighted)
+QUALITY_GATES = {
+    "gray_boxes": {"threshold": 1.0, "cap": 0.30},       # must have no artifacts
+    "ink_contrast": {"threshold": 0.70, "cap": 0.40},     # must have decent contrast
+    "background_cleanliness": {"threshold": 0.80, "cap": 0.40},  # must be clean
+}
+
+# Continuous metrics: weighted into overall score (must sum to 1.0)
+QUALITY_CONTINUOUS_WEIGHTS = {
+    "stroke_weight_consistency": 0.20,
+    "word_height_ratio": 0.15,
+    "composition_score": 0.20,
+    "height_outlier_score": 0.15,  # derived from height_outlier_ratio
+    "baseline_alignment": 0.10,
+    "ocr_accuracy": 0.20,          # redistributed when unavailable
 }
 
 # Model paths on HuggingFace

@@ -9,6 +9,8 @@
   ],
   "num_steps": 20,
   "guidance_scale": 3.0,
+  "updated_at": "2026-04-02T02:19:43.063047+00:00",
+  "update_reason": "manual --update-baseline",
   "metrics": {
     "gray_boxes": 1.0,
     "ink_contrast": 1.0,
@@ -18,6 +20,7 @@
     "height_outlier_ratio": 1.0,
     "baseline_alignment": 1.0,
     "composition_score": 0.6933,
-    "overall": 0.9843
+    "height_outlier_score": 1.0,
+    "overall": 0.8998
   }
 }

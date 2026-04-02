@@ -232,3 +232,184 @@ class TestOverallQuality:
         assert "overall" in result
         assert "gray_boxes" in result
         assert "ink_contrast" in result
+
+    def test_gates_and_continuous_keys(self):
+        """Result includes gate details and height_outlier_score."""
+        from reforge.evaluate.visual import overall_quality_score
+        img = np.full((100, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 30
+        words = [np.full((40, 100), 255, dtype=np.uint8) for _ in range(3)]
+        for w in words:
+            w[10:30, 10:90] = 60
+        positions = [
+            {"x": 20, "y": 20, "width": 100, "height": 40, "line": 0},
+        ]
+        result = overall_quality_score(img, word_imgs=words, word_positions=positions)
+        assert "gates_passed" in result
+        assert "gate_details" in result
+        assert "height_outlier_score" in result
+        assert isinstance(result["gate_details"], dict)
+
+    def test_gate_failure_caps_overall(self):
+        """Gray box detection (gate failure) caps overall at 0.30."""
+        from reforge.evaluate.visual import overall_quality_score
+        # Create image with a large gray box artifact
+        img = np.full((200, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 30   # ink
+        img[80:180, 50:350] = 170  # large gray rectangle
+        result = overall_quality_score(img)
+        assert result["gray_boxes"] == 0.0
+        assert not result["gates_passed"]
+        assert result["overall"] <= 0.30
+
+    def test_continuous_weights_sum_to_one(self):
+        """Continuous metric weights sum to 1.0."""
+        from reforge.config import QUALITY_CONTINUOUS_WEIGHTS
+        total = sum(QUALITY_CONTINUOUS_WEIGHTS.values())
+        assert total == pytest.approx(1.0, abs=0.001)
+
+    def test_score_varies_with_stroke_consistency(self):
+        """Overall score changes when stroke_weight_consistency changes."""
+        from reforge.evaluate.visual import overall_quality_score
+        img = np.full((100, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 30
+
+        # Consistent words
+        good_words = []
+        for _ in range(5):
+            w = np.full((40, 100), 255, dtype=np.uint8)
+            w[10:30, 10:90] = 60
+            good_words.append(w)
+
+        # Inconsistent words
+        bad_words = []
+        for val in [20, 60, 100, 140, 170]:
+            w = np.full((40, 100), 255, dtype=np.uint8)
+            w[10:30, 10:90] = val
+            bad_words.append(w)
+
+        positions = [
+            {"x": 20, "y": 20, "width": 350, "height": 40, "line": 0},
+        ]
+        good_result = overall_quality_score(img, word_imgs=good_words, word_positions=positions)
+        bad_result = overall_quality_score(img, word_imgs=bad_words, word_positions=positions)
+        assert good_result["overall"] > bad_result["overall"]
+
+    def test_composition_score_affects_overall(self):
+        """composition_score is now a continuous metric, not observation-only."""
+        from reforge.evaluate.visual import overall_quality_score
+        img = np.full((100, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 30
+        words = [np.full((40, 100), 255, dtype=np.uint8) for _ in range(3)]
+        for w in words:
+            w[10:30, 10:90] = 60
+        positions = [
+            {"x": 24, "y": 16, "width": 60, "height": 30, "line": 0},
+            {"x": 100, "y": 16, "width": 60, "height": 30, "line": 0},
+        ]
+        result = overall_quality_score(img, word_imgs=words, word_positions=positions)
+        # composition_score should be in the continuous metrics, not excluded
+        assert "composition_score" in result
+        # Overall should not be near 1.0 (old behavior) when composition is ~0.69
+        assert result["overall"] < 0.98
+
+    def test_overall_not_near_saturated(self):
+        """With all gates passing and typical values, overall is in ~0.80-0.95 range."""
+        from reforge.evaluate.visual import overall_quality_score
+        img = np.full((400, 400), 255, dtype=np.uint8)
+        img[20:60, 20:380] = 30
+        words = [np.full((40, 100), 255, dtype=np.uint8) for _ in range(5)]
+        for w in words:
+            w[10:30, 10:90] = 60
+        positions = [
+            {"x": 24, "y": 16, "width": 60, "height": 30, "line": 0},
+            {"x": 100, "y": 16, "width": 60, "height": 30, "line": 0},
+        ]
+        result = overall_quality_score(img, word_imgs=words, word_positions=positions)
+        # Should have headroom: not saturated at ~0.98+
+        assert result["overall"] < 0.97
+
+
+@pytest.mark.quick
+class TestSSIM:
+    def test_identical_images(self):
+        """SSIM of identical images is 1.0."""
+        from reforge.evaluate.reference import compute_ssim
+        img = np.full((64, 256), 255, dtype=np.uint8)
+        img[20:44, 30:220] = 30
+        assert compute_ssim(img, img) == pytest.approx(1.0, abs=0.001)
+
+    def test_very_different_images(self):
+        """SSIM of very different images is low."""
+        from reforge.evaluate.reference import compute_ssim
+        white = np.full((64, 256), 255, dtype=np.uint8)
+        black = np.full((64, 256), 0, dtype=np.uint8)
+        ssim = compute_ssim(white, black)
+        assert ssim < 0.1
+
+    def test_similar_images(self):
+        """SSIM of slightly different images is high but not 1.0."""
+        from reforge.evaluate.reference import compute_ssim
+        img_a = np.full((64, 256), 255, dtype=np.uint8)
+        img_a[20:44, 30:220] = 30
+        img_b = img_a.copy()
+        img_b[20:44, 30:220] = 40  # slightly lighter ink
+        ssim = compute_ssim(img_a, img_b)
+        assert 0.7 < ssim < 1.0
+
+    def test_different_sizes(self):
+        """SSIM handles different-sized images by resizing."""
+        from reforge.evaluate.reference import compute_ssim
+        small = np.full((32, 128), 200, dtype=np.uint8)
+        big = np.full((64, 256), 200, dtype=np.uint8)
+        ssim = compute_ssim(small, big)
+        assert ssim > 0.8  # similar content, different size
+
+    def test_empty_image(self):
+        """SSIM of empty image returns 0.0."""
+        from reforge.evaluate.reference import compute_ssim
+        empty = np.array([], dtype=np.uint8)
+        normal = np.full((64, 256), 255, dtype=np.uint8)
+        assert compute_ssim(empty, normal) == 0.0
+
+
+@pytest.mark.quick
+class TestLedger:
+    def test_append_and_read(self, tmp_path):
+        """Ledger append and recent_runs work correctly."""
+        from reforge.evaluate.ledger import append_entry, recent_runs
+        path = str(tmp_path / "test_ledger.jsonl")
+
+        scores = {"overall": 0.85, "ink_contrast": 0.9, "gates_passed": True}
+        entry = append_entry(path, scores, config={"seed": 42}, context="test")
+        assert entry["scores"]["overall"] == 0.85
+        assert entry["context"] == "test"
+
+        runs = recent_runs(path)
+        assert len(runs) == 1
+        assert runs[0]["scores"]["overall"] == 0.85
+
+    def test_metric_trend(self, tmp_path):
+        """metric_trend returns (timestamp, value) pairs."""
+        from reforge.evaluate.ledger import append_entry, metric_trend
+        path = str(tmp_path / "test_ledger.jsonl")
+
+        for val in [0.80, 0.85, 0.90]:
+            append_entry(path, {"overall": val})
+
+        trend = metric_trend(path, "overall")
+        assert len(trend) == 3
+        assert trend[0][1] == 0.80
+        assert trend[2][1] == 0.90
+
+    def test_recent_runs_limit(self, tmp_path):
+        """recent_runs respects the n parameter."""
+        from reforge.evaluate.ledger import append_entry, recent_runs
+        path = str(tmp_path / "test_ledger.jsonl")
+
+        for i in range(10):
+            append_entry(path, {"overall": i * 0.1})
+
+        runs = recent_runs(path, n=3)
+        assert len(runs) == 3
+        assert runs[0]["scores"]["overall"] == 0.7

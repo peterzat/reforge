@@ -2,7 +2,14 @@
 
 Requires GPU. Skips without CUDA. Models are loaded once per session
 via fixtures in conftest.py.
+
+Each test asserts both relative improvement (treatment > control) and
+absolute quality (treatment exceeds baseline floor). This prevents
+passing on improvements over a degraded baseline.
 """
+
+import json
+import os
 
 import pytest
 import torch
@@ -10,6 +17,23 @@ import torch
 pytestmark = [pytest.mark.medium, pytest.mark.gpu]
 
 SKIP_REASON = "Requires CUDA GPU"
+BASELINE_PATH = os.path.join(os.path.dirname(__file__), "quality_baseline.json")
+
+# Discount from baseline for floor assertions. Treatment must exceed
+# baseline_value - FLOOR_DISCOUNT to pass.
+FLOOR_DISCOUNT = 0.15
+
+
+def _baseline_floor(metric: str) -> float | None:
+    """Load baseline floor for a metric. Returns None if unavailable."""
+    if not os.path.exists(BASELINE_PATH):
+        return None
+    with open(BASELINE_PATH) as f:
+        data = json.load(f)
+    value = data.get("metrics", {}).get(metric)
+    if value is None or not isinstance(value, (int, float)):
+        return None
+    return value - FLOOR_DISCOUNT
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason=SKIP_REASON)
@@ -41,6 +65,8 @@ class TestCFGQuality:
             f"CFG=3.0 contrast ({contrast_cfg:.3f}) should exceed "
             f"CFG=1.0 contrast ({contrast_no_cfg:.3f})"
         )
+        # No baseline floor: single-word contrast is not comparable to
+        # composed-page contrast (baseline measures a 5-word composition)
 
     def test_cfg_produces_clean_background(
         self, unet, vae, tokenizer, style_features, uncond_context, device
@@ -59,6 +85,8 @@ class TestCFGQuality:
         assert cleanliness > 0.2, (
             f"Background cleanliness ({cleanliness:.3f}) too low for CFG=3.0"
         )
+        # No baseline floor: single-word cleanliness is not comparable to
+        # composed-page cleanliness (baseline measures a 5-word composition)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason=SKIP_REASON)
@@ -133,6 +161,13 @@ class TestHarmonizationEffectiveness:
             f"than raw ({score_before:.3f})"
         )
 
+        floor = _baseline_floor("stroke_weight_consistency")
+        if floor is not None:
+            assert score_after >= floor, (
+                f"Harmonized stroke consistency ({score_after:.3f}) "
+                f"below baseline floor ({floor:.3f})"
+            )
+
     def test_multi_word_height_ratio(
         self, unet, vae, tokenizer, style_features, uncond_context, device
     ):
@@ -157,3 +192,10 @@ class TestHarmonizationEffectiveness:
         assert height_score > 0.3, (
             f"Word height ratio ({height_score:.3f}) too inconsistent after harmonization"
         )
+
+        floor = _baseline_floor("word_height_ratio")
+        if floor is not None:
+            assert height_score >= floor, (
+                f"Harmonized height ratio ({height_score:.3f}) "
+                f"below baseline floor ({floor:.3f})"
+            )

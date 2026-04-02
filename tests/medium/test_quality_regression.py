@@ -5,12 +5,18 @@ Baselines are stored in tests/medium/quality_baseline.json. If the file does not
 exist, the test records new baselines and passes (first run bootstraps the file).
 Subsequent runs compare against recorded baselines.
 
+Baseline updates: use `pytest --update-baseline` to regenerate the baseline
+unconditionally. Auto-update only occurs when EVERY tracked metric is
+non-regressing (no single metric may degrade during auto-update).
+
 Requires GPU. Skips without CUDA.
 """
 
 import json
 import os
+from datetime import datetime, timezone
 
+import cv2
 import numpy as np
 import pytest
 import torch
@@ -19,6 +25,12 @@ pytestmark = [pytest.mark.medium, pytest.mark.gpu]
 
 SKIP_REASON = "Requires CUDA GPU"
 BASELINE_PATH = os.path.join(os.path.dirname(__file__), "quality_baseline.json")
+REFERENCE_IMAGE_PATH = os.path.join(os.path.dirname(__file__), "reference_output.png")
+LEDGER_PATH = os.path.join(os.path.dirname(__file__), "quality_ledger.jsonl")
+
+# SSIM threshold: identical seed/model should produce near-identical output.
+# Allow for minor floating-point variation across runs.
+SSIM_THRESHOLD = 0.80
 
 # Fixed test configuration
 SEED = 42
@@ -28,7 +40,6 @@ from reforge.config import PRESET_FAST
 NUM_STEPS = PRESET_FAST["steps"]
 GUIDANCE_SCALE = PRESET_FAST["guidance_scale"]
 
-# Metrics that must not regress (any drop below baseline fails the test)
 # Metrics where higher is better (regression = value drops)
 TRACKED_METRICS = [
     "overall",
@@ -37,6 +48,7 @@ TRACKED_METRICS = [
     "background_cleanliness",
     "stroke_weight_consistency",
     "word_height_ratio",
+    "composition_score",
 ]
 
 # Metrics where lower is better (regression = value increases)
@@ -81,7 +93,7 @@ def _generate_test_words(unet, vae, tokenizer, style_features, uncond_context, d
     scores = overall_quality_score(
         composed_arr, word_imgs=imgs, word_positions=positions,
     )
-    return scores
+    return scores, imgs, composed_arr
 
 
 def _load_baseline():
@@ -92,16 +104,19 @@ def _load_baseline():
         return json.load(f)
 
 
-def _save_baseline(scores):
+def _save_baseline(scores, reason="auto"):
     """Save current scores as the new baseline."""
     baseline = {
         "seed": SEED,
         "words": TEST_WORDS,
         "num_steps": NUM_STEPS,
         "guidance_scale": GUIDANCE_SCALE,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "update_reason": reason,
         "metrics": {
             k: round(v, 4) if isinstance(v, float) else v
             for k, v in scores.items()
+            if k not in ("gates_passed", "gate_details")
         },
     }
     with open(BASELINE_PATH, "w") as f:
@@ -109,21 +124,77 @@ def _save_baseline(scores):
     return baseline
 
 
+def _check_all_non_regressing(scores, baseline_metrics):
+    """Check that every tracked metric is non-regressing within tolerance.
+
+    Returns (all_ok, regressions_list, improvements_list).
+    """
+    regressions = []
+    improvements = []
+    stable = []
+
+    for metric in TRACKED_METRICS:
+        if metric not in scores or metric not in baseline_metrics:
+            continue
+        current = scores[metric]
+        recorded = baseline_metrics[metric]
+        if not isinstance(current, (int, float)) or not isinstance(recorded, (int, float)):
+            continue
+        delta = current - recorded
+        if delta < -REGRESSION_TOLERANCE:
+            regressions.append(
+                f"{metric}: {current:.4f} < baseline {recorded:.4f} (delta {delta:+.4f})"
+            )
+        elif delta > REGRESSION_TOLERANCE:
+            improvements.append(f"{metric}: {current:.4f} (was {recorded:.4f}, +{delta:.4f})")
+        else:
+            stable.append(metric)
+
+    for metric in TRACKED_METRICS_INVERTED:
+        if metric not in scores or metric not in baseline_metrics:
+            continue
+        current = scores[metric]
+        recorded = baseline_metrics[metric]
+        if not isinstance(current, (int, float)) or not isinstance(recorded, (int, float)):
+            continue
+        delta = current - recorded
+        if delta > REGRESSION_TOLERANCE:
+            regressions.append(
+                f"{metric}: {current:.4f} > baseline {recorded:.4f} (delta {delta:+.4f})"
+            )
+        elif delta < -REGRESSION_TOLERANCE:
+            improvements.append(f"{metric}: {current:.4f} (was {recorded:.4f}, {delta:+.4f})")
+        else:
+            stable.append(metric)
+
+    return len(regressions) == 0, regressions, improvements
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason=SKIP_REASON)
 class TestQualityRegression:
     def test_no_metric_regression(
-        self, unet, vae, tokenizer, style_features, uncond_context, device,
+        self, request, unet, vae, tokenizer, style_features, uncond_context, device,
     ):
         """Generate fixed words, compute metrics, compare against baseline."""
-        scores = _generate_test_words(
+        scores, imgs, composed = _generate_test_words(
             unet, vae, tokenizer, style_features, uncond_context, device,
         )
 
+        # Record to ledger
+        from reforge.evaluate.ledger import append_entry
+        append_entry(
+            LEDGER_PATH, scores,
+            config={"seed": SEED, "num_steps": NUM_STEPS, "guidance_scale": GUIDANCE_SCALE},
+            context="regression test",
+        )
+
+        force_update = request.config.getoption("--update-baseline", default=False)
+
         baseline = _load_baseline()
-        if baseline is None:
-            # First run: record baseline
-            saved = _save_baseline(scores)
-            print(f"Recorded initial baseline to {BASELINE_PATH}")
+        if baseline is None or force_update:
+            reason = "manual --update-baseline" if force_update else "initial bootstrap"
+            saved = _save_baseline(scores, reason=reason)
+            print(f"Recorded baseline to {BASELINE_PATH} ({reason})")
             for k in TRACKED_METRICS + TRACKED_METRICS_INVERTED:
                 if k in scores:
                     print(f"  {k}: {scores[k]:.4f}")
@@ -131,39 +202,74 @@ class TestQualityRegression:
 
         # Compare against baseline
         baseline_metrics = baseline["metrics"]
-        regressions = []
-        for metric in TRACKED_METRICS:
-            if metric not in scores or metric not in baseline_metrics:
-                continue
-            current = scores[metric]
-            recorded = baseline_metrics[metric]
-            if isinstance(current, (int, float)) and isinstance(recorded, (int, float)):
-                if current < recorded - REGRESSION_TOLERANCE:
-                    regressions.append(
-                        f"{metric}: {current:.4f} < baseline {recorded:.4f} "
-                        f"(delta {current - recorded:+.4f})"
-                    )
-        for metric in TRACKED_METRICS_INVERTED:
-            if metric not in scores or metric not in baseline_metrics:
-                continue
-            current = scores[metric]
-            recorded = baseline_metrics[metric]
-            if isinstance(current, (int, float)) and isinstance(recorded, (int, float)):
-                if current > recorded + REGRESSION_TOLERANCE:
-                    regressions.append(
-                        f"{metric}: {current:.4f} > baseline {recorded:.4f} "
-                        f"(delta {current - recorded:+.4f})"
-                    )
+        all_ok, regressions, improvements = _check_all_non_regressing(
+            scores, baseline_metrics,
+        )
 
-        if regressions:
-            # Update baseline if scores improved overall
-            if scores.get("overall", 0) > baseline_metrics.get("overall", 0):
-                _save_baseline(scores)
+        if not all_ok:
+            msg = "Quality regressions detected:\n" + "\n".join(
+                f"  - {r}" for r in regressions
+            )
+            if improvements:
+                msg += "\n\nMetrics that improved:\n" + "\n".join(
+                    f"  + {i}" for i in improvements
+                )
 
-            msg = "Quality regressions detected:\n" + "\n".join(f"  - {r}" for r in regressions)
+            # Cross-tier signal: compare against previous ledger entry
+            from reforge.evaluate.ledger import recent_runs
+            prev_runs = recent_runs(LEDGER_PATH, n=2)
+            if len(prev_runs) >= 2:
+                prev = prev_runs[-2]["scores"]
+                msg += "\n\nDelta from previous run:"
+                for m in TRACKED_METRICS + TRACKED_METRICS_INVERTED:
+                    cur_v = scores.get(m)
+                    prev_v = prev.get(m)
+                    if cur_v is not None and prev_v is not None:
+                        delta = cur_v - prev_v
+                        direction = "+" if delta >= 0 else ""
+                        status = "REGRESSED" if m in [r.split(":")[0] for r in regressions] else "ok"
+                        msg += f"\n  {m}: {cur_v:.4f} (was {prev_v:.4f}, {direction}{delta:.4f}) [{status}]"
+
             pytest.fail(msg)
 
-        # If overall improved, update baseline (ratchet upward)
-        if scores.get("overall", 0) > baseline_metrics.get("overall", 0) + REGRESSION_TOLERANCE:
-            _save_baseline(scores)
-            print(f"Baseline updated: overall {baseline_metrics['overall']:.4f} -> {scores['overall']:.4f}")
+        # Auto-update only when EVERY metric is non-regressing and at least
+        # one metric improved beyond tolerance
+        if improvements:
+            _save_baseline(scores, reason="auto: all metrics non-regressing")
+            print("Baseline updated (all metrics non-regressing):")
+            for i in improvements:
+                print(f"  + {i}")
+
+    def test_pixel_level_regression(
+        self, request, unet, vae, tokenizer, style_features, uncond_context, device,
+    ):
+        """Compare generated output against stored reference image using SSIM."""
+        from reforge.evaluate.reference import compute_ssim
+
+        force_update = request.config.getoption("--update-reference", default=False)
+
+        _, imgs, composed = _generate_test_words(
+            unet, vae, tokenizer, style_features, uncond_context, device,
+        )
+
+        if not os.path.exists(REFERENCE_IMAGE_PATH) or force_update:
+            reason = "manual --update-reference" if force_update else "initial bootstrap"
+            cv2.imwrite(REFERENCE_IMAGE_PATH, composed)
+            print(f"Saved reference image to {REFERENCE_IMAGE_PATH} ({reason})")
+            return
+
+        reference = cv2.imread(REFERENCE_IMAGE_PATH, cv2.IMREAD_GRAYSCALE)
+        if reference is None:
+            pytest.skip(f"Cannot read reference image: {REFERENCE_IMAGE_PATH}")
+
+        ssim = compute_ssim(composed, reference)
+        print(f"SSIM against reference: {ssim:.4f} (threshold: {SSIM_THRESHOLD})")
+
+        if ssim < SSIM_THRESHOLD:
+            # Save the failing output for debugging
+            fail_path = os.path.join(os.path.dirname(__file__), "failed_output.png")
+            cv2.imwrite(fail_path, composed)
+            pytest.fail(
+                f"Pixel-level regression: SSIM {ssim:.4f} < {SSIM_THRESHOLD}. "
+                f"Output saved to {fail_path} for comparison."
+            )

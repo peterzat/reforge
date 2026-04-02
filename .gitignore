@@ -7,4 +7,7 @@ __pycache__/
 .ruff_cache/
 experiments/output/
 tests/*/output/
+tests/medium/quality_ledger.jsonl
+tests/medium/failed_output.png
+tests/medium/diagnostic_results.json
 result.png
