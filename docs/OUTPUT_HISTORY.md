@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260402-053210
+
+![output](output-history/20260402-053210.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `c1fc6aa (uncommitted changes)` |
+| Commit message | Spec implementation: QA trust scoring, demo quality gate, experiment logging |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.891, composition_score=0.855, stroke_weight_consistency=0.906, word_height_ratio=1.000, ocr_accuracy=0.967, style_fidelity=0.386, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
 ## 20260402-040549
 
 ![output](output-history/20260402-040549.png)

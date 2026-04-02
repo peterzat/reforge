@@ -9,7 +9,9 @@ import numpy as np
 
 from reforge.config import (
     HEIGHT_OUTLIER_THRESHOLD,
+    HEIGHT_OUTLIER_THRESHOLD_PASS2,
     HEIGHT_UNDERSIZE_THRESHOLD,
+    HEIGHT_UNDERSIZE_THRESHOLD_PASS2,
     STROKE_WEIGHT_SHIFT_STRENGTH,
 )
 from reforge.quality.ink_metrics import compute_ink_height
@@ -21,6 +23,73 @@ def compute_ink_median(img: np.ndarray) -> float:
     if len(ink_pixels) == 0:
         return 128.0
     return float(np.median(ink_pixels))
+
+
+def compute_mean_stroke_width(img: np.ndarray) -> float:
+    """Compute mean stroke width via distance transform on ink mask (B1).
+
+    Returns the mean distance from ink pixels to the nearest background
+    pixel, which approximates half the stroke width. Multiply by 2 for
+    full stroke width.
+    """
+    ink_mask = (img < 180).astype(np.uint8)
+    if np.sum(ink_mask) < 10:
+        return 0.0
+    dist = cv2.distanceTransform(ink_mask, cv2.DIST_L2, 5)
+    ink_dists = dist[ink_mask > 0]
+    return float(np.mean(ink_dists)) * 2.0
+
+
+def harmonize_stroke_width(word_images: list[np.ndarray]) -> list[np.ndarray]:
+    """Normalize stroke widths across words using morphological operations (B2).
+
+    Only applies when stroke width variation is material (std > 15% of mean).
+    Uses single-pixel erosion/dilation to converge toward the median width.
+    """
+    if len(word_images) < 2:
+        return word_images
+
+    widths = [compute_mean_stroke_width(img) for img in word_images]
+    valid_widths = [w for w in widths if w > 0]
+    if len(valid_widths) < 2:
+        return word_images
+
+    mean_w = float(np.mean(valid_widths))
+    std_w = float(np.std(valid_widths))
+
+    # Only normalize if variation is material (B2 threshold)
+    if mean_w <= 0 or std_w / mean_w <= 0.15:
+        return word_images
+
+    median_w = float(np.median(valid_widths))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+
+    result = []
+    for img, w in zip(word_images, widths):
+        if w <= 0 or abs(w - median_w) < 0.3:
+            result.append(img)
+            continue
+
+        adjusted = img.copy()
+        if w > median_w * 1.15:
+            # Stroke too thick: erode ink (make background pixels eat into ink)
+            ink_mask = (adjusted < 180).astype(np.uint8) * 255
+            eroded = cv2.erode(ink_mask, kernel, iterations=1)
+            # Where ink was removed, set to white
+            removed = (ink_mask > 0) & (eroded == 0)
+            adjusted[removed] = 255
+        elif w < median_w * 0.85:
+            # Stroke too thin: dilate ink
+            ink_mask = (adjusted < 180).astype(np.uint8) * 255
+            dilated = cv2.dilate(ink_mask, kernel, iterations=1)
+            # Where ink was added, use the median ink brightness of this word
+            added = (dilated > 0) & (ink_mask == 0)
+            ink_brightness = compute_ink_median(img)
+            adjusted[added] = int(np.clip(ink_brightness, 0, 179))
+
+        result.append(adjusted)
+
+    return result
 
 
 def harmonize_stroke_weight(word_images: list[np.ndarray]) -> list[np.ndarray]:
@@ -87,13 +156,51 @@ def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
     return result
 
 
-def harmonize_words(word_images: list[np.ndarray]) -> list[np.ndarray]:
-    """Apply height harmonization first, then stroke weight.
+def harmonize_heights_pass2(word_images: list[np.ndarray]) -> list[np.ndarray]:
+    """Second-pass height harmonization with tighter thresholds (E2).
 
-    Height harmonization resizes images (via interpolation), which shifts
-    ink pixel values. Applying stroke weight harmonization last ensures
-    the final ink medians converge properly.
+    Applied after font normalization has already reduced variance. The
+    tighter thresholds (105%/93%) are safe here because scaling factors
+    are small. The A1 lesson (no tightening beyond 110%/88%) applies
+    to the first pass on raw DiffusionPen output, not to pre-normalized data.
+    """
+    if not word_images:
+        return word_images
+
+    heights = [compute_ink_height(img) for img in word_images]
+    median_h = float(np.median(heights))
+    upper = median_h * HEIGHT_OUTLIER_THRESHOLD_PASS2
+    lower = median_h * HEIGHT_UNDERSIZE_THRESHOLD_PASS2
+
+    result = []
+    for img, h in zip(word_images, heights):
+        if lower <= h <= upper:
+            result.append(img)
+            continue
+
+        if h > upper:
+            target = upper
+        else:
+            target = lower
+        scale = target / h
+        new_h = max(1, int(img.shape[0] * scale))
+        new_w = max(1, int(img.shape[1] * scale))
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+        scaled = cv2.resize(img, (new_w, new_h), interpolation=interp)
+        result.append(scaled)
+
+    return result
+
+
+def harmonize_words(word_images: list[np.ndarray]) -> list[np.ndarray]:
+    """Apply height harmonization (two passes), then stroke weight.
+
+    Pass 1: standard thresholds (110%/88%) on raw DiffusionPen output.
+    Pass 2: tighter thresholds (105%/93%) on already-normalized output (E2).
+    Stroke weight harmonization last to converge ink medians properly.
     """
     result = harmonize_heights(word_images)
+    result = harmonize_heights_pass2(result)
+    result = harmonize_stroke_width(result)  # B2: after height, before brightness
     result = harmonize_stroke_weight(result)
     return result

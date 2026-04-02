@@ -1,7 +1,10 @@
 """Word compositing onto canvas with upscaling and halo cleanup.
 
 Implements compositor ink-only compositing (Layer 4) and
-post-upscale halo cleanup (Layer 5).
+post-upscale halo cleanup (Layer 5). Uses a ruled-line model (F1)
+for vertical positioning: non-descending words align their ink
+bottom to the line's ruled baseline; descending words align their
+body bottom (above descender) to the ruled baseline.
 """
 
 import cv2
@@ -21,6 +24,28 @@ from reforge.compose.layout import (
     detect_baseline,
 )
 from reforge.model.generator import halo_cleanup
+
+# Descender detection threshold (F2): ink extending more than this
+# fraction of ink height below the baseline indicates a descender.
+DESCENDER_FRACTION = 0.15
+
+
+def _has_descender(img: np.ndarray, baseline: int) -> bool:
+    """Detect whether a word image has ink descending below the baseline (F2).
+
+    A word has a descender if ink extends more than DESCENDER_FRACTION of
+    total ink height below the detected baseline.
+    """
+    ink_rows = np.any(img < 180, axis=1)
+    if not np.any(ink_rows):
+        return False
+    first_ink = int(np.argmax(ink_rows))
+    last_ink = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
+    ink_height = last_ink - first_ink + 1
+    if ink_height < 3:
+        return False
+    below_baseline = last_ink - baseline
+    return below_baseline > ink_height * DESCENDER_FRACTION
 
 
 def compose_words(
@@ -70,15 +95,18 @@ def compose_words(
     if not positions:
         return Image.new("L", (page_width, 100), 255)
 
-    # Detect baselines for each word
+    # Detect baselines and descender status for each word (F1/F2)
     baselines = {}
+    descenders = {}
     for pos in positions:
         idx = pos["word_idx"]
         img = word_images[idx]
         if img is not None:
-            baselines[idx] = detect_baseline(img)
+            bl = detect_baseline(img)
+            baselines[idx] = bl
+            descenders[idx] = _has_descender(img, bl)
 
-    # Group positions by line and compute shared baseline per line
+    # Group positions by line
     lines = {}
     for pos in positions:
         line_num = pos["line"]
@@ -86,7 +114,10 @@ def compose_words(
             lines[line_num] = []
         lines[line_num].append(pos)
 
-    # For each line, shared baseline = max baseline offset
+    # Ruled-line model (F1): for each line, the ruled baseline is the
+    # position where non-descending words place their ink bottom, and
+    # descending words place their body bottom (baseline row).
+    # Compute ruled line = max baseline offset across the line.
     line_baselines = {}
     for line_num, line_positions in lines.items():
         max_baseline = 0
@@ -96,8 +127,9 @@ def compose_words(
                 max_baseline = max(max_baseline, baselines[idx])
         line_baselines[line_num] = max_baseline
 
-    # Compute canvas height
-    max_y = 0
+    # Pre-compute y-offsets using ruled-line model (F1) + micro-jitter (F3)
+    jitter_rng = np.random.RandomState(42)
+    y_offsets = {}
     for pos in positions:
         idx = pos["word_idx"]
         img = word_images[idx]
@@ -106,8 +138,18 @@ def compose_words(
         line_num = pos["line"]
         shared_bl = line_baselines[line_num]
         word_bl = baselines.get(idx, img.shape[0] - 1)
-        # y position adjusted for baseline alignment
-        y_adjusted = pos["y"] + (shared_bl - word_bl)
+        offset = shared_bl - word_bl
+        offset += int(jitter_rng.randint(-1, 2))  # F3: +/- 1px jitter
+        y_offsets[idx] = offset
+
+    # Compute canvas height
+    max_y = 0
+    for pos in positions:
+        idx = pos["word_idx"]
+        img = word_images[idx]
+        if img is None:
+            continue
+        y_adjusted = pos["y"] + y_offsets.get(idx, 0)
         bottom = y_adjusted + img.shape[0]
         max_y = max(max_y, bottom)
 
@@ -126,10 +168,7 @@ def compose_words(
         if img is None:
             continue
 
-        line_num = pos["line"]
-        shared_bl = line_baselines[line_num]
-        word_bl = baselines.get(idx, img.shape[0] - 1)
-        y_adjusted = pos["y"] + (shared_bl - word_bl) + margin_v
+        y_adjusted = pos["y"] + y_offsets.get(idx, 0) + margin_v
 
         # Record baseline-adjusted position
         adj = dict(pos)

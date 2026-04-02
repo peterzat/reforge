@@ -54,51 +54,55 @@ class TestComputeWordPositionsSingleLine:
         assert all(p["line"] == 0 for p in pos)
         # x positions increase
         assert pos[0]["x"] < pos[1]["x"] < pos[2]["x"]
-        # Spacing between words
-        expected_x1 = PAGE_MARGIN + PARAGRAPH_INDENT + 60 + WORD_SPACING
-        assert pos[1]["x"] == expected_x1
 
-    def test_word_spacing_correct(self):
+    def test_word_spacing_near_target(self):
+        """Word spacing should be close to WORD_SPACING (+/- D1 jitter of 4px)."""
         w = 80
         imgs = [_fake_word(w, 30) for _ in range(2)]
         words = ["aa", "bb"]
         pos = compute_word_positions(imgs, words)
         gap = pos[1]["x"] - (pos[0]["x"] + w)
-        assert gap == WORD_SPACING
+        assert abs(gap - WORD_SPACING) <= 4, f"gap {gap} too far from {WORD_SPACING}"
 
 
 @pytest.mark.quick
 class TestComputeWordPositionsLineWrap:
     def test_wraps_when_exceeding_page_width(self):
-        # First line usable = page - 2*margin - indent (paragraph start)
+        # First line usable = page - 2*margin - indent, with up to 8% ragged shortening
         first_line = DEFAULT_PAGE_WIDTH - 2 * PAGE_MARGIN - PARAGRAPH_INDENT
-        # Pick width so 2 words fit but 3 don't
-        w = (first_line - WORD_SPACING) // 2
+        # Pick width so 2 words barely exceed the ragged-shortened line
+        # Use 55% of first_line: 2 words + spacing > 92% of first_line
+        w = int(first_line * 0.55)
         imgs = [_fake_word(w, 30) for _ in range(3)]
         words = ["aaa", "bbb", "ccc"]
         pos = compute_word_positions(imgs, words)
         assert len(pos) == 3
         assert pos[0]["line"] == 0
-        assert pos[1]["line"] == 0
-        assert pos[2]["line"] == 1
+        # Third word must wrap (line too short for 3 words at 55%)
+        assert pos[2]["line"] >= 1
 
-    def test_wrapped_line_starts_at_margin(self):
-        first_line = DEFAULT_PAGE_WIDTH - 2 * PAGE_MARGIN - PARAGRAPH_INDENT
-        w = (first_line - WORD_SPACING) // 2
+    def test_wrapped_line_starts_near_margin(self):
+        # Wide words that force wrapping
+        w = int((DEFAULT_PAGE_WIDTH - 2 * PAGE_MARGIN) * 0.55)
         imgs = [_fake_word(w, 30) for _ in range(3)]
         words = ["aaa", "bbb", "ccc"]
         pos = compute_word_positions(imgs, words)
-        # Wrapped line starts at margin (no indent, since not paragraph start)
-        assert pos[2]["x"] == PAGE_MARGIN
+        wrapped = [p for p in pos if p["line"] >= 1]
+        assert len(wrapped) > 0
+        # Wrapped line starts near margin (+/- 2px D3 jitter)
+        assert abs(wrapped[0]["x"] - PAGE_MARGIN) <= 3
 
-    def test_y_advances_by_line_height_plus_spacing(self):
-        first_line = DEFAULT_PAGE_WIDTH - 2 * PAGE_MARGIN - PARAGRAPH_INDENT
-        w = (first_line - WORD_SPACING) // 2
+    def test_y_advances_on_wrap(self):
+        # Wide words that force wrapping
+        w = int((DEFAULT_PAGE_WIDTH - 2 * PAGE_MARGIN) * 0.55)
         h = 30
         imgs = [_fake_word(w, h) for _ in range(3)]
         words = ["aaa", "bbb", "ccc"]
         pos = compute_word_positions(imgs, words)
-        assert pos[2]["y"] == h + LINE_SPACING
+        wrapped = [p for p in pos if p["line"] >= 1]
+        assert len(wrapped) > 0
+        # Y should advance by approximately line height + spacing
+        assert wrapped[0]["y"] >= h + LINE_SPACING - 1
 
     def test_many_words_wrap_multiple_lines(self):
         # 100px words, ~7 per line on 800px page

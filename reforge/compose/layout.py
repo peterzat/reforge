@@ -149,18 +149,38 @@ def compute_word_positions(
     words: list,
     page_width: int = DEFAULT_PAGE_WIDTH,
     margin_h: int | None = None,
+    layout_seed: int = 137,
 ) -> list[dict]:
     """Compute positions for words on the page with line wrapping.
 
     None entries in word_images indicate paragraph breaks.
 
+    Natural layout variations (D1-D3, seeded for reproducibility):
+    - Per-word spacing jitter (+/- 4px)
+    - Per-line ragged right margin (0-8% shorter)
+    - Per-line starting x jitter (+/- 2px)
+
     Args:
         margin_h: Horizontal margin override. If None, uses PAGE_MARGIN.
+        layout_seed: Seed for deterministic layout variation.
 
     Returns list of dicts with keys: x, y, word_idx, line, is_paragraph_start.
     """
     margin = margin_h if margin_h is not None else PAGE_MARGIN
     usable_width = page_width - 2 * margin
+    rng = np.random.RandomState(layout_seed)
+
+    # D2: Pre-compute per-line ragged right margin shortening
+    # Estimate max lines needed (generous upper bound)
+    max_lines = max(10, len([i for i in word_images if i is not None]) // 2 + 5)
+    line_shorten = rng.uniform(0.0, 0.08, size=max_lines)  # 0-8% of usable width
+
+    # D3: Per-line starting x jitter (+/- 2px)
+    line_x_jitter = rng.randint(-2, 3, size=max_lines)  # -2 to +2
+
+    # D1: Per-word spacing jitter (+/- 4px)
+    word_count = len(word_images)
+    spacing_jitter = rng.randint(-4, 5, size=max(1, word_count))  # -4 to +4
 
     positions = []
     x = margin
@@ -168,33 +188,43 @@ def compute_word_positions(
     line = 0
     is_paragraph_start = True
     max_line_height = 0
+    word_on_line = 0
 
     for i, (img, word) in enumerate(zip(word_images, words)):
         if img is None:
             # Paragraph break sentinel
             if max_line_height > 0:
-                from reforge.config import PARAGRAPH_SPACING
                 y += max_line_height + PARAGRAPH_SPACING
             x = margin + PARAGRAPH_INDENT
             line += 1
             max_line_height = 0
             is_paragraph_start = True
+            word_on_line = 0
             continue
 
         h, w = img.shape[:2]
 
+        # D2: effective usable width for this line (ragged right)
+        line_idx = min(line, max_lines - 1)
+        effective_usable = usable_width * (1.0 - line_shorten[line_idx])
+
         # Check if word fits on current line
-        if x + w > margin + usable_width and x > margin + (PARAGRAPH_INDENT if is_paragraph_start else 0):
+        if x + w > margin + effective_usable and x > margin + (PARAGRAPH_INDENT if is_paragraph_start else 0):
             # Wrap to next line
-            from reforge.config import LINE_SPACING
             y += max_line_height + LINE_SPACING
             x = margin
             line += 1
             max_line_height = 0
             is_paragraph_start = False
+            word_on_line = 0
 
         if is_paragraph_start and x == margin:
             x = margin + PARAGRAPH_INDENT
+
+        # D3: apply line start jitter to first word on each line
+        line_idx = min(line, max_lines - 1)
+        if word_on_line == 0 and not is_paragraph_start:
+            x += line_x_jitter[line_idx]
 
         positions.append({
             "x": x,
@@ -207,7 +237,10 @@ def compute_word_positions(
         })
 
         max_line_height = max(max_line_height, h)
-        x += w + WORD_SPACING
+        # D1: per-word spacing variation
+        word_spacing = WORD_SPACING + spacing_jitter[min(i, word_count - 1)]
+        x += w + max(4, word_spacing)  # floor at 4px to avoid overlap
         is_paragraph_start = False
+        word_on_line += 1
 
     return positions

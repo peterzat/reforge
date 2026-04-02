@@ -54,8 +54,13 @@ LONG_WORD_AREA_TARGET = 550    # px^2 per char, for 4+ char words
 HEIGHT_OUTLIER_THRESHOLD = 1.10  # scale down if > 110% of median
 HEIGHT_UNDERSIZE_THRESHOLD = 0.88  # scale up if < 88% of median
 
+# Second-pass height harmonization (E2): applied after font normalization
+# where variance is already reduced, so tighter thresholds are safe.
+HEIGHT_OUTLIER_THRESHOLD_PASS2 = 1.05  # scale down if > 105% of median
+HEIGHT_UNDERSIZE_THRESHOLD_PASS2 = 0.93  # scale up if < 93% of median
+
 # Stroke weight harmonization
-STROKE_WEIGHT_SHIFT_STRENGTH = 0.85  # blend factor toward global median
+STROKE_WEIGHT_SHIFT_STRENGTH = 0.92  # blend factor toward global median (B3: increased from 0.85)
 
 # Gray-box defense thresholds
 BACKGROUND_PERCENTILE = 90

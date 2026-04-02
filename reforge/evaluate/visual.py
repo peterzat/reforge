@@ -262,6 +262,82 @@ def _xheight_ratio(img: np.ndarray) -> float:
     return above_baseline / ink_h
 
 
+def check_slant_consistency(word_imgs: list[np.ndarray]) -> float:
+    """Compute slant angle consistency across generated words (C4).
+
+    Score: max(0, 1 - std_slant / 15) where std_slant is the standard
+    deviation of per-word slant angles in degrees.
+
+    Returns score in [0, 1] where 1.0 means perfectly consistent slant.
+    """
+    if len(word_imgs) < 2:
+        return 1.0
+
+    angles = []
+    for img in word_imgs:
+        angle = _estimate_slant_angle(img)
+        angles.append(angle)
+
+    std_slant = float(np.std(angles))
+    return max(0.0, 1.0 - std_slant / 15.0)
+
+
+def check_layout_regularity(word_positions: list[dict]) -> float:
+    """Measure how grid-like the layout is (D4).
+
+    Lower regularity = more natural. Penalizes perfectly uniform layouts.
+    Measures:
+    (a) std of right-edge x-positions across non-final lines (higher = more ragged)
+    (b) std of word spacings (higher = more natural variation)
+
+    Returns score in [0, 1] where 1.0 means natural-looking (non-grid) layout.
+    """
+    if not word_positions or len(word_positions) < 3:
+        return 0.5
+
+    # Group by line
+    lines = {}
+    for p in word_positions:
+        line = p.get("line", 0)
+        if line not in lines:
+            lines[line] = []
+        lines[line].append(p)
+
+    # (a) Right-edge variation across non-final lines
+    sorted_line_nums = sorted(lines.keys())
+    right_edges = []
+    for ln in sorted_line_nums:
+        if ln == sorted_line_nums[-1]:
+            continue  # skip last line
+        line_pos = lines[ln]
+        max_right = max(p["x"] + p.get("width", 0) for p in line_pos)
+        right_edges.append(max_right)
+
+    if len(right_edges) >= 2:
+        right_std = float(np.std(right_edges))
+        # 0 std = perfectly columnar (bad), > 20px std = nicely ragged (good)
+        ragged_score = min(1.0, right_std / 20.0)
+    else:
+        ragged_score = 0.5
+
+    # (b) Word spacing variation
+    spacings = []
+    for ln, line_pos in lines.items():
+        sorted_by_x = sorted(line_pos, key=lambda p: p["x"])
+        for j in range(1, len(sorted_by_x)):
+            gap = sorted_by_x[j]["x"] - (sorted_by_x[j - 1]["x"] + sorted_by_x[j - 1].get("width", 0))
+            spacings.append(gap)
+
+    if len(spacings) >= 3:
+        spacing_std = float(np.std(spacings))
+        # 0 std = perfectly uniform (bad), > 5px std = natural (good)
+        spacing_score = min(1.0, spacing_std / 5.0)
+    else:
+        spacing_score = 0.5
+
+    return float(np.mean([ragged_score, spacing_score]))
+
+
 def compute_style_similarity(
     generated_img: np.ndarray,
     style_reference_imgs: list[np.ndarray],
@@ -472,6 +548,7 @@ def overall_quality_score(
         scores["stroke_weight_consistency"] = check_stroke_weight_consistency(word_imgs)
         scores["word_height_ratio"] = check_word_height_ratio(word_imgs)
         scores["height_outlier_ratio"] = compute_height_outlier_ratio(word_imgs)
+        scores["slant_consistency"] = check_slant_consistency(word_imgs)  # C4: observation-only
 
     if word_imgs is not None and style_reference_imgs is not None:
         similarities = [
@@ -483,6 +560,7 @@ def overall_quality_score(
     if word_positions is not None:
         scores["baseline_alignment"] = check_baseline_alignment(img, word_positions)
         scores["composition_score"] = check_composition_score(img, word_positions)
+        scores["layout_regularity"] = check_layout_regularity(word_positions)  # D4: observation-only
 
     # OCR accuracy: dominant factor when available
     if word_imgs is not None and words is not None:

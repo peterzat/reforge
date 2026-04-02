@@ -68,11 +68,22 @@ TRACKED_METRICS_INVERTED = [
 REGRESSION_TOLERANCE = 0.05
 
 
+_cached_result = None
+
+
 def _generate_test_words(
     unet, vae, tokenizer, style_features, uncond_context, device,
     style_word_images=None,
 ):
-    """Generate test words with fixed seed for reproducibility."""
+    """Generate test words with fixed seed for reproducibility.
+
+    Results are cached at module level so both regression tests share
+    the same GPU generation (A1: ~7s saved per session).
+    """
+    global _cached_result
+    if _cached_result is not None:
+        return _cached_result
+
     from reforge.evaluate.visual import overall_quality_score
     from reforge.model.generator import generate_word
     from reforge.quality.font_scale import normalize_font_size
@@ -105,7 +116,8 @@ def _generate_test_words(
         composed_arr, word_imgs=imgs, word_positions=positions,
         words=TEST_WORDS, style_reference_imgs=style_word_images,
     )
-    return scores, imgs, composed_arr
+    _cached_result = (scores, imgs, composed_arr)
+    return _cached_result
 
 
 def _load_baseline():
