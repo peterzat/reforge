@@ -34,15 +34,17 @@ if [ -n "$LATEST_ARCHIVE" ]; then
 import numpy as np
 from PIL import Image
 
-new = np.array(Image.open('$SOURCE').convert('L'), dtype=np.float32)
-old = np.array(Image.open('$LATEST_ARCHIVE').convert('L'), dtype=np.float32)
+new = Image.open('$SOURCE').convert('L')
+old = Image.open('$LATEST_ARCHIVE').convert('L')
 
-# Different dimensions means different image
-if new.shape != old.shape:
-    print('no')
-else:
-    mad = np.mean(np.abs(new - old))
-    print('yes' if mad < 1.0 else 'no')
+# Resize both to a common size for comparison (handles different dimensions
+# from threshold tuning iterations that produce near-identical output)
+common_size = (400, 400)
+new_arr = np.array(new.resize(common_size), dtype=np.float32)
+old_arr = np.array(old.resize(common_size), dtype=np.float32)
+
+mad = np.mean(np.abs(new_arr - old_arr))
+print('yes' if mad < 3.0 else 'no')
 " 2>/dev/null || echo 'no')"
 
     if [ "$IS_DUPLICATE" = "yes" ]; then
