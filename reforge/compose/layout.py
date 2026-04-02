@@ -4,6 +4,8 @@ Baseline detection accounts for thin and looped descenders using
 top-down scanning from midpoint.
 """
 
+import math
+
 import numpy as np
 
 from reforge.config import (
@@ -50,7 +52,6 @@ def compute_page_width(
     margin_h = int(pw * MARGIN_H_RATIO)
     usable = pw - 2 * margin_h
     if usable > 0:
-        import math
         n_lines = max(1, math.ceil(total_text_w / usable))
         if n_lines < 3:
             # Not enough text for a full page. Narrow to fit the content

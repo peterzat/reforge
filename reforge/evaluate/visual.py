@@ -384,7 +384,7 @@ def check_composition_score(
     """Measure composition quality: aspect ratio, margins, line fill consistency.
 
     Sub-scores:
-    - Aspect ratio proximity to 1.0 (0.7-1.3 range is ideal)
+    - Aspect ratio proximity to 0.75 (3:4 portrait, 0.55-0.95 range is ideal)
     - Margin proportion check
     - Line fill consistency (non-final lines should have similar fill)
 
