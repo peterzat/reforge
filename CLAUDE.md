@@ -60,6 +60,10 @@ python experiments/ab_harness.py --style styles/hw-sample.png --experiment cfg
 python experiments/ab_harness.py --style styles/hw-sample.png --experiment scheduler
 python experiments/ab_harness.py --style styles/hw-sample.png --experiment postprocess
 python experiments/ab_harness.py --style styles/hw-sample.png --experiment combined
+
+# Quick visual inspection (opens in browser from headless box)
+./qpeek.sh result.png
+./qpeek.sh result.png --ask "How does it look?" --choices "good,bad,meh"
 ```
 
 ### Development loop cadence
@@ -97,6 +101,14 @@ After `make test-full` or when evaluating output quality:
 4. Findings become items for the next spec
 
 The review identifies issues that CV metrics miss: letter formation quality, natural spacing feel, overall "handwritten note" impression. This is a development workflow, not a runtime gate.
+
+### qpeek (visual inspection tool)
+
+[qpeek](https://github.com/peterzat/qpeek) is installed in the venv for quick visual inspection of output on this headless box. It starts a transient web server, serves the file, and exits when the browser tab closes. Zero dependencies (stdlib only). Wrapper script: `./qpeek.sh <file>`.
+
+Modes: view-only (default), survey with freeform text (`--ask "question"`), survey with button choices (`--ask "question" --choices "a,b,c"`), batch rating (`--batch`). Survey modes print structured JSON to stdout. Binds to `0.0.0.0:2020` by default.
+
+Future use: human-in-the-loop quality review. When a spec adds human review to the quality loop, qpeek's survey mode can collect structured feedback on generated output (e.g., rate overall quality, flag specific artifacts) and feed it back as JSON for automated processing.
 
 ## Architecture
 
