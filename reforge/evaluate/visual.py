@@ -128,10 +128,7 @@ def check_stroke_weight_consistency(word_imgs: list[np.ndarray]) -> float:
 
 
 def check_word_height_ratio(word_imgs: list[np.ndarray]) -> float:
-    """Compute word height consistency using 90th/10th percentile ink heights.
-
-    Uses percentile-based range instead of absolute max/min to reduce
-    sensitivity to individual words with descenders or ascenders.
+    """Compute max/min ink height ratio.
 
     Returns score in [0, 1] where 1.0 means perfectly consistent heights.
     Lower scores indicate more variation.
@@ -150,15 +147,7 @@ def check_word_height_ratio(word_imgs: list[np.ndarray]) -> float:
     if len(heights) < 2:
         return 1.0
 
-    # Use percentile range for robustness with many words
-    if len(heights) >= 10:
-        h_high = float(np.percentile(heights, 90))
-        h_low = float(np.percentile(heights, 10))
-    else:
-        h_high = float(max(heights))
-        h_low = float(min(heights))
-
-    ratio = h_high / max(1, h_low)
+    ratio = max(heights) / max(1, min(heights))
     # Ratio of 1.0 = perfect, > 2.0 = poor
     return max(0.0, 1.0 - (ratio - 1.0) / 1.0)
 

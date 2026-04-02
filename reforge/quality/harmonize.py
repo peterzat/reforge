@@ -82,8 +82,10 @@ def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
             result.append(img)
             continue
 
-        # Scale toward median (not just to the threshold boundary)
-        target = median_h
+        if h > upper:
+            target = upper
+        else:
+            target = lower
         scale = target / h
         new_h = max(1, int(img.shape[0] * scale))
         new_w = max(1, int(img.shape[1] * scale))
