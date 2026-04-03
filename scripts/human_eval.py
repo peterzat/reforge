@@ -1,6 +1,6 @@
 """Human evaluation system for reforge quality assessment.
 
-Generates test images for 7 evaluation types, presents them via qpeek's
+Generates test images for 8 evaluation types, presents them via qpeek's
 --html mode as a single-page wizard, captures structured JSON responses,
 and persists review data.
 
