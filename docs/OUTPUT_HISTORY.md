@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260403-231951
+
+![output](output-history/20260403-231951.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `3c2e054 (uncommitted changes)` |
+| Commit message | Finding-driven quality iteration loop (14/14) |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.828, composition_score=0.570, stroke_weight_consistency=0.916, word_height_ratio=1.000, ocr_accuracy=0.900, style_fidelity=0.358, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
 ## 20260402-210446
 
 ![output](output-history/20260402-210446.png)

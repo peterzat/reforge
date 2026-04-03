@@ -38,6 +38,9 @@ make test                  # alias for test-medium
 make test-full             # e2e tests + demo.sh (GPU + model weights, ~4.5min)
 make review                # run demo + print metrics for visual review
 
+# "Run all tests" means make test-full. This includes demo.sh and output archival.
+# Do not substitute make test or make test-medium when asked to "run all tests".
+
 # Run quick tests (mocked, <10s, no GPU)
 python -m pytest tests/quick/ -x -q
 
@@ -107,11 +110,11 @@ The review identifies issues that CV metrics miss: letter formation quality, nat
 ### Human review workflow
 
 Human evaluation captures quality dimensions that CV metrics and multimodal AI miss:
-naturalness, spacing feel, overall "handwritten note" impression. Seven structured
+naturalness, spacing feel, overall "handwritten note" impression. Eight structured
 evaluation types isolate specific quality dimensions.
 
 ```bash
-make test-human                          # all 7 eval types (~2 min generation + review time)
+make test-human                          # all 8 eval types (~2 min generation + review time)
 make test-human EVAL=candidate,stitch    # run only specific types
 ```
 
@@ -123,6 +126,7 @@ make test-human EVAL=candidate,stitch    # run only specific types
 - **spacing** -- word spacing and jitter comparison
 - **ink_weight** -- stroke weight consistency comparison
 - **composition** -- full two-paragraph composition rating with defect flags
+- **hard_words** -- curated hard words readability check
 
 Reviews are saved to `reviews/human/<timestamp>.json`. The `make test-full` target
 prints a staleness notice when pipeline files have changed since the last review.
@@ -233,7 +237,7 @@ docs/
   output-history/        Archived output PNGs (one per make test-full run)
 scripts/
   archive-output.sh      Captures output + git state + metrics into history
-  human_eval.py          Human evaluation: 7 eval types, qpeek orchestration, staleness check
+  human_eval.py          Human evaluation: 8 eval types, qpeek orchestration, staleness check
   human_eval_page.html   Custom HTML wizard template for qpeek --html
   prune_reviews.py       Prune stale review JSON files (dry-run/--apply)
 reviews/
