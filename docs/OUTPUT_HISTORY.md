@@ -46,32 +46,6 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
-## 20260402-040549
-
-![output](output-history/20260402-040549.png)
-
-| Field | Value |
-|-------|-------|
-| Git state | `99cbfce (uncommitted changes)` |
-| Commit message | Codereview fix: handle missing continuous metrics in overall_quality_score |
-| Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.891, composition_score=0.855, stroke_weight_consistency=0.906, word_height_ratio=1.000, ocr_accuracy=0.967, style_fidelity=0.386, ink_contrast=1.000, background_cleanliness=1.000 |
-
----
-
-## 20260402-012542
-
-![output](output-history/20260402-012542.png)
-
-| Field | Value |
-|-------|-------|
-| Git state | `2ef52b1 (uncommitted changes)` |
-| Commit message | Review fixes: update stale docstrings, remove unused imports |
-| Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.999, ink_contrast=1.000, background_cleanliness=0.997 |
-
----
-
 ## 20260401-220816
 
 ![output](output-history/20260401-220816.png)
