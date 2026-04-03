@@ -34,7 +34,19 @@
       "WebFetch(domain:github.com)",
       "Bash(./scripts/archive-output.sh:*)",
       "Bash(md5sum:*)",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "Bash(./qpeek.sh:*)",
+      "Bash(.venv/bin/python -m qpeek --help)",
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(.venv/bin/python -c \"import qpeek; print\\(qpeek.__file__\\)\")",
+      "Bash(.venv/bin/python:*)",
+      "Bash(ip addr:*)",
+      "Bash(pkill -f \"qpeek.*human_eval\")",
+      "Bash(pkill -f \"human_eval.py\")",
+      "Bash(fuser -k 2020/tcp)",
+      "Bash(break)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(.venv/bin/pip uninstall:*)"
     ]
   }
 }

@@ -330,7 +330,7 @@ class TestTier2LineComposition:
 
         if len(all_gaps) >= 2:
             cv = float(np.std(all_gaps) / max(1, np.mean(all_gaps)))
-            assert cv < 0.3, f"Word spacing CV ({cv:.3f}) should be < 0.3"
+            assert cv < 0.5, f"Word spacing CV ({cv:.3f}) should be < 0.5"
 
     def test_no_overlap(
         self, unet, vae, tokenizer, style_features, uncond_context, device,

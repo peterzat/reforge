@@ -8,6 +8,10 @@ __pycache__/
 experiments/output/
 tests/*/output/
 tests/medium/quality_ledger.jsonl
+tests/medium/hard_words_ledger.jsonl
 tests/medium/failed_output.png
 tests/medium/diagnostic_results.json
 result.png
+reviews/human/*
+!reviews/human/.gitkeep
+!reviews/human/FINDINGS.md

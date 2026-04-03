@@ -73,6 +73,25 @@ def compose_words(
         PIL Image in mode "L" (grayscale), or tuple of (Image, positions)
         if return_positions is True. Positions reflect baseline-adjusted y values.
     """
+    # Tight-crop word images horizontally to ink bounds.
+    # Generated images have large white padding (e.g. 30px each side for short
+    # words) that makes WORD_SPACING ineffective. Horizontal cropping ensures
+    # the layout engine controls the actual visual gap between words.
+    # Vertical dimensions are preserved for baseline alignment.
+    word_images = list(word_images)  # avoid mutating caller's list
+    for i, img in enumerate(word_images):
+        if img is None:
+            continue
+        ink_cols = np.any(img < COMPOSITOR_INK_THRESHOLD, axis=0)
+        if not np.any(ink_cols):
+            continue
+        left = int(np.argmax(ink_cols))
+        right = len(ink_cols) - 1 - int(np.argmax(ink_cols[::-1]))
+        pad = 2  # minimal margin to avoid clipping antialiased edges
+        left = max(0, left - pad)
+        right = min(img.shape[1] - 1, right + pad)
+        word_images[i] = img[:, left:right + 1]
+
     # Compute dynamic page width if not explicitly set
     if page_width is None:
         if page_ratio == "auto":

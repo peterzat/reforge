@@ -75,6 +75,8 @@ python experiments/ab_harness.py --style styles/hw-sample.png --experiment combi
 | OCR check | `make test-ocr` | ~14s | After changes to generation or postprocessing |
 | Full validation | `make test` | ~2 min | After completing a fix or feature |
 | Pre-commit gate | `make test-full` | ~4.5 min | Before committing (includes demo.sh visual output) |
+| Hard words | `make test-hard` | ~30s | After generation or postprocessing changes |
+| Human review | `make test-human` | ~3 min | After quality-affecting changes (advisory, not gating) |
 
 ### Git hook gating strategy
 
@@ -102,13 +104,88 @@ After `make test-full` or when evaluating output quality:
 
 The review identifies issues that CV metrics miss: letter formation quality, natural spacing feel, overall "handwritten note" impression. This is a development workflow, not a runtime gate.
 
+### Human review workflow
+
+Human evaluation captures quality dimensions that CV metrics and multimodal AI miss:
+naturalness, spacing feel, overall "handwritten note" impression. Seven structured
+evaluation types isolate specific quality dimensions.
+
+```bash
+make test-human                          # all 7 eval types (~2 min generation + review time)
+make test-human EVAL=candidate,stitch    # run only specific types
+```
+
+**Evaluation types:**
+- **candidate** -- best-of-N candidate selection calibration
+- **stitch** -- chunk stitching overlap comparison
+- **sizing** -- short vs long word size consistency
+- **baseline** -- baseline alignment with descenders
+- **spacing** -- word spacing and jitter comparison
+- **ink_weight** -- stroke weight consistency comparison
+- **composition** -- full two-paragraph composition rating with defect flags
+
+Reviews are saved to `reviews/human/<timestamp>.json`. The `make test-full` target
+prints a staleness notice when pipeline files have changed since the last review.
+
+**When changing generation, composition, or quality code, read `reviews/human/FINDINGS.md`
+for human-observed quality patterns.**
+
+**Findings workflow:** After a review, the agent detects unprocessed review JSON files
+(review timestamp newer than FINDINGS.md modification time), drafts updated findings,
+and presents the draft via qpeek for human approval. Findings that persist across 3+
+reviews and 2+ code changes are candidates for graduation to CLAUDE.md.
+
+**Finding-driven iteration pattern:**
+1. Read `reviews/human/FINDINGS.md` and pick the most actionable Active finding.
+2. Implement a fix (smallest change that addresses the root cause).
+3. Run targeted eval: `make test-human EVAL=<affected types>` (see mapping below).
+4. Update the finding's status based on human feedback (Resolved, Acceptable, or
+   remains In Progress for another iteration).
+5. Repeat with the next finding, or run a full eval every 3 spec iterations as a
+   health check.
+
+**Eval type to code area mapping** (for targeted runs after code changes):
+
+| Eval type | Code areas | When to run |
+|-----------|-----------|-------------|
+| candidate | quality/score.py, config.py (QUALITY_WEIGHTS) | After scoring weight changes |
+| stitch | model/generator.py (stitch_chunks, split_word) | After chunking or stitching changes |
+| sizing | quality/font_scale.py, config.py (HEIGHT_*) | After font normalization changes |
+| baseline | compose/layout.py, compose/render.py | After baseline detection or descender changes |
+| spacing | config.py (WORD_SPACING), compose/render.py | After spacing or layout changes |
+| ink_weight | quality/harmonize.py, config.py (STROKE_WEIGHT_*) | After harmonization changes |
+| composition | full pipeline (end-to-end) | After any quality-affecting change; uses quality preset |
+| hard_words | model/generator.py (generate_word, postprocess) | After generation or gray-box defense changes |
+
+Human review is advisory only. It is not a commit gate and does not modify git hooks.
+
+### Hard words watchlist
+
+`reforge/data/hard_words.json` tracks words that are difficult for the generation
+pipeline. Two tiers: **curated** (verified hard words, the regression baseline) and
+**candidates** (automatically collected, awaiting triage).
+
+**How candidates are added:**
+- Automatically: when the OCR rejection loop in `generate_word()` exhausts retries
+  without reaching 0.3 accuracy, the word is appended to candidates
+- Human eval: the `hard_words` evaluation type in `make test-human` lets humans flag
+  unreadable words; the agent extracts nominations from review notes
+- Manually: add entries to the JSON file directly
+
+**Triage workflow:** Run `python -m reforge.data.words triage` to review candidates,
+promote them to curated, or dismiss them. This is a manual step.
+
+**Regression test:** `make test-hard` generates every curated word, runs OCR, and
+asserts average accuracy > 0.5. Results are recorded to a JSONL ledger at
+`tests/medium/hard_words_ledger.jsonl` for tracking improvement over time.
+
 ### qpeek (visual inspection tool)
 
 [qpeek](https://github.com/peterzat/qpeek) is installed in the venv for quick visual inspection of output on this headless box. It starts a transient web server, serves the file, and exits when the browser tab closes. Zero dependencies (stdlib only). Wrapper script: `./qpeek.sh <file>`.
 
 Modes: view-only (default), survey with freeform text (`--ask "question"`), survey with button choices (`--ask "question" --choices "a,b,c"`), batch rating (`--batch`). Survey modes print structured JSON to stdout. Binds to `0.0.0.0:2020` by default.
 
-Future use: human-in-the-loop quality review. When a spec adds human review to the quality loop, qpeek's survey mode can collect structured feedback on generated output (e.g., rate overall quality, flag specific artifacts) and feed it back as JSON for automated processing.
+Used by `make test-human` for structured human evaluation via custom HTML mode (`--html`). The human review system serves a multi-step wizard page that collects ratings, A/B picks, and defect flags across 7 evaluation types in a single session.
 
 ## Architecture
 
@@ -135,6 +212,9 @@ reforge/
     compare.py           A/B comparison image generation with labels
   config.py              All constants (charset, DDIM params, paths, presets)
   validation.py          Charset checking + split_paragraphs() / split_words()
+  data/
+    hard_words.json      Hard words watchlist (curated + candidates)
+    words.py             Load/query/triage hard words
   diffusionpen/
     unet.py              UNetModel -- verbatim from DiffusionPen repo (MIT)
     feature_extractor.py ImageEncoder (timm MobileNetV2) -- verbatim from DiffusionPen repo
@@ -153,6 +233,14 @@ docs/
   output-history/        Archived output PNGs (one per make test-full run)
 scripts/
   archive-output.sh      Captures output + git state + metrics into history
+  human_eval.py          Human evaluation: 7 eval types, qpeek orchestration, staleness check
+  human_eval_page.html   Custom HTML wizard template for qpeek --html
+  prune_reviews.py       Prune stale review JSON files (dry-run/--apply)
+reviews/
+  human/                 Human review data
+    FINDINGS.md          Durable principles extracted from reviews (committed)
+    *.json               Per-session review data (gitignored)
+    images/              Generated evaluation images (gitignored)
 ```
 
 ### Data flow

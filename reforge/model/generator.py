@@ -507,18 +507,24 @@ def generate_word(
         # OCR-based rejection: retry if accuracy is too low
         ocr_fn = _get_ocr_fn()
         if ocr_fn is not None:
+            best_acc = 0.0
             max_retries = 2
             for _ in range(max_retries):
                 acc = ocr_fn(best, word)
+                best_acc = max(best_acc, acc)
                 if acc >= 0.3:
                     break
                 # Retry with fresh generation
                 retry = _generate_chunk(word)
                 retry_acc = ocr_fn(retry, word)
+                best_acc = max(best_acc, retry_acc)
                 if retry_acc > acc:
                     best = retry
                     if retry_acc >= 0.3:
                         break
+            else:
+                # Exhausted retries without reaching 0.3 -- nominate as hard word
+                _record_hard_word_candidate(word, best_acc)
 
         return best
 
@@ -536,37 +542,101 @@ def _get_ocr_fn():
         return None
 
 
-def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
-    """Stitch word chunks with baseline alignment and overlap blending.
+def _record_hard_word_candidate(word: str, best_acc: float) -> None:
+    """Record a word that exhausted OCR retries as a hard word candidate."""
+    try:
+        from reforge.data.words import add_candidate
+        add_candidate(word, source="ocr_rejection", ocr_accuracy=best_acc)
+    except Exception:
+        pass  # Non-critical; do not interrupt generation
 
-    - Normalize chunk heights to median
-    - Align at bottom (baseline)
+
+def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
+    """Stitch word chunks with ink-height alignment and overlap blending.
+
+    - Measure each chunk's ink region (top/bottom ink rows)
+    - Scale chunks so ink heights match (median ink height)
+    - Align by ink bottom (baseline), not image bottom
     - Overlap blending at stitch boundaries
     """
     import cv2
 
+    from reforge.quality.ink_metrics import compute_ink_height
+
     if len(chunks) == 1:
         return chunks[0]
 
-    # Normalize heights to median
-    heights = [c.shape[0] for c in chunks]
-    median_h = int(np.median(heights))
+    # Horizontal tight-crop: strip leading/trailing whitespace columns
+    # from each chunk to eliminate the gap between stitched pieces
+    INK_THRESH = 180
+    cropped = []
+    for chunk in chunks:
+        col_has_ink = np.any(chunk < INK_THRESH, axis=0)
+        if np.any(col_has_ink):
+            first_col = np.argmax(col_has_ink)
+            last_col = len(col_has_ink) - 1 - np.argmax(col_has_ink[::-1])
+            # Keep 2px margin on each side for overlap blending
+            first_col = max(0, first_col - 2)
+            last_col = min(chunk.shape[1] - 1, last_col + 2)
+            chunk = chunk[:, first_col:last_col + 1]
+        cropped.append(chunk)
+    chunks = cropped
+
+    # Measure ink bounds for each chunk
+    ink_heights = []
+    ink_bottoms = []  # distance from image bottom to last ink row
+    for chunk in chunks:
+        ink_h = compute_ink_height(chunk)
+        ink_heights.append(ink_h)
+        # Find last ink row (baseline position)
+        ink_rows = np.any(chunk < INK_THRESH, axis=1)
+        if np.any(ink_rows):
+            last_ink = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
+            ink_bottoms.append(chunk.shape[0] - 1 - last_ink)
+        else:
+            ink_bottoms.append(0)
+
+    # Scale each chunk so ink height matches the median ink height
+    median_ink_h = int(np.median(ink_heights))
+    if median_ink_h < 4:
+        median_ink_h = max(ink_heights)  # fallback for very small ink
 
     normalized = []
-    for chunk in chunks:
-        if chunk.shape[0] != median_h:
-            scale = median_h / chunk.shape[0]
+    for i, chunk in enumerate(chunks):
+        if ink_heights[i] > 0 and ink_heights[i] != median_ink_h:
+            scale = median_ink_h / ink_heights[i]
+            new_h = max(1, int(chunk.shape[0] * scale))
             new_w = max(1, int(chunk.shape[1] * scale))
-            chunk = cv2.resize(chunk, (new_w, median_h), interpolation=cv2.INTER_AREA)
+            chunk = cv2.resize(chunk, (new_w, new_h), interpolation=cv2.INTER_AREA)
         normalized.append(chunk)
 
-    # Baseline-aligned stitching (align at bottom, pad at top)
-    max_h = max(c.shape[0] for c in normalized)
-    padded = []
+    # Re-measure ink bottoms after scaling (scaling shifts pixel positions)
+    scaled_ink_bottoms = []
     for chunk in normalized:
+        ink_rows = np.any(chunk < INK_THRESH, axis=1)
+        if np.any(ink_rows):
+            last_ink = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
+            scaled_ink_bottoms.append(chunk.shape[0] - 1 - last_ink)
+        else:
+            scaled_ink_bottoms.append(0)
+
+    # Align by ink bottom (baseline): pad so all chunks have the same
+    # distance from their last ink row to the image bottom
+    max_ink_bottom = max(scaled_ink_bottoms)
+    max_h = max(c.shape[0] + (max_ink_bottom - scaled_ink_bottoms[i])
+                for i, c in enumerate(normalized))
+
+    padded = []
+    for i, chunk in enumerate(normalized):
+        # Pad at bottom to align baselines
+        bottom_pad = max_ink_bottom - scaled_ink_bottoms[i]
+        if bottom_pad > 0:
+            pad_bottom = np.full((bottom_pad, chunk.shape[1]), 255, dtype=np.uint8)
+            chunk = np.vstack([chunk, pad_bottom])
+        # Pad at top to equalize total height
         if chunk.shape[0] < max_h:
-            pad = np.full((max_h - chunk.shape[0], chunk.shape[1]), 255, dtype=np.uint8)
-            chunk = np.vstack([pad, chunk])  # pad at top, align bottom
+            pad_top = np.full((max_h - chunk.shape[0], chunk.shape[1]), 255, dtype=np.uint8)
+            chunk = np.vstack([pad_top, chunk])
         padded.append(chunk)
 
     # Stitch with overlap blending

@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "curated": [
+    {
+      "word": "noon",
+      "category": "confusable_substring",
+      "reason": "TrOCR reads as 'no' (repeated-o truncation)",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "no",
+      "category": "short_word",
+      "reason": "Confusable pair with noon; single syllable",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "then",
+      "category": "confusable_substring",
+      "reason": "e/a confusion in cursive with 'than'",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "than",
+      "category": "confusable_substring",
+      "reason": "e/a confusion in cursive with 'then'",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "book",
+      "category": "confusable_substring",
+      "reason": "k/t confusion with 'boot'; repeated-o",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "boot",
+      "category": "confusable_substring",
+      "reason": "k/t confusion with 'book'; repeated-o",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "I",
+      "category": "short_word",
+      "reason": "Single character; fills 64x256 canvas",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "a",
+      "category": "short_word",
+      "reason": "Single character; minimal ink",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "an",
+      "category": "short_word",
+      "reason": "Two characters; very short",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "or",
+      "category": "short_word",
+      "reason": "Two characters; round letters only",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "look",
+      "category": "repeated_chars",
+      "reason": "Double-o; confusable with 'lock'",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "still",
+      "category": "repeated_chars",
+      "reason": "Double-l; tall letters cluster",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "all",
+      "category": "repeated_chars",
+      "reason": "Double-l; three characters",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "glyph",
+      "category": "ascender_descender",
+      "reason": "Mixed ascender (l,h) and descender (g,y,p)",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "jiffy",
+      "category": "ascender_descender",
+      "reason": "Descenders (j,y) plus dots (i) and double-f",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "jumping",
+      "category": "ascender_descender",
+      "reason": "Descenders (j,p,g) in a long word",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "quietly",
+      "category": "ascender_descender",
+      "reason": "Descenders (q,y) plus tall letters",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "everything",
+      "category": "chunking_boundary",
+      "reason": "10 chars, at MAX_WORD_LENGTH boundary",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "understand",
+      "category": "chunking_boundary",
+      "reason": "10 chars, chunking boundary",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "impossible",
+      "category": "chunking_boundary",
+      "reason": "10 chars, requires chunking",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "can't",
+      "category": "punctuated",
+      "reason": "Apostrophe in middle; contraction",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "they'd",
+      "category": "punctuated",
+      "reason": "Apostrophe near end; contraction",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "don't",
+      "category": "punctuated",
+      "reason": "Apostrophe in middle; common contraction",
+      "added": "2026-04-02"
+    },
+    {
+      "word": "it's",
+      "category": "punctuated",
+      "reason": "Short word with apostrophe",
+      "added": "2026-04-02"
+    }
+  ],
+  "candidates": [
+    {
+      "word": "on",
+      "source": "ocr_rejection",
+      "timestamp": "2026-04-03T01:04:12",
+      "ocr_accuracy": 0.2
+    },
+    {
+      "word": "by",
+      "source": "ocr_rejection",
+      "timestamp": "2026-04-03T01:10:50",
+      "ocr_accuracy": 0.2857
+    },
+    {
+      "word": "was",
+      "source": "ocr_rejection",
+      "timestamp": "2026-04-03T01:11:47",
+      "ocr_accuracy": 0.2
+    }
+  ]
+}

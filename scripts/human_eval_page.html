@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reforge Human Evaluation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.4em; margin-bottom: 16px; color: #f0f0f0; }
+  h2 { font-size: 1.1em; margin-bottom: 8px; color: #ccc; }
+  p.desc { color: #aaa; margin-bottom: 16px; font-size: 0.95em; }
+
+  .progress {
+    display: flex; gap: 6px; margin-bottom: 24px; align-items: center;
+  }
+  .progress .dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #333; transition: background 0.2s;
+  }
+  .progress .dot.done { background: #4caf50; }
+  .progress .dot.current { background: #2196f3; }
+  .progress .label {
+    margin-left: 12px; font-size: 0.85em; color: #888;
+  }
+
+  .step { display: none; }
+  .step.active { display: block; }
+
+  .eval-image {
+    max-width: 100%; border: 1px solid #333;
+    margin: 12px 0; border-radius: 4px;
+  }
+
+  .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .btn {
+    padding: 8px 18px; cursor: pointer;
+    border: 1px solid #555; background: #2a2a3e; color: #e0e0e0;
+    border-radius: 4px; font-size: 0.95em; transition: all 0.15s;
+  }
+  .btn:hover { background: #3a3a5e; border-color: #777; }
+  .btn.selected { background: #1565c0; border-color: #1976d2; color: #fff; }
+
+  .rating-row { display: flex; gap: 6px; margin: 12px 0; }
+  .rating-btn {
+    width: 44px; height: 44px; text-align: center; line-height: 44px;
+    cursor: pointer; border: 1px solid #555; background: #2a2a3e;
+    color: #e0e0e0; border-radius: 4px; font-size: 1.1em; transition: all 0.15s;
+  }
+  .rating-btn:hover { background: #3a3a5e; }
+  .rating-btn.selected { background: #1565c0; border-color: #1976d2; color: #fff; }
+
+  .checkbox-row { margin: 8px 0; }
+  .checkbox-row label { cursor: pointer; font-size: 0.95em; }
+  .checkbox-row input { margin-right: 6px; }
+
+  .defect-grid {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0;
+  }
+  .defect-btn {
+    padding: 6px 14px; cursor: pointer;
+    border: 1px solid #555; background: #2a2a3e; color: #ccc;
+    border-radius: 4px; font-size: 0.85em; transition: all 0.15s;
+  }
+  .defect-btn:hover { background: #3a3a5e; }
+  .defect-btn.selected { background: #c62828; border-color: #e53935; color: #fff; }
+
+  textarea {
+    width: 100%; height: 60px; margin: 12px 0;
+    background: #2a2a3e; color: #e0e0e0; border: 1px solid #555;
+    border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9em;
+    resize: vertical;
+  }
+
+  .nav-row {
+    display: flex; justify-content: space-between; margin-top: 20px;
+    padding-top: 16px; border-top: 1px solid #333;
+  }
+  .nav-btn {
+    padding: 10px 24px; cursor: pointer;
+    border: none; border-radius: 4px; font-size: 1em; font-weight: 600;
+  }
+  .skip-btn { background: transparent; color: #888; border: 1px solid #444; }
+  .skip-btn:hover { background: #2a2a3e; color: #aaa; }
+  .next-btn { background: #1976d2; color: #fff; }
+  .next-btn:hover { background: #1565c0; }
+  .submit-btn { background: #2e7d32; color: #fff; }
+  .submit-btn:hover { background: #1b5e20; }
+
+  .done-msg {
+    text-align: center; padding: 40px 20px;
+    font-size: 1.1em; color: #4caf50;
+  }
+</style>
+</head>
+<body>
+<h1>Reforge Quality Review</h1>
+<div class="progress" id="progress"></div>
+<div id="steps-container"></div>
+<div id="done-msg" class="done-msg" style="display:none">
+  Review submitted. You can close this tab.
+</div>
+
+<script>
+const STEPS = /* INJECT_STEPS_JSON */;
+const EVAL_ORDER = /* INJECT_EVAL_ORDER */;
+
+let currentStep = 0;
+const responses = {};
+
+// Heartbeat to prevent qpeek timeout
+setInterval(() => fetch('/qpeek/heartbeat').catch(() => {}), 3000);
+
+function buildProgress() {
+  const el = document.getElementById('progress');
+  el.innerHTML = '';
+  for (let i = 0; i < STEPS.length; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.id = 'dot-' + i;
+    el.appendChild(dot);
+  }
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.id = 'progress-label';
+  el.appendChild(label);
+}
+
+function updateProgress() {
+  for (let i = 0; i < STEPS.length; i++) {
+    const dot = document.getElementById('dot-' + i);
+    if (i < currentStep) dot.className = 'dot done';
+    else if (i === currentStep) dot.className = 'dot current';
+    else dot.className = 'dot';
+  }
+  document.getElementById('progress-label').textContent =
+    (currentStep + 1) + ' / ' + STEPS.length;
+}
+
+function buildSteps() {
+  const container = document.getElementById('steps-container');
+  STEPS.forEach((step, idx) => {
+    const div = document.createElement('div');
+    div.className = 'step';
+    div.id = 'step-' + idx;
+
+    let html = '<h2>' + step.title + '</h2>';
+    html += '<p class="desc">' + step.description + '</p>';
+    html += '<img class="eval-image" src="/files/' + step.image + '" alt="' + step.title + '">';
+
+    // Input controls based on type
+    if (step.input_type === 'pick') {
+      html += '<div class="btn-row">';
+      step.options.forEach(opt => {
+        html += '<div class="btn" data-step="' + idx + '" data-field="pick" data-value="' +
+                opt + '" onclick="selectBtn(this)">' + opt + '</div>';
+      });
+      html += '</div>';
+      if (step.extra_fields) {
+        step.extra_fields.forEach(ef => {
+          if (ef.type === 'checkbox') {
+            html += '<div class="checkbox-row"><label><input type="checkbox" ' +
+                    'id="ef-' + idx + '-' + ef.name + '"> ' + ef.label + '</label></div>';
+          }
+        });
+      }
+    } else if (step.input_type === 'ab_pick') {
+      html += '<div class="btn-row">';
+      step.options.forEach((opt, oi) => {
+        const label = step.option_labels ? step.option_labels[oi] : opt;
+        html += '<div class="btn" data-step="' + idx + '" data-field="preferred" data-value="' +
+                opt + '" onclick="selectBtn(this)">' + label + '</div>';
+      });
+      html += '</div>';
+    } else if (step.input_type === 'rating') {
+      html += '<p style="font-size:0.9em;color:#aaa">' + (step.rating_label || 'Rating') + ':</p>';
+      html += '<div class="rating-row">';
+      for (let r = 1; r <= 5; r++) {
+        html += '<div class="rating-btn" data-step="' + idx + '" data-field="rating" ' +
+                'data-value="' + r + '" onclick="selectBtn(this)">' + r + '</div>';
+      }
+      html += '</div>';
+    } else if (step.input_type === 'composition_rating') {
+      html += '<p style="font-size:0.9em;color:#aaa">Overall impression:</p>';
+      html += '<div class="rating-row">';
+      for (let r = 1; r <= 5; r++) {
+        html += '<div class="rating-btn" data-step="' + idx + '" data-field="rating" ' +
+                'data-value="' + r + '" onclick="selectBtn(this)">' + r + '</div>';
+      }
+      html += '</div>';
+      html += '<p style="font-size:0.9em;color:#aaa;margin-top:12px">Defects (click to toggle):</p>';
+      html += '<div class="defect-grid">';
+      step.defect_options.forEach(d => {
+        const label = d.replace(/_/g, ' ');
+        html += '<div class="defect-btn" data-step="' + idx + '" data-defect="' +
+                d + '" onclick="toggleDefect(this)">' + label + '</div>';
+      });
+      html += '</div>';
+    } else if (step.input_type === 'hard_words_rating') {
+      html += '<p style="font-size:0.9em;color:#aaa">Overall readability:</p>';
+      html += '<div class="rating-row">';
+      for (let r = 1; r <= 5; r++) {
+        html += '<div class="rating-btn" data-step="' + idx + '" data-field="rating" ' +
+                'data-value="' + r + '" onclick="selectBtn(this)">' + r + '</div>';
+      }
+      html += '</div>';
+      html += '<p style="font-size:0.9em;color:#aaa;margin-top:12px">Unreadable words (click to flag):</p>';
+      html += '<div class="defect-grid">';
+      step.unreadable_options.forEach(w => {
+        html += '<div class="defect-btn" data-step="' + idx + '" data-defect="' +
+                w + '" onclick="toggleDefect(this)">' + w + '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Notes textarea (all types)
+    html += '<textarea id="notes-' + idx + '" placeholder="Notes (optional)"></textarea>';
+
+    // Navigation
+    const isLast = idx === STEPS.length - 1;
+    html += '<div class="nav-row">';
+    html += '<button class="nav-btn skip-btn" onclick="skipStep(' + idx + ')">Skip</button>';
+    if (isLast) {
+      html += '<button class="nav-btn submit-btn" onclick="submitAll()">Submit Review</button>';
+    } else {
+      html += '<button class="nav-btn next-btn" onclick="nextStep(' + idx + ')">Next</button>';
+    }
+    html += '</div>';
+
+    div.innerHTML = html;
+    container.appendChild(div);
+  });
+}
+
+function selectBtn(el) {
+  const step = el.dataset.step;
+  const field = el.dataset.field;
+  // Deselect siblings
+  const parent = el.parentElement;
+  parent.querySelectorAll('[data-field="' + field + '"]').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function toggleDefect(el) {
+  el.classList.toggle('selected');
+}
+
+function collectStepResponse(idx) {
+  const step = STEPS[idx];
+  const resp = { skipped: false };
+
+  if (step.input_type === 'pick') {
+    const sel = document.querySelector('#step-' + idx + ' .btn.selected[data-field="pick"]');
+    resp.pick = sel ? sel.dataset.value : null;
+    if (step.extra_fields) {
+      step.extra_fields.forEach(ef => {
+        const cb = document.getElementById('ef-' + idx + '-' + ef.name);
+        if (cb) resp[ef.name] = cb.checked;
+      });
+    }
+  } else if (step.input_type === 'ab_pick') {
+    const sel = document.querySelector('#step-' + idx + ' .btn.selected[data-field="preferred"]');
+    resp.preferred = sel ? sel.dataset.value : null;
+  } else if (step.input_type === 'rating' || step.input_type === 'composition_rating' || step.input_type === 'hard_words_rating') {
+    const sel = document.querySelector('#step-' + idx + ' .rating-btn.selected');
+    resp.rating = sel ? parseInt(sel.dataset.value) : null;
+    if (step.input_type === 'composition_rating') {
+      const defects = [];
+      document.querySelectorAll('#step-' + idx + ' .defect-btn.selected').forEach(d => {
+        defects.push(d.dataset.defect);
+      });
+      resp.defects = defects;
+    }
+    if (step.input_type === 'hard_words_rating') {
+      const flagged = [];
+      document.querySelectorAll('#step-' + idx + ' .defect-btn.selected').forEach(d => {
+        flagged.push(d.dataset.defect);
+      });
+      resp.flagged_unreadable = flagged;
+    }
+  }
+
+  resp.notes = document.getElementById('notes-' + idx).value.trim();
+  return resp;
+}
+
+function showStep(idx) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('step-' + idx);
+  if (el) el.classList.add('active');
+  currentStep = idx;
+  updateProgress();
+  window.scrollTo(0, 0);
+}
+
+function skipStep(idx) {
+  const et = STEPS[idx].eval_type;
+  responses[et] = { skipped: true };
+  if (idx < STEPS.length - 1) {
+    showStep(idx + 1);
+  } else {
+    submitAll();
+  }
+}
+
+function nextStep(idx) {
+  const et = STEPS[idx].eval_type;
+  responses[et] = collectStepResponse(idx);
+  showStep(idx + 1);
+}
+
+function submitAll() {
+  // Collect current step if not already collected
+  const et = STEPS[currentStep].eval_type;
+  if (!responses[et]) {
+    responses[et] = collectStepResponse(currentStep);
+  }
+
+  fetch('/qpeek/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ response: JSON.stringify(responses) }),
+  }).then(() => {
+    document.getElementById('steps-container').style.display = 'none';
+    document.getElementById('progress').style.display = 'none';
+    document.getElementById('done-msg').style.display = 'block';
+    try { window.close(); } catch(e) {}
+  }).catch(err => {
+    alert('Failed to submit: ' + err.message);
+  });
+}
+
+// Initialize
+buildProgress();
+buildSteps();
+showStep(0);
+</script>
+</body>
+</html>

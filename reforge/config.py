@@ -87,7 +87,7 @@ BASELINE_MIN_DIP_RATIO = 0.15
 LINE_SPACING = 12
 PARAGRAPH_SPACING = 30
 PARAGRAPH_INDENT = 40
-WORD_SPACING = 16
+WORD_SPACING = 6  # reduced from 16; human eval found 8 "still over spaced", 16 much too wide
 PAGE_MARGIN = 30
 DEFAULT_PAGE_WIDTH = 800
 
