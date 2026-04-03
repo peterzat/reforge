@@ -7,7 +7,7 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 5 |
+| Active | 6 |
 | In Progress | 1 |
 | Resolved | 1 |
 | Acceptable | 0 |

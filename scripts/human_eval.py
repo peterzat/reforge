@@ -12,6 +12,7 @@ Evaluation types:
     spacing     -- Word spacing and jitter comparison (B5)
     ink_weight  -- Stroke weight consistency comparison (B6)
     composition -- Full two-paragraph composition rating (B7)
+    hard_words  -- Curated hard words readability check (D2)
 
 Review JSON schema (saved to reviews/human/YYYY-MM-DD_HHMMSS.json):
     {

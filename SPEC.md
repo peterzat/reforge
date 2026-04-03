@@ -1,61 +1,58 @@
-## Spec -- 2026-04-03 -- Finding-driven quality iteration loop
+## Spec -- 2026-04-03 -- Per-word readability improvements
 
-**Goal:** Establish the pattern for using human evaluation findings as work items: lifecycle management in FINDINGS.md, targeted evaluation runs, and one completed feedback loop on chunk stitching height mismatch (the most actionable open finding after the spacing fix).
+**Goal:** Reduce per-word illegibility, which is the dominant complaint in the last three human reviews (composition stuck at 3/5, "many words still illegible"). Attack from three angles: gray box artifacts on short/punctuated words, chunk x-height mismatch, and OCR rejection loop tuning. Each fix follows the finding-driven iteration pattern: implement, targeted eval, update finding status.
 
 ### Acceptance Criteria
 
-#### A. Finding lifecycle in FINDINGS.md
+#### A. Gray box defense for short and punctuated words
 
-FINDINGS.md currently has 8 active findings with no status differentiation. Add structure so the agent and human can track progress without re-reviewing everything each iteration.
+The 5-layer gray box defense fails on short words ("a", "I", "no") and punctuated words ("can't", "it's", "they'd"). Two reviews flagged this. The problem: DiffusionPen generates dark gray backgrounds (~150-175) for these words, and the adaptive background estimate (90th percentile) is pulled down by the large gray region, making the ink threshold too low to separate ink from background.
 
-- [x] A1. Each finding in FINDINGS.md has a status field: `Active`, `In Progress`, `Resolved`, `Acceptable`, or `Graduated`. Active means identified but not yet worked on. In Progress means code changes are underway. Resolved means the human confirmed improvement via a targeted eval. Acceptable means the human reviewed it and decided current quality is good enough (escape hatch). Graduated means promoted to CLAUDE.md per the existing graduation rules.
-- [x] A2. The "Word spacing is too loose" finding is marked `Resolved` with a note referencing the code change (WORD_SPACING 16->6, horizontal tight-crop) and the confirming review (2026-04-03_024039, composition 2/5->3/5).
-- [x] A3. FINDINGS.md has a "Status Summary" section at the top showing counts by status (e.g., "Active: 5, In Progress: 1, Resolved: 1, Acceptable: 0, Graduated: 0"). This summary updates whenever findings change status.
+- [ ] A1. Diagnose the gray box failure mode for short/punctuated words by generating "a", "I", "can't", and "it's" and inspecting the postprocessing pipeline output at each defense layer. Identify which layer(s) fail and why.
+- [ ] A2. Implement a fix to the failing defense layer(s). The fix should not regress gray box detection for normal-length words.
+- [ ] A3. `make test-quick` passes (gray box tests in tests/quick/test_graybox.py).
+- [ ] A4. `make test-hard` passes with no regression in average OCR accuracy below current baseline (0.742). Short words ("a", "I", "an", "no") should show improvement.
 
-#### B. Targeted evaluation runs
+#### B. Chunk x-height normalization
 
-Currently every eval run reviews all 8 types. The proposal asks for targeted runs that only exercise affected eval types after a code change.
+The stitch gap is fixed, but chunks still render at different x-heights (letter body size). The human noted "tanding is visibly smaller than the first part." Total ink-height normalization matches ascender-to-descender extent but not the letter body, so "under" (tall letters) and "standing" (shorter body) appear mismatched.
 
-- [x] B1. `make test-human` accepts an `EVAL=` parameter to run a subset of eval types (e.g., `make test-human EVAL=stitch,composition`). This already exists per CLAUDE.md. Verify it works and document the pattern: after a code change to generator.py's stitch_chunks, run `EVAL=stitch,composition`, not the full suite.
-- [x] B2. CLAUDE.md documents when to run targeted vs full eval: targeted after specific code changes (listing which eval types map to which code areas), full eval after major changes or every 3 spec iterations as a health check.
+- [ ] B1. Measure x-height (distance from baseline to top of lowercase body, excluding ascenders) for each chunk, and scale chunks so x-heights match rather than total ink heights.
+- [ ] B2. `make test-hard` passes after the change. Chunked words ("everything", "understand", "impossible") should not regress.
+- [ ] B3. A targeted human eval (`make test-human EVAL=stitch`) confirms the x-height fix is visually better than before.
 
-#### C. Chunk stitching improvement (feedback loop demonstration)
+#### C. OCR rejection loop improvements
 
-The "chunk stitching produces visible height mismatch" finding is the target for this iteration's feedback loop. The problem: chunks render at different heights, looking like two separate words, and the current median-height normalization in stitch_chunks does not fix it.
+The OCR rejection loop retries twice at a 0.3 accuracy threshold. For composition text (40 words), a few illegible words tank readability. Tuning the loop could improve per-word quality at acceptable cost.
 
-- [x] C1. Investigate and implement an improved stitching strategy in `stitch_chunks()` that reduces visible height mismatch between chunks. The fix should target ink-height alignment (the actual ink region, not the bounding box) rather than overall image height.
-- [x] C2. `make test-hard` passes after the change (hard words include chunking-boundary words like "everything", "understand", "impossible"). No regression in average hard-word OCR accuracy below 0.5.
-- [x] C3. A targeted human eval (`make test-human EVAL=stitch,composition`) is run. The human rates chunk stitching quality. The result is recorded in a new review JSON.
-- [x] C4. The "chunk stitching" finding in FINDINGS.md is updated to reflect the code change and eval result. Status moves to Resolved (if human confirms improvement), Acceptable (if human says good enough), or remains In Progress (if more work needed).
+- [ ] C1. Profile the current rejection loop: what fraction of words trigger retries, what is the accuracy improvement from retries, and what is the time cost per retry?
+- [ ] C2. Based on C1 data, adjust the rejection threshold and/or retry count. If the data shows retries are effective (accuracy improves significantly), consider raising the threshold to 0.4 or adding a third retry. If retries rarely help, the loop may need a different strategy.
+- [ ] C3. `make test-hard` passes. Average OCR accuracy should improve or hold steady.
 
-#### D. Quality preset for composition eval
+#### D. Composition re-evaluation
 
-The proposal notes that fast preset (20 steps, 1 candidate) may mask quality that the quality preset (50 steps, 3 candidates) would reveal. Composition eval should use the best the pipeline can produce.
+After A-C fixes, run a full composition eval to measure the cumulative impact on readability.
 
-- [x] D1. The composition evaluation type in `scripts/human_eval.py` uses the quality preset (50 steps, 3 candidates) instead of the fast preset. Other eval types continue using fast preset for speed.
-- [x] D2. The composition section of the review JSON records which preset was used, so future analysis can distinguish fast vs quality preset results.
-
-#### E. Agent workflow documentation
-
-The finding-driven iteration pattern should be documented so it persists across sessions.
-
-- [x] E1. CLAUDE.md's "Human review workflow" section documents the finding-driven iteration pattern: (1) pick the most actionable active finding, (2) implement a fix, (3) run targeted eval, (4) update finding status based on human feedback, (5) repeat or move to next finding.
-- [x] E2. CLAUDE.md documents which eval types correspond to which code areas (e.g., stitch -> generator.py stitch_chunks; spacing -> config.py WORD_SPACING + compose/render.py; composition -> full pipeline).
+- [ ] D1. Run `make test-human EVAL=hard_words,composition`. The hard_words eval validates short-word improvements. The composition eval measures overall readability.
+- [ ] D2. Update FINDINGS.md: "Hard words show gray box artifacts" and "Composition has persistent illegibility" findings get updated with the eval results. Move to Resolved if the human confirms improvement, or record remaining issues for the next iteration.
+- [ ] D3. If composition rating improves above 3/5, update FINDINGS.md status summary. If it stays at 3/5, note what the remaining blockers are.
 
 ### Context
 
-**Why chunk stitching first?** Of the 8 active findings, chunk stitching is the most actionable: the problem is clearly identified (height mismatch, not seam artifacts), the code is localized (stitch_chunks in generator.py), and it directly affects the longest-standing user complaint ("croissants" illegibility). The spacing fix proved the feedback loop works; this is the second iteration to establish the pattern.
+**Why these three findings together?** They all converge on the same symptom (illegible words in composition) through different mechanisms: gray boxes make short words unreadable, x-height mismatch makes chunked words look wrong, and the rejection loop is the last chance to catch poor generations before they hit the canvas. Fixing any one helps composition; fixing all three should move the needle past 3/5.
 
-**Why not quality_score disagreement?** That finding needs more data points (multiple reviews where human disagrees with metric). One review is not enough signal to retune scoring weights. It stays Active, collecting evidence.
+**Why not quality_score disagreement?** Still only one data point. Needs more reviews before tuning scoring weights.
 
-**Why not ink weight harmonization?** The human found "no visible effect." This is a candidate for Acceptable status, not a code change. The finding-lifecycle mechanics will handle it.
+**Why not ink weight harmonization?** Human found "no visible effect." This is a candidate for Acceptable status, not a code change. Can be closed out during the D2 finding update.
 
-**Interaction with existing test gates.** None of these changes affect pre-commit (quick tests) or pre-push (regression test) gates. The human eval and FINDINGS.md are advisory infrastructure. Hard words regression (`make test-hard`) is the automated quality check for stitching changes.
+**Interaction with test gates.** These changes affect generator.py (postprocess_word, stitch_chunks, generate_word). Pre-commit runs quick tests (includes gray box tests). Pre-push runs regression test. Hard words test is the primary quality gate for these changes.
 
 ---
+
+*Prior spec (2026-04-03): Finding-driven quality iteration loop (14/14 criteria met).*
 
 *Prior spec (2026-04-03): Hard words watchlist and targeted quality stress testing (14/14 criteria met).*
 
 *Prior spec (2026-04-02): Human-in-the-loop quality evaluation (25 criteria). Infrastructure built, first feedback loop completed.*
 
-<!-- SPEC_META: {"date":"2026-04-03","title":"Finding-driven quality iteration loop","criteria_total":14,"criteria_met":14} -->
+<!-- SPEC_META: {"date":"2026-04-03","title":"Per-word readability improvements","criteria_total":12,"criteria_met":0} -->

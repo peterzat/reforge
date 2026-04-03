@@ -1,37 +1,28 @@
-## Review -- 2026-04-02 (commit: 90343f1)
+## Review -- 2026-04-03 (commit: 3c2e054)
 
-**Summary:** Refresh review of 2 unpushed commits: word density / ragged margin spec implementation (ece0378) and qpeek visual inspection tool (90343f1). 13 focus-set files reviewed in full; 1 already-reviewed file (.claude/settings.local.json) checked for interactions only.
+**Summary:** Refresh review of 1 unpushed commit: finding-driven quality iteration loop (3c2e054). 24 focus-set files reviewed in full, including new modules (hard words watchlist, human eval system, stitch improvements) and updated documentation.
 
-**Review scope:** Refresh review. Focus: 13 file(s) changed since prior review (commit e0ae42a). 1 already-reviewed file(s) checked for interactions only.
+**Review scope:** Refresh review. Focus: 24 file(s) changed since prior review (commit 90343f1). 0 already-reviewed file(s) checked for interactions only.
 
 ### Findings
 
-1. [WARN] reforge/evaluate/visual.py:387 -- Stale docstring in `check_composition_score`. Docstring said "Aspect ratio proximity to 1.0 (0.7-1.3 range is ideal)" but the code now targets 0.75 with a 0.55-0.95 range.
-   Evidence: Docstring not updated when code changed to portrait aspect ratio target.
-   Suggested fix: Update docstring to match code.
+1. [WARN] CLAUDE.md:110,114,236 -- Eval type count says "7" but code has 8 (hard_words added in this commit). Listed evaluation types in CLAUDE.md omit hard_words.
+   Evidence: `EVAL_TYPES` in human_eval.py has 8 entries; CLAUDE.md says "Seven structured evaluation types" and "7 eval types" in three places.
+   Suggested fix: Update counts to 8 and add hard_words to the eval type list.
 
-2. [WARN] reforge/config.py:98-100 -- Dead constants `TARGET_ASPECT_RATIO`, `TARGET_ASPECT_MIN`, `TARGET_ASPECT_MAX` defined but never imported anywhere. The old `compute_page_width` used these; the new implementation uses `TARGET_WORDS_PER_LINE` instead.
-   Evidence: `grep -r TARGET_ASPECT` finds only config.py and SPEC.md (prose).
-   Suggested fix: Remove unused constants.
-
-3. [WARN] reforge/config.py:49 -- Dead constant `LONG_WORD_AREA_TARGET` defined but never imported. `font_scale.py` computes the long-word target as `int(SHORT_WORD_HEIGHT_TARGET * 1.1)` directly.
-   Evidence: `grep -r LONG_WORD_AREA_TARGET` finds only config.py.
-   Suggested fix: Remove unused constant.
-
-4. [WARN] reforge/compose/layout.py:53 -- `import math` moved from module-level to inside function body in a conditional block. Stdlib imports belong at module level per Python convention; the deferred import here adds no benefit since `math` has no import cost.
-   Evidence: `import math` was previously at the top of the file (removed in this diff), re-added inside `compute_page_width` in a `if usable > 0` block.
-   Suggested fix: Move `import math` back to module level.
+2. [WARN] reviews/human/FINDINGS.md:10 -- Status Summary shows "Active: 5" but manual count of findings with "Status: Active" yields 6 (quality score, ink weight, hard words gray box, baseline alignment, word sizing, composition illegibility).
+   Evidence: Six "**Status:** Active" entries in the Findings section.
+   Suggested fix: Update count to 6.
 
 ### Fixes Applied
 
-1. Fixed stale docstring in `check_composition_score` (WARN #1).
-2. Removed dead constants `TARGET_ASPECT_RATIO`, `TARGET_ASPECT_MIN`, `TARGET_ASPECT_MAX` from config.py (WARN #2).
-3. Removed dead constant `LONG_WORD_AREA_TARGET` from config.py (WARN #3).
-4. Moved `import math` back to module level in layout.py (WARN #4).
+1. Fixed eval type count and list in CLAUDE.md (WARN #1): updated "Seven" to "Eight", "7" to "8" in three places, added hard_words to evaluation types list.
+2. Fixed human_eval.py docstring to include hard_words eval type (WARN #1).
+3. Fixed FINDINGS.md Status Summary Active count from 5 to 6 (WARN #2).
 
 All fixes verified: 151 quick tests pass (same count as baseline).
 
 ---
-*Prior review (2026-04-02, commit e0ae42a): Refresh review of dead-code removal in compose/render.py. 0 BLOCK, 0 WARN, 0 NOTE.*
+*Prior review (2026-04-02, commit 90343f1): Refresh review of word density spec and qpeek tool. 4 WARNs (stale docstring, dead constants, import placement), all auto-fixed.*
 
-<!-- REVIEW_META: {"date":"2026-04-02","commit":"90343f1","reviewed_up_to":"90343f1c512a88e614306e62ece721a71eff4a3e","base":"origin/main","tier":"refresh","block":0,"warn":4,"note":0} -->
+<!-- REVIEW_META: {"date":"2026-04-03","commit":"3c2e054","reviewed_up_to":"3c2e05441fbc0e5d4ab37c0a555e375021b42181","base":"origin/main","tier":"refresh","block":0,"warn":2,"note":0} -->
