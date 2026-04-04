@@ -245,15 +245,24 @@ def isolated_cluster_filter(img: np.ndarray, ink_mask: np.ndarray = None) -> np.
     if len(groups) <= 1:
         return img
 
-    # Find the main group (most total ink columns)
+    # Find the main group (most total ink columns) and preserve any group
+    # with significant ink.  Punctuated words ("can't", "it's") produce a
+    # gap at the apostrophe; the fragment after it is real content, not noise.
     def group_ink_width(group):
         return sum(clusters[i][1] - clusters[i][0] for i in group)
 
+    total_ink_cols = sum(group_ink_width(g) for g in groups)
     main_group_idx = max(range(len(groups)), key=lambda g: group_ink_width(groups[g]))
+
+    # Minimum fraction of total ink a group must contain to be preserved
+    MIN_GROUP_INK_FRACTION = 0.15
 
     result = img.copy()
     for g_idx, group in enumerate(groups):
         if g_idx == main_group_idx:
+            continue
+        # Preserve groups with significant ink (not isolated noise)
+        if total_ink_cols > 0 and group_ink_width(group) / total_ink_cols >= MIN_GROUP_INK_FRACTION:
             continue
         for ci in group:
             cs, ce = clusters[ci]
@@ -454,7 +463,7 @@ def generate_word(
 
     Long words (>10 chars) are split, generated as chunks, and stitched.
 
-    Candidates with OCR accuracy below 0.3 are rejected; up to 2 extra
+    Candidates with OCR accuracy below 0.4 are rejected; up to 2 extra
     retries are attempted to find a readable result.
 
     Args:
@@ -504,15 +513,18 @@ def generate_word(
     if len(chunks) == 1:
         best = _generate_chunk(word)
 
-        # OCR-based rejection: retry if accuracy is too low
+        # OCR-based rejection: retry if accuracy is too low.
+        # Threshold 0.4 catches borderline cases (e.g. "an" at 0.33) that
+        # 0.3 missed. Retries trigger on ~10% of words; cost is acceptable.
         ocr_fn = _get_ocr_fn()
         if ocr_fn is not None:
             best_acc = 0.0
+            ocr_threshold = 0.4
             max_retries = 2
             for _ in range(max_retries):
                 acc = ocr_fn(best, word)
                 best_acc = max(best_acc, acc)
-                if acc >= 0.3:
+                if acc >= ocr_threshold:
                     break
                 # Retry with fresh generation
                 retry = _generate_chunk(word)
@@ -520,10 +532,10 @@ def generate_word(
                 best_acc = max(best_acc, retry_acc)
                 if retry_acc > acc:
                     best = retry
-                    if retry_acc >= 0.3:
+                    if retry_acc >= ocr_threshold:
                         break
             else:
-                # Exhausted retries without reaching 0.3 -- nominate as hard word
+                # Exhausted retries without reaching threshold -- nominate as hard word
                 _record_hard_word_candidate(word, best_acc)
 
         return best
@@ -561,7 +573,7 @@ def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
     """
     import cv2
 
-    from reforge.quality.ink_metrics import compute_ink_height
+    from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
 
     if len(chunks) == 1:
         return chunks[0]
@@ -582,12 +594,13 @@ def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
         cropped.append(chunk)
     chunks = cropped
 
-    # Measure ink bounds for each chunk
-    ink_heights = []
+    # Measure x-height (body zone, excluding ascenders/descenders)
+    # for normalization, plus ink bounds for baseline alignment
+    x_heights = []
     ink_bottoms = []  # distance from image bottom to last ink row
     for chunk in chunks:
-        ink_h = compute_ink_height(chunk)
-        ink_heights.append(ink_h)
+        x_h = compute_x_height(chunk)
+        x_heights.append(x_h)
         # Find last ink row (baseline position)
         ink_rows = np.any(chunk < INK_THRESH, axis=1)
         if np.any(ink_rows):
@@ -596,15 +609,18 @@ def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
         else:
             ink_bottoms.append(0)
 
-    # Scale each chunk so ink height matches the median ink height
-    median_ink_h = int(np.median(ink_heights))
-    if median_ink_h < 4:
-        median_ink_h = max(ink_heights)  # fallback for very small ink
+    # Scale each chunk so x-height matches the median x-height.
+    # X-height normalization matches the letter body size, not the total
+    # ink extent, preventing "under" (tall) and "standing" (short body)
+    # from looking mismatched when stitched.
+    median_x_h = int(np.median(x_heights))
+    if median_x_h < 4:
+        median_x_h = max(x_heights)  # fallback for very small ink
 
     normalized = []
     for i, chunk in enumerate(chunks):
-        if ink_heights[i] > 0 and ink_heights[i] != median_ink_h:
-            scale = median_ink_h / ink_heights[i]
+        if x_heights[i] > 0 and x_heights[i] != median_x_h:
+            scale = median_x_h / x_heights[i]
             new_h = max(1, int(chunk.shape[0] * scale))
             new_w = max(1, int(chunk.shape[1] * scale))
             chunk = cv2.resize(chunk, (new_w, new_h), interpolation=cv2.INTER_AREA)

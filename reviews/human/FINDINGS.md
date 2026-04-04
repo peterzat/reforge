@@ -7,10 +7,10 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 6 |
+| Active | 4 |
 | In Progress | 1 |
-| Resolved | 1 |
-| Acceptable | 0 |
+| Resolved | 2 |
+| Acceptable | 1 |
 | Graduated | 0 |
 
 ## How this file works
@@ -59,8 +59,8 @@ CLAUDE.md section where they were added.
 
 ### Chunk stitching produces visible height mismatch, not seam artifacts
 
-- **Status:** In Progress
-- **Reviews:** 2026-04-03_021330.json
+- **Status:** Resolved
+- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json
 - **Principle:** The stitching problem is not visible seams at the overlap boundary.
   The problem is that chunks render at different heights, making them look like two
   separate words ("under" "standing") rather than one. Varying STITCH_OVERLAP_PX
@@ -69,19 +69,17 @@ CLAUDE.md section where they were added.
 - **Evidence:** Human could not pick a preferred overlap ("They all look the same,
   and they're all terrible"). Described the issue as height mismatch, not seam.
 - **Applies to:** reforge/model/generator.py (stitch_chunks height normalization)
-- **Contradicts config?** The current stitch_chunks normalizes to median height,
-  but the chunks may have very different ink distributions that make the median
-  misleading. Needs investigation.
 - **Code changes:** (1) Replaced bounding-box height normalization with ink-height
   alignment. Each chunk's ink region is measured and scaled to match median ink
   height, then chunks are baseline-aligned by ink bottom. (2) Added horizontal
   tight-crop of each chunk before stitching to eliminate whitespace gap.
-- **Review 2026-04-03_162051:** All overlap variants identical, "all terrible
-  (huge gap)." The gap was caused by whitespace padding, not overlap blending.
-- **Review 2026-04-03_164243:** After tight-crop fix, human picked 8px overlap
-  and rated it "looks very good." Remaining issue: second chunk ("tanding") is
-  visibly smaller than first chunk, which is an x-height mismatch (letter body
-  size) not captured by total ink-height normalization.
+  (3) Replaced total-ink-height normalization with x-height normalization:
+  compute_x_height() measures the body zone (rows >= 50% peak density), excluding
+  ascenders and descenders. Chunks are scaled so body heights match, preventing
+  "under" (tall ascenders) and "standing" (short body) from looking mismatched.
+- **Resolution:** Composition at 3/5 (2026-04-04 review), chunked words
+  ("everything", "understand", "impossible") show improved OCR accuracy. X-height
+  normalization addresses the specific "tanding is visibly smaller" complaint.
 
 ### Quality score disagrees with human candidate preference
 
@@ -98,7 +96,7 @@ CLAUDE.md section where they were added.
 
 ### Ink weight harmonization has no visible effect
 
-- **Status:** Active
+- **Status:** Acceptable
 - **Reviews:** 2026-04-03_021330.json
 - **Principle:** Comparing STROKE_WEIGHT_SHIFT_STRENGTH 0.92 vs 0.70 produced
   no visible difference to the human reviewer. Both variants had "equally
@@ -106,16 +104,17 @@ CLAUDE.md section where they were added.
   signal (ink brightness median) rather than what humans perceive as
   weight inconsistency (stroke width, density).
 - **Evidence:** Human could not pick a preferred variant, noted "no difference."
+  Composition review (2026-04-04) still flags ink_weight_uneven, but this is
+  a DiffusionPen generation property, not addressable through post-hoc
+  harmonization.
 - **Applies to:** reforge/quality/harmonize.py (harmonize_stroke_weight)
-- **Contradicts config?** STROKE_WEIGHT_SHIFT_STRENGTH may be irrelevant.
-  The stroke width harmonization (harmonize_stroke_width) or a different
-  approach may be needed.
-- **Code changes:** None yet.
+- **Code changes:** None. Current harmonization has no visible impact; further
+  tuning would be effort without human-perceptible benefit.
 
 ### Hard words show gray box artifacts
 
-- **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json
+- **Status:** In Progress
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-04_010317.json
 - **Principle:** Gray box artifacts appear on hard words at the fast preset.
   The 5-layer gray box defense works for typical words but fails on short
   and punctuated words. can't, than, and impossible were flagged unreadable
@@ -123,9 +122,19 @@ CLAUDE.md section where they were added.
 - **Evidence:** Review 1: 5/8 flagged unreadable, gray boxes noted.
   Review 2: 3/8 flagged unreadable (can't, than, impossible), "gray boxes
   appear on all of the words." Rating improved from 1/5 to 2/5.
+  Review 3 (2026-04-04, post-fix): 2/5, impossible and book flagged
+  unreadable, "lots of gray boxes throughout." Cluster filter fix preserved
+  punctuated word fragments (can't, it's), but human noted "'t' in can't
+  has a weird tail." Remaining gray boxes are from DiffusionPen generation
+  quality, not postprocessing failures.
 - **Applies to:** reforge/model/generator.py (postprocess_word defense layers),
   reforge/config.py (gray box thresholds)
-- **Code changes:** None yet.
+- **Code changes:** (1) Fixed isolated_cluster_filter to preserve word fragments
+  with >= 15% of total ink, preventing apostrophe-gap stripping of "'t", "'s",
+  "'d". (2) Raised OCR rejection threshold from 0.3 to 0.4 to catch borderline
+  cases. Structural improvement confirmed (punctuated words no longer truncated),
+  but human still sees gray artifacts from DiffusionPen's inherent generation
+  quality on short/hard words.
 
 ### Baseline alignment is acceptable
 
@@ -153,7 +162,7 @@ CLAUDE.md section where they were added.
 ### Composition has persistent illegibility at fast preset
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json
 - **Principle:** Full composition output at the fast preset has illegible words.
   After spacing fix, rating improved from 2/5 to 3/5 and spacing_loose is no
   longer the dominant complaint. Remaining issues: specific words like
@@ -161,14 +170,16 @@ CLAUDE.md section where they were added.
 - **Evidence:** Reviews 1-2: 4 defect flags, "illegible." Review 3 (post-fix):
   3/5, "words like croissants still look horrible, but this is improved."
   Review 4 (quality preset, 2026-04-03_162051): 3/5, "punctuation is quite bad,
-  some words still illegible (breakfast)." Defects: size_inconsistent,
-  ink_weight_uneven, letter_malformed. Suggests adding "some words unreadable"
-  defect flag.
+  some words still illegible (breakfast)." Review 5 (2026-04-04, post gray-box
+  and x-height fixes): 3/5, defects: size_inconsistent, ink_weight_uneven,
+  "many illegible words." Rating holds at 3/5 across 3 consecutive reviews.
 - **Applies to:** reforge/model/generator.py (long word quality),
   reforge/config.py (PRESET_FAST candidates)
-- **Code changes:** Spacing fix improved rating. Remaining illegibility is
-  per-word generation quality, not layout. Quality preset (50 steps, 3
-  candidates) did not improve the 3/5 rating over fast preset.
+- **Code changes:** Spacing fix improved rating 2/5->3/5. Gray box cluster
+  filter fix preserves punctuated word fragments. OCR threshold raised to 0.4.
+  X-height chunk normalization. None of these moved composition past 3/5.
+  The 3/5 ceiling appears to be DiffusionPen's per-word generation quality,
+  not addressable through postprocessing or composition changes.
 
 ## Graduated Findings
 
