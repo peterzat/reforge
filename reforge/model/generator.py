@@ -573,7 +573,7 @@ def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
     """
     import cv2
 
-    from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
+    from reforge.quality.ink_metrics import compute_x_height
 
     if len(chunks) == 1:
         return chunks[0]

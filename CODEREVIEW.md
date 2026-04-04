@@ -1,22 +1,26 @@
-## Review -- 2026-04-03 (commit: d003145)
+## Review -- 2026-04-04 (commit: 5a33bda)
 
-**Summary:** Refresh review of 2 unpushed commits: demo baseline re-baseline after layout change (ec1cfc2) and new per-word readability spec (d003145). 8 focus-set files reviewed in full: documentation updates (CLAUDE.md, OUTPUT_HISTORY.md, FINDINGS.md), test baseline updates (demo_baseline.json, diagnostic_results.json), output archive images, and one Python docstring fix (human_eval.py).
+**Summary:** Refresh review of 2 unpushed commits: per-word readability improvements (cc9280f) and new height consistency spec (5a33bda). Code changes in generator.py (cluster filter, OCR threshold, x-height stitching), new ink_metrics.py function (compute_x_height), test relaxation (upper bound removal). Documentation and output archive updates.
 
-**Review scope:** Refresh review. Focus: 8 file(s) changed since prior review (commit 3c2e054). 0 already-reviewed file(s) checked for interactions only.
+**Review scope:** Refresh review. Focus: 9 file(s) changed since prior review (commit d003145). 0 already-reviewed file(s) checked for interactions only.
 
 ### Findings
 
-1. [WARN] scripts/human_eval.py:3 -- Docstring still says "7 evaluation types" after hard_words was added, making it 8. This is a leftover from the prior review's incomplete auto-fix (the hard_words line was added but the count was not updated).
-   Evidence: Line 3: `Generates test images for 7 evaluation types`; lines 7-15 list 8 types.
-   Suggested fix: Change "7" to "8" on line 3.
+1. [WARN] reforge/model/generator.py:576 -- Unused import: `compute_ink_height` is imported alongside `compute_x_height` but never used in `stitch_chunks`. The function was replaced by `compute_x_height` for normalization, making the import dead code.
+   Evidence: `from reforge.quality.ink_metrics import compute_ink_height, compute_x_height` on line 576; grep of generator.py shows no other reference to `compute_ink_height`.
+   Suggested fix: Remove `compute_ink_height` from the import.
+
+2. [NOTE] reforge/quality/ink_metrics.py -- `compute_x_height` has no unit tests. The function is new (42 lines), used in a critical path (chunk stitching), and has edge case handling (all-white, small ink). Quick manual testing confirms edge cases return reasonable values, but no tests in `tests/quick/` exercise this function directly. The SPEC.md (criterion A2/A3) will extend its use to font_scale.py and harmonize.py, making test coverage more important.
+
+3. [NOTE] tests/medium/diagnostic_results.json -- This file is tracked in git but changes nondeterministically with every GPU run (pixel-level inference variation). TESTING.md already flagged this (diagnostic-results-not-gitignored). The SPEC.md criterion C2 also calls it out. Low priority but causes spurious diffs.
 
 ### Fixes Applied
 
-1. Fixed human_eval.py docstring count from "7" to "8" (WARN #1). Tests stable at 151 passed.
+1. Removed unused `compute_ink_height` import from stitch_chunks (WARN #1). Tests stable at 151 passed.
 
-Security: no meaningful code changes since last scan (commit 3c2e054); only a docstring line added to human_eval.py. 0 BLOCK / 0 WARN / 0 NOTE carried forward.
+Security: 0 BLOCK / 0 WARN / 0 NOTE. No security issues in reviewed files (pure computation, no I/O or attack surface).
 
 ---
-*Prior review (2026-04-03, commit 3c2e054): Refresh review of finding-driven quality iteration loop. 2 WARNs (eval type count mismatch in CLAUDE.md/human_eval.py, FINDINGS.md active count), all auto-fixed.*
+*Prior review (2026-04-03, commit d003145): Refresh review of 2 commits (demo re-baseline, new readability spec). 1 WARN (human_eval.py docstring count), auto-fixed.*
 
-<!-- REVIEW_META: {"date":"2026-04-03","commit":"d003145","reviewed_up_to":"d0031453249639cb66e16d6732932098baa700ab","base":"origin/main","tier":"refresh","block":0,"warn":1,"note":0} -->
+<!-- REVIEW_META: {"date":"2026-04-04","commit":"5a33bda","reviewed_up_to":"5a33bdae6c5c88c66605508042cf55750842b536","base":"origin/main","tier":"refresh","block":0,"warn":1,"note":2} -->
