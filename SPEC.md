@@ -57,10 +57,20 @@ The regression test (test_quality_regression.py) separately asserts `ocr_min >= 
 - [ ] B3. Update the regression test baseline if needed. The test's `ocr_min >= 0.3` hard failure stays. The `overall >= 0.8` threshold should still pass for the 5-word regression text (no short words in "Quick Brown Foxes Jump High"). Verify with `make test-regression`.
 - [ ] B4. `make test-quick` and `make test-regression` pass. Run demo.sh and verify the overall score is in the 0.65-0.80 range instead of 0.45.
 
-#### C. Test infrastructure cleanup
+#### C. Ragged right margin wastes too much line space
 
-- [ ] C1. The `test_quality_thresholds.py` flaky test upper bound was removed in this session. Verify it stays stable across 5 runs of `make test`.
-- [ ] C2. Clean up `tests/medium/diagnostic_results.json` if it's checked in (it's in .gitignore but the diff shows it's tracked). Remove from git tracking if so.
+The layout engine creates ragged right margins for a natural handwritten look. The current implementation (compose/layout.py lines 166-174) alternates between "full" lines (0-5% shortening) and "short" lines (28-42% shortening). The short lines lose nearly a third of their usable width. In the demo output, the second line reads "a Thursday the bakery on" and then has a huge whitespace gap, with "Birchwood" wrapping to the next line despite clearly fitting.
+
+28-42% shortening is not "ragged right", it is "half a line." Real handwriting has subtle right-edge variation (5-15%), not alternating full/half lines. The current approach was designed to pass the `layout_regularity` metric (B1: right-edge std >= 8%), but over-corrected.
+
+- [ ] C1. Reduce the short-line shortening from 28-42% to 8-18%. This still produces visible ragged right variation (adjacent lines differ by ~10%) without wasting a third of the line. Full lines stay at 0-5%.
+- [ ] C2. Verify `layout_regularity` still passes (the metric requires right-edge std >= 8% of usable width; a 0-5% vs 8-18% alternation should still clear this).
+- [ ] C3. `make test-quick` passes (layout tests). Run demo.sh and visually confirm lines use more of the available width.
+
+#### D. Test infrastructure cleanup
+
+- [ ] D1. The `test_quality_thresholds.py` flaky test upper bound was removed in this session. Verify it stays stable across 5 runs of `make test`.
+- [ ] D2. Clean up `tests/medium/diagnostic_results.json` if it's checked in (it's in .gitignore but the diff shows it's tracked). Remove from git tracking if so.
 
 ### Context
 
@@ -71,6 +81,8 @@ The regression test (test_quality_regression.py) separately asserts `ocr_min >= 
 **Why not tackle the "a"/"or" problem directly?** All 6 words scoring OCR < 0.5 in the demo are 1-3 chars: "a", "on", "by", "too", "for", "was". DiffusionPen was trained on words >= 4 chars (IAM filter). The OCR rejection loop (threshold 0.4, 2 retries) already does what it can; the model simply cannot produce readable 1-2 character words reliably. A glyph library or letter-fragment compositing would be a significant feature addition for a future spec.
 
 **Why not more candidates for composition quality?** Profiling showed 3 candidates per word costs ~2.6s with marginal quality improvement over 1 candidate. The quality preset (50 steps, 3 candidates) did not improve the 3/5 human rating over fast preset. The bottleneck is DiffusionPen's per-word generation fidelity, not candidate count.
+
+**Why fix ragged right now?** The 28-42% shortening was introduced to pass the layout_regularity B1 metric (right-edge std >= 8%). It over-corrected: the test passes, but the visual result is worse than uniform lines because a third of each short line is wasted space. "Birchwood" fits on the "Thursday" line with room to spare. Reducing to 8-18% keeps the ragged effect without the waste.
 
 **Interaction with existing code.** font_scale.py re-exports `compute_ink_height` which harmonize.py imports. After the change, harmonize.py should import `compute_x_height` directly from ink_metrics.py. The font_scale re-export can remain for any other callers. The pipeline order (font_scale then harmonize) is unchanged.
 
@@ -84,4 +96,4 @@ The regression test (test_quality_regression.py) separately asserts `ocr_min >= 
 
 *Prior spec (2026-04-02): Human-in-the-loop quality evaluation (25 criteria). Infrastructure built, first feedback loop completed.*
 
-<!-- SPEC_META: {"date":"2026-04-04","title":"Height consistency and score accuracy","criteria_total":11,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-04","title":"Height consistency and score accuracy","criteria_total":14,"criteria_met":0} -->
