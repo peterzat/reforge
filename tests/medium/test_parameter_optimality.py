@@ -21,7 +21,6 @@ import pytest
 import torch
 
 from reforge.config import (
-    DEFAULT_GUIDANCE_SCALE,
     PRESET_DRAFT,
     PRESET_FAST,
     PRESET_QUALITY,
