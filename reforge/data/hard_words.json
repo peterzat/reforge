@@ -164,6 +164,18 @@
       "source": "ocr_rejection",
       "timestamp": "2026-04-03T01:11:47",
       "ocr_accuracy": 0.2
+    },
+    {
+      "word": "drops",
+      "source": "ocr_rejection",
+      "timestamp": "2026-04-09T03:58:12",
+      "ocr_accuracy": 0.3846
+    },
+    {
+      "word": "sun",
+      "source": "ocr_rejection",
+      "timestamp": "2026-04-09T04:09:57",
+      "ocr_accuracy": 0.3333
     }
   ]
 }

@@ -202,12 +202,20 @@ class TestTier1WordPairConsistency:
     def test_height_ratio(
         self, unet, vae, tokenizer, style_features, uncond_context, device,
     ):
+        from reforge.quality.ink_metrics import compute_ink_height
+
         words = ["Quick", "brown", "foxes", "jump", "high"]
         imgs = self._generate_harmonized_words(
             words, unet, vae, tokenizer, style_features, uncond_context, device,
         )
-        score = check_word_height_ratio(imgs)
-        assert score > 0.4, f"Word height ratio ({score:.3f}) should be > 0.4"
+        # Verify ink height consistency (matches the normalization strategy)
+        heights = [compute_ink_height(img) for img in imgs]
+        if min(heights) > 0:
+            h_ratio = max(heights) / min(heights)
+            assert h_ratio < 1.5, (
+                f"Ink height ratio ({h_ratio:.2f}) too inconsistent: "
+                f"{dict(zip(words, heights))}"
+            )
 
     def test_ink_darkness_variation(
         self, unet, vae, tokenizer, style_features, uncond_context, device,

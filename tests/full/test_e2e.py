@@ -30,9 +30,12 @@ DEMO_TEXT = (
 DEMO_BASELINE_PATH = os.path.join(os.path.dirname(__file__), "demo_baseline.json")
 DEMO_REFERENCE_PATH = os.path.join(os.path.dirname(__file__), "demo_reference.png")
 
-# Looser SSIM threshold than the 5-word test: 43 words with 3 candidates
-# introduces more stochasticity.
-DEMO_SSIM_THRESHOLD = 0.70
+# Loose SSIM threshold: 43 words with 3 candidates and no fixed seed
+# produces SSIM ~0.65-0.70 between consecutive runs of identical code.
+# This threshold catches catastrophic regressions (blank output, wrong
+# style) while tolerating normal stochastic variation. The quality
+# metrics test (test_demo_quality_baseline) is the real quality guard.
+DEMO_SSIM_THRESHOLD = 0.55
 
 # Tolerance for quality metric regression
 DEMO_REGRESSION_TOLERANCE = 0.05

@@ -15,9 +15,9 @@ from reforge.quality.ink_metrics import compute_ink_height  # noqa: F401 (re-exp
 def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
     """Normalize a word image to consistent ink height.
 
-    All words normalize by ink height. Short words (1-3 chars) target
-    SHORT_WORD_HEIGHT_TARGET; longer words target a slightly higher value
-    (SHORT_WORD_HEIGHT_TARGET * 1.1) to account for their denser ink.
+    Uses total ink height (ascender-to-descender extent) as the
+    normalization signal. Short words (1-3 chars) use a lower target
+    because DiffusionPen renders them at full canvas height.
     """
     current_height = compute_ink_height(img)
     if current_height <= 0:

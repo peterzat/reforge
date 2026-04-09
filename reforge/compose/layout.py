@@ -144,7 +144,7 @@ def compute_word_positions(
 
     Natural layout variations (seeded for reproducibility):
     - Per-word spacing jitter (+/- 4px)
-    - Per-line ragged right margin (5-20% shorter, adjacent lines differ by 3%+)
+    - Per-line ragged right margin (0-18% shorter, alternating full/short)
     - Per-line starting x jitter (+/- 2px)
 
     Args:
@@ -158,16 +158,15 @@ def compute_word_positions(
     rng = np.random.RandomState(layout_seed)
 
     # B1-B2: Pre-compute per-line ragged right shortening.
-    # Alternating pattern with wide gap (0-5% vs 28-42%) ensures that
-    # adjacent lines differ by at least one word width (~100px), which
-    # produces the 8%+ right-edge std required by B1.
+    # Alternating pattern (0-5% vs 8-18%) produces natural right-edge
+    # variation without wasting a third of each short line.
     max_lines = max(10, len([i for i in word_images if i is not None]) // 2 + 5)
     line_shorten = np.empty(max_lines)
     for j in range(max_lines):
         if j % 2 == 0:
             line_shorten[j] = rng.uniform(0.00, 0.05)   # full lines
         else:
-            line_shorten[j] = rng.uniform(0.28, 0.42)    # short lines
+            line_shorten[j] = rng.uniform(0.08, 0.18)    # short lines
     # Swap some pairs to break strict alternation
     for j in range(0, max_lines - 1, 4):
         if rng.random() < 0.3 and j + 1 < max_lines:

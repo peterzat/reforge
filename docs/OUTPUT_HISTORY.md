@@ -7,6 +7,45 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260409-041732
+
+![output](output-history/20260409-041732.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `485f4db (uncommitted changes)` |
+| Commit message | Spec: add ragged right margin fix (lines waste 28-42% of width) |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.793, composition_score=0.352, stroke_weight_consistency=0.916, word_height_ratio=1.000, ocr_accuracy=0.900, style_fidelity=0.358, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
+## 20260404-021856
+
+![output](output-history/20260404-021856.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `485f4db (uncommitted changes)` |
+| Commit message | Spec: add ragged right margin fix (lines waste 28-42% of width) |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.868, composition_score=0.895, stroke_weight_consistency=0.922, word_height_ratio=0.926, ocr_accuracy=0.927, style_fidelity=0.359, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
+## 20260404-021111
+
+![output](output-history/20260404-021111.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `485f4db (uncommitted changes)` |
+| Commit message | Spec: add ragged right margin fix (lines waste 28-42% of width) |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.868, composition_score=0.895, stroke_weight_consistency=0.922, word_height_ratio=0.926, ocr_accuracy=0.927, style_fidelity=0.359, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
 ## 20260404-004824
 
 ![output](output-history/20260404-004824.png)

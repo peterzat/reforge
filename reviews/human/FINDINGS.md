@@ -150,14 +150,25 @@ CLAUDE.md section where they were added.
 ### Word sizing is adequate but not great
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json
 - **Principle:** Short/medium/long word sizing ("I", "quick", "something")
   rated 3/5. The height normalization produces acceptable but not natural
-  relative sizes.
-- **Evidence:** Human rated 3/5 with no specific complaints.
+  relative sizes. X-height normalization was attempted (A2/A3 in spec
+  2026-04-04) but made sizing worse (2/5): words with ascenders/descenders
+  scaled to pathological total heights while all-body words stayed small.
+  Reverted to ink-height normalization, which restored 3/5.
+- **Evidence:** Review 1: 3/5, no specific complaints. Review 2 (x-height):
+  2/5, "Capital I is way too small, smaller than lowercase q." Review 3
+  (ink-height reverted): 3/5, "'something' noticeably smaller, uppercase I
+  could be larger, q descender appears cut off."
 - **Applies to:** reforge/quality/font_scale.py, reforge/config.py
   (HEIGHT_OUTLIER_THRESHOLD, SHORT_WORD_HEIGHT_TARGET)
-- **Code changes:** None yet. Lower priority than spacing and stitching.
+- **Code changes:** X-height normalization attempted and reverted. The
+  fundamental issue: compute_x_height (50% peak density body zone) is
+  unreliable across diverse word shapes. Words with tall ascenders get
+  blown up, all-body words stay small. Ink-height normalization is the
+  correct approach; remaining sizing issues are per-word generation
+  variance from DiffusionPen.
 
 ### Composition has persistent illegibility at fast preset
 
@@ -172,7 +183,9 @@ CLAUDE.md section where they were added.
   Review 4 (quality preset, 2026-04-03_162051): 3/5, "punctuation is quite bad,
   some words still illegible (breakfast)." Review 5 (2026-04-04, post gray-box
   and x-height fixes): 3/5, defects: size_inconsistent, ink_weight_uneven,
-  "many illegible words." Rating holds at 3/5 across 3 consecutive reviews.
+  "many illegible words." Review 6 (2026-04-09, x-height reverted): 3/5,
+  "letters malformed in several words." Rating holds at 3/5 across 4
+  consecutive reviews.
 - **Applies to:** reforge/model/generator.py (long word quality),
   reforge/config.py (PRESET_FAST candidates)
 - **Code changes:** Spacing fix improved rating 2/5->3/5. Gray box cluster

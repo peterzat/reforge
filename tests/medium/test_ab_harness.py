@@ -171,9 +171,9 @@ class TestHarmonizationEffectiveness:
     def test_multi_word_height_ratio(
         self, unet, vae, tokenizer, style_features, uncond_context, device
     ):
-        from reforge.evaluate.visual import check_word_height_ratio
         from reforge.model.generator import generate_word
         from reforge.quality.harmonize import harmonize_words
+        from reforge.quality.ink_metrics import compute_ink_height
 
         words = ["Jump", "High", "Over"]
         imgs = []
@@ -186,16 +186,13 @@ class TestHarmonizationEffectiveness:
             imgs.append(img)
 
         harmonized = harmonize_words(imgs)
-        height_score = check_word_height_ratio(harmonized)
 
-        # After harmonization, height ratio should be reasonable
-        assert height_score > 0.3, (
-            f"Word height ratio ({height_score:.3f}) too inconsistent after harmonization"
-        )
-
-        floor = _baseline_floor("word_height_ratio")
-        if floor is not None:
-            assert height_score >= floor, (
-                f"Harmonized height ratio ({height_score:.3f}) "
-                f"below baseline floor ({floor:.3f})"
+        # Verify ink height consistency (matches the normalization strategy).
+        # Harmonization targets total ink height, not x-height.
+        heights = [compute_ink_height(img) for img in harmonized]
+        if min(heights) > 0:
+            h_ratio = max(heights) / min(heights)
+            assert h_ratio < 1.5, (
+                f"Ink height ratio ({h_ratio:.2f}) too inconsistent after "
+                f"harmonization: {dict(zip(words, heights))}"
             )

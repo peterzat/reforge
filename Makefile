@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-medium test-full test-regression test-ocr test-hard test-human setup-hooks review
+.PHONY: test test-quick test-medium test-full test-regression test-ocr test-hard test-human test-tuning setup-hooks review
 
 test-quick:
 	.venv/bin/python -m pytest tests/quick/ -x -q
@@ -46,6 +46,9 @@ review:
 
 test-hard:
 	.venv/bin/python -m pytest tests/medium/test_hard_words.py -x -s
+
+test-tuning:
+	.venv/bin/python -m pytest tests/medium/test_parameter_optimality.py -x -s
 
 test-human:
 	@mkdir -p reviews/human/images

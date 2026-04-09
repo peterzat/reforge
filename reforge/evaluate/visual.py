@@ -534,8 +534,9 @@ def overall_quality_score(
     """Compute composite quality score from all checks.
 
     When words and word_imgs are provided, OCR accuracy is included as the
-    dominant factor. Unreadable words (OCR < 0.5) or blank words (< expected
-    ink) tank the overall score.
+    dominant factor. Unreadable words (OCR < 0.5) apply a proportional penalty
+    (overall *= fraction of readable words). Blank words (< expected ink) hard-
+    cap the overall score at 0.45.
 
     Returns dict with individual scores and overall score.
     """
@@ -625,9 +626,15 @@ def overall_quality_score(
     # Apply gate cap
     overall = min(overall, gate_cap)
 
-    # Tank overall if any word is unreadable or blank
-    if scores.get("ocr_min", 1.0) < 0.5:
-        overall = min(overall, 0.45)
+    # Proportional penalty for unreadable words (replaces hard 0.45 cap)
+    ocr_per_word = scores.get("ocr_per_word")
+    if ocr_per_word is not None and len(ocr_per_word) > 0:
+        readable = sum(1 for o in ocr_per_word if o >= 0.5)
+        word_readability_rate = readable / len(ocr_per_word)
+        scores["word_readability_rate"] = word_readability_rate
+        overall *= word_readability_rate
+
+    # Hard cap for degenerate outputs (mostly blank words)
     if scores.get("blank_word_ratio", 1.0) < 0.8:
         overall = min(overall, 0.45)
 

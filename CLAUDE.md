@@ -79,6 +79,7 @@ python experiments/ab_harness.py --style styles/hw-sample.png --experiment combi
 | Full validation | `make test` | ~2 min | After completing a fix or feature |
 | Pre-commit gate | `make test-full` | ~4.5 min | Before committing (includes demo.sh visual output) |
 | Hard words | `make test-hard` | ~30s | After generation or postprocessing changes |
+| Tuning | `make test-tuning` | ~55s | After changing preset values or generation defaults |
 | Human review | `make test-human` | ~3 min | After quality-affecting changes (advisory, not gating) |
 
 ### Git hook gating strategy
