@@ -33,19 +33,6 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
-## 20260404-021111
-
-![output](output-history/20260404-021111.png)
-
-| Field | Value |
-|-------|-------|
-| Git state | `485f4db (uncommitted changes)` |
-| Commit message | Spec: add ragged right margin fix (lines waste 28-42% of width) |
-| Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.868, composition_score=0.895, stroke_weight_consistency=0.922, word_height_ratio=0.926, ocr_accuracy=0.927, style_fidelity=0.359, ink_contrast=1.000, background_cleanliness=1.000 |
-
----
-
 ## 20260404-004824
 
 ![output](output-history/20260404-004824.png)
