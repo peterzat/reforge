@@ -161,3 +161,49 @@ class TestComposeWordsBaselineAlignment:
         img = compose_words(words_img, words, upscale_factor=1)
         assert img.mode == "L"
         assert img.height > 0
+
+
+@pytest.mark.quick
+class TestBaselineNormalization:
+    """Compliance tests for median-based cross-word baseline normalization."""
+
+    def test_outlier_baseline_clamped(self):
+        """A word with a wildly different baseline is clamped to line median."""
+        from reforge.compose.render import compose_words
+
+        # Normal words: ink in middle (baseline ~row 20)
+        normal = _ink_word(60, 30)
+
+        # Outlier word: ink shifted to bottom (baseline ~row 27)
+        outlier = np.full((30, 60), 255, dtype=np.uint8)
+        outlier[22:28, 5:55] = 40  # ink near bottom
+
+        imgs = [normal, normal.copy(), outlier]
+        words = ["one", "two", "three"]
+
+        # Should compose without the outlier pulling the whole line down
+        img, positions = compose_words(
+            imgs, words, page_width=400, upscale_factor=1, return_positions=True,
+        )
+        # All words on the same line
+        assert all(p["line"] == 0 for p in positions)
+        # The outlier should NOT be placed much lower than the normal words
+        y_values = [p["y"] for p in positions]
+        y_spread = max(y_values) - min(y_values)
+        # With median baseline, spread should be small (< 10px)
+        assert y_spread < 10, f"Y spread {y_spread} too large; outlier not clamped"
+
+    def test_consistent_words_same_baseline(self):
+        """Words with similar baselines should align closely."""
+        from reforge.compose.render import compose_words
+
+        imgs = [_ink_word(60, 30) for _ in range(4)]
+        words = ["one", "two", "three", "four"]
+
+        _, positions = compose_words(
+            imgs, words, page_width=400, upscale_factor=1, return_positions=True,
+        )
+        y_values = [p["y"] for p in positions]
+        y_spread = max(y_values) - min(y_values)
+        # Consistent words: spread should be minimal (jitter only, +/- 1px)
+        assert y_spread <= 2

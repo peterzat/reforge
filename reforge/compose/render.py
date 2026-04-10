@@ -130,18 +130,30 @@ def compose_words(
             lines[line_num] = []
         lines[line_num].append(pos)
 
-    # Ruled-line model (F1): for each line, the ruled baseline is the
-    # position where non-descending words place their ink bottom, and
-    # descending words place their body bottom (baseline row).
-    # Compute ruled line = max baseline offset across the line.
+    # Ruled-line model (F1): for each line, the ruled baseline is computed
+    # from the median of per-word baselines. Using median instead of max
+    # makes baseline robust to individual words with bad detection (e.g.
+    # descender-heavy words where the density scan misfires). Outlier
+    # baselines (> 20% from median) are clamped to the median.
     line_baselines = {}
     for line_num, line_positions in lines.items():
-        max_baseline = 0
+        word_baselines = []
         for pos in line_positions:
             idx = pos["word_idx"]
             if idx in baselines:
-                max_baseline = max(max_baseline, baselines[idx])
-        line_baselines[line_num] = max_baseline
+                word_baselines.append(baselines[idx])
+        if not word_baselines:
+            line_baselines[line_num] = 0
+            continue
+        median_bl = int(np.median(word_baselines))
+        # Clamp outliers: snap baselines > 20% from median to the median
+        for pos in line_positions:
+            idx = pos["word_idx"]
+            if idx in baselines:
+                deviation = abs(baselines[idx] - median_bl)
+                if median_bl > 0 and deviation / median_bl > 0.20:
+                    baselines[idx] = median_bl
+        line_baselines[line_num] = median_bl
 
     # Pre-compute y-offsets using ruled-line model (F1) + micro-jitter (F3)
     jitter_rng = np.random.RandomState(42)
