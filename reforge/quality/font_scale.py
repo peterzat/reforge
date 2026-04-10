@@ -1,10 +1,8 @@
-"""Length-aware and case-aware font normalization.
+"""Length-aware font normalization.
 
-Unified height-based strategy with case-aware adjustments. All-caps and
-single-capital words use a lower target because DiffusionPen renders them
-at full canvas height, making them visually oversized compared to lowercase
-words. In real handwriting, cap height is roughly 70% of total ink height
-when descenders are present.
+Unified height-based strategy: all words normalize ink height toward a
+consistent target. Short words (1-3 chars) use a lower target because
+DiffusionPen renders them at full canvas height, producing oversized glyphs.
 """
 
 import cv2
@@ -13,46 +11,27 @@ import numpy as np
 from reforge.config import SHORT_WORD_HEIGHT_TARGET
 from reforge.quality.ink_metrics import compute_ink_height  # noqa: F401 (re-exported)
 
-# Cap height ratio: in natural handwriting, uppercase letters are roughly
-# this fraction of the total ink height of words with ascenders/descenders.
-# Human feedback: "lowercase body should be roughly 1/2 the size of capital I."
-# Cap height ~= 1.3x x-height, total ink height ~= 1.8x x-height (with
-# descenders), so cap height / total ~= 0.72.
-CAP_HEIGHT_RATIO = 0.72
-
-
-def _is_all_caps(word: str) -> bool:
-    """Check if a word is all uppercase letters (ignoring punctuation)."""
-    alpha_chars = [c for c in word if c.isalpha()]
-    return len(alpha_chars) > 0 and all(c.isupper() for c in alpha_chars)
-
 
 def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
     """Normalize a word image to consistent ink height.
 
-    Case-aware: all-caps words (including single capital letters like "I")
-    use a lower target height so they don't tower over lowercase words.
-    In real handwriting, cap height is shorter than the full extent of
-    lowercase words with ascenders and descenders.
+    Uses total ink height (ascender-to-descender extent) as the
+    normalization signal. Short words (1-3 chars) use a lower target
+    because DiffusionPen renders them at full canvas height.
     """
     current_height = compute_ink_height(img)
     if current_height <= 0:
         return img
 
-    word_stripped = word.strip()
-    word_len = len(word_stripped)
+    word_len = len(word.strip())
 
-    # Base target: standard height for most words
-    base_target = int(SHORT_WORD_HEIGHT_TARGET * 1.08)
-
-    if word_len <= 2 and not _is_all_caps(word_stripped):
+    if word_len <= 2:
         target_height = SHORT_WORD_HEIGHT_TARGET
-    elif _is_all_caps(word_stripped):
-        # All-caps words: scale down to cap height ratio of the base target.
-        # This prevents "I", "A", "THE" from towering over lowercase words.
-        target_height = int(base_target * CAP_HEIGHT_RATIO)
     else:
-        target_height = base_target
+        # All words 3+ chars get the same target for consistency.
+        # The old split at 3 chars created an 8% jump between "the" (26px)
+        # and "quick" (28px) that humans perceived as size inconsistency.
+        target_height = int(SHORT_WORD_HEIGHT_TARGET * 1.08)
 
     scale = target_height / current_height
 
