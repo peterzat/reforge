@@ -41,10 +41,13 @@ def compute_mean_stroke_width(img: np.ndarray) -> float:
 
 
 def harmonize_stroke_width(word_images: list[np.ndarray]) -> list[np.ndarray]:
-    """Normalize stroke widths across words using morphological operations (B2).
+    """Normalize stroke widths across words using blended morphological operations.
 
-    Only applies when stroke width variation is material (std > 15% of mean).
-    Uses single-pixel erosion/dilation to converge toward the median width.
+    Per-word correction: each word more than 15% from the median stroke width
+    gets a partial erosion (too thick) or dilation (too thin). Instead of
+    hard pixel removal, the morphed image is alpha-blended with the original
+    proportional to the deviation. This avoids destroying thin letterforms
+    while still converging stroke widths.
     """
     if len(word_images) < 2:
         return word_images
@@ -54,40 +57,39 @@ def harmonize_stroke_width(word_images: list[np.ndarray]) -> list[np.ndarray]:
     if len(valid_widths) < 2:
         return word_images
 
-    mean_w = float(np.mean(valid_widths))
-    std_w = float(np.std(valid_widths))
-
-    # Only normalize if variation is material (B2 threshold)
-    if mean_w <= 0 or std_w / mean_w <= 0.15:
+    median_w = float(np.median(valid_widths))
+    if median_w <= 0:
         return word_images
 
-    median_w = float(np.median(valid_widths))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
 
     result = []
     for img, w in zip(word_images, widths):
-        if w <= 0 or abs(w - median_w) < 0.3:
+        deviation = abs(w - median_w) / median_w
+        if w <= 0 or deviation < 0.15:
             result.append(img)
             continue
 
-        adjusted = img.copy()
+        # Blend factor: 0 at 15% deviation, capped at 0.7 for large deviations.
+        # Partial blending preserves letterform detail.
+        alpha = min(0.7, (deviation - 0.15) / 0.35)
+
+        morphed = img.copy()
         if w > median_w * 1.15:
-            # Stroke too thick: erode ink (make background pixels eat into ink)
-            ink_mask = (adjusted < 180).astype(np.uint8) * 255
+            ink_mask = (morphed < 180).astype(np.uint8) * 255
             eroded = cv2.erode(ink_mask, kernel, iterations=1)
-            # Where ink was removed, set to white
             removed = (ink_mask > 0) & (eroded == 0)
-            adjusted[removed] = 255
+            morphed[removed] = 255
         elif w < median_w * 0.85:
-            # Stroke too thin: dilate ink
-            ink_mask = (adjusted < 180).astype(np.uint8) * 255
+            ink_mask = (morphed < 180).astype(np.uint8) * 255
             dilated = cv2.dilate(ink_mask, kernel, iterations=1)
-            # Where ink was added, use the median ink brightness of this word
             added = (dilated > 0) & (ink_mask == 0)
             ink_brightness = compute_ink_median(img)
-            adjusted[added] = int(np.clip(ink_brightness, 0, 179))
+            morphed[added] = int(np.clip(ink_brightness, 0, 179))
 
-        result.append(adjusted)
+        # Blend: partial application of the morphological change
+        blended = (img.astype(np.float32) * (1 - alpha) + morphed.astype(np.float32) * alpha)
+        result.append(np.clip(blended, 0, 255).astype(np.uint8))
 
     return result
 

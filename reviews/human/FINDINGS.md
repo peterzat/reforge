@@ -7,10 +7,10 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 4 |
+| Active | 7 |
 | In Progress | 1 |
-| Resolved | 2 |
-| Acceptable | 1 |
+| Resolved | 1 |
+| Acceptable | 0 |
 | Graduated | 0 |
 
 ## How this file works
@@ -59,62 +59,67 @@ CLAUDE.md section where they were added.
 
 ### Chunk stitching produces visible height mismatch, not seam artifacts
 
-- **Status:** Resolved
-- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json
+- **Status:** Active
+- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json
 - **Principle:** The stitching problem is not visible seams at the overlap boundary.
   The problem is that chunks render at different heights, making them look like two
   separate words ("under" "standing") rather than one. Varying STITCH_OVERLAP_PX
   makes no visible difference because the overlap blending works fine; the height
   normalization before stitching does not.
-- **Evidence:** Human could not pick a preferred overlap ("They all look the same,
-  and they're all terrible"). Described the issue as height mismatch, not seam.
+- **Evidence:** Review 1: Human could not pick a preferred overlap ("They all look
+  the same, and they're all terrible"). Described the issue as height mismatch.
+  Review 2 (2026-04-04): composition improved to 3/5 after x-height normalization.
+  Review 3 (2026-04-09): 4px preferred, but "standing is way higher than unders,
+  it looks like superscript." Height mismatch persists despite x-height fix.
 - **Applies to:** reforge/model/generator.py (stitch_chunks height normalization)
 - **Code changes:** (1) Replaced bounding-box height normalization with ink-height
-  alignment. Each chunk's ink region is measured and scaled to match median ink
-  height, then chunks are baseline-aligned by ink bottom. (2) Added horizontal
-  tight-crop of each chunk before stitching to eliminate whitespace gap.
-  (3) Replaced total-ink-height normalization with x-height normalization:
-  compute_x_height() measures the body zone (rows >= 50% peak density), excluding
-  ascenders and descenders. Chunks are scaled so body heights match, preventing
-  "under" (tall ascenders) and "standing" (short body) from looking mismatched.
-- **Resolution:** Composition at 3/5 (2026-04-04 review), chunked words
-  ("everything", "understand", "impossible") show improved OCR accuracy. X-height
-  normalization addresses the specific "tanding is visibly smaller" complaint.
+  alignment. (2) Added horizontal tight-crop. (3) X-height normalization. These
+  improved but did not solve the problem. The height mismatch recurred without
+  code changes, indicating chunk height normalization is fragile under generation
+  variance. Reopened from Resolved status.
 
 ### Quality score disagrees with human candidate preference
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json
 - **Principle:** Human picked candidate B for "garden" but disagreed with the
   quality_score metric's pick. This suggests the scoring weights
   (background 0.20, ink_density 0.15, edge_sharpness 0.15, height 0.25,
   contrast 0.25) do not match human perception of "good handwriting."
-- **Evidence:** Human selected B, marked "Agree with quality score pick?" = false.
+- **Evidence:** Review 1: Human selected B, marked "Agree with quality score
+  pick?" = false. Review 2 (2026-04-09): Human picked C, noted "C by far
+  better than E, second closest is A." Again disagrees with metric pick.
+  Two consecutive reviews where human and metric disagree.
 - **Applies to:** reforge/quality/score.py (QUALITY_WEIGHTS)
-- **Code changes:** None yet. Needs more reviews to identify which dimension
-  the metric overweights or underweights.
+- **Code changes:** None yet. Needs investigation into which dimension
+  the metric overweights or underweights. Two data points now confirm
+  systematic disagreement.
 
-### Ink weight harmonization has no visible effect
+### Ink weight inconsistency across words
 
-- **Status:** Acceptable
-- **Reviews:** 2026-04-03_021330.json
-- **Principle:** Comparing STROKE_WEIGHT_SHIFT_STRENGTH 0.92 vs 0.70 produced
-  no visible difference to the human reviewer. Both variants had "equally
-  inconsistent ink weight." The harmonization may be operating on the wrong
-  signal (ink brightness median) rather than what humans perceive as
-  weight inconsistency (stroke width, density).
-- **Evidence:** Human could not pick a preferred variant, noted "no difference."
-  Composition review (2026-04-04) still flags ink_weight_uneven, but this is
-  a DiffusionPen generation property, not addressable through post-hoc
-  harmonization.
+- **Status:** Active
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json
+- **Principle:** Adjacent words have visibly different stroke weight. The
+  current harmonization (shifting ink brightness median) has no visible
+  effect, meaning it operates on the wrong signal. Humans perceive weight
+  as stroke width and density, not brightness. This is flagged as a
+  composition defect (ink_weight_uneven) in every review with defect flags.
+- **Evidence:** Review 1: comparing STROKE_WEIGHT_SHIFT_STRENGTH 0.92 vs
+  0.70 produced "no difference," both "equally inconsistent." Review 2
+  (2026-04-09): preferred A, "possibly identical. jump high has noticeably
+  greater ink weight in both versions." Composition defect ink_weight_uneven
+  flagged in reviews 2026-04-04 and 2026-04-09.
 - **Applies to:** reforge/quality/harmonize.py (harmonize_stroke_weight)
-- **Code changes:** None. Current harmonization has no visible impact; further
-  tuning would be effort without human-perceptible benefit.
+- **Code changes:** None effective yet. Current brightness-median approach
+  does not address the problem. Needs a fundamentally different strategy:
+  morphological stroke width estimation, erosion/dilation normalization,
+  or generation-time control (e.g., rejecting candidates with outlier
+  stroke weight).
 
 ### Hard words show gray box artifacts
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-04_010317.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json
 - **Principle:** Gray box artifacts appear on hard words at the fast preset.
   The 5-layer gray box defense works for typical words but fails on short
   and punctuated words. can't, than, and impossible were flagged unreadable
@@ -125,8 +130,12 @@ CLAUDE.md section where they were added.
   Review 3 (2026-04-04, post-fix): 2/5, impossible and book flagged
   unreadable, "lots of gray boxes throughout." Cluster filter fix preserved
   punctuated word fragments (can't, it's), but human noted "'t' in can't
-  has a weird tail." Remaining gray boxes are from DiffusionPen generation
-  quality, not postprocessing failures.
+  has a weird tail."
+  Review 4 (2026-04-09): 3/5, "an" and "don't" flagged unreadable. Gray
+  boxes still present. "don't" technically readable but apostrophe and "t"
+  look zoomed-in/badly cropped. "book" readable but "k" looks like two
+  letters. Improvement from 2/5 to 3/5 without code changes suggests
+  generation variance, not a systematic fix.
 - **Applies to:** reforge/model/generator.py (postprocess_word defense layers),
   reforge/config.py (gray box thresholds)
 - **Code changes:** (1) Fixed isolated_cluster_filter to preserve word fragments
@@ -136,63 +145,75 @@ CLAUDE.md section where they were added.
   but human still sees gray artifacts from DiffusionPen's inherent generation
   quality on short/hard words.
 
-### Baseline alignment is acceptable
+### Baseline alignment regressed
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json
-- **Principle:** Baseline alignment with descender words (jumping, quickly,
-  beyond, gray, fences) rated 4/5. The ruled-line model and descender
-  detection are working adequately for typical phrases.
-- **Evidence:** Human rated 4/5 with no notes. No defects flagged.
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json
+- **Principle:** Baseline alignment showed a significant regression from 4/5
+  to 2/5 with no pipeline code changes between reviews. The "g" in
+  "jumping" looks mangled, and "gray" sits much higher than surrounding
+  words. Short words ("by", "for") also drift vertically in composition.
+  This suggests baseline detection is sensitive to per-word generation
+  variance, particularly for descender words.
+- **Evidence:** Review 1: 4/5, no complaints. Review 2 (2026-04-09): 2/5,
+  "j in jumping looks perfect, but g in jumping looks a bit mangled. gray
+  sits much higher than previous words." Composition review confirms:
+  "by is higher than it should be, morning too high, being and for too low."
+  CV baseline_alignment metric: 0.576 (low).
 - **Applies to:** reforge/compose/layout.py, reforge/compose/render.py
-- **Code changes:** None needed. This is a positive signal.
+- **Code changes:** None between reviews. The regression without code changes
+  indicates baseline detection is fragile under generation variance. The
+  descender detection algorithm may need robustness improvements, or
+  composition needs a cross-word baseline normalization pass.
 
-### Word sizing is adequate but not great
+### Word sizing is inconsistent
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json, 2026-04-09_220812.json
 - **Principle:** Short/medium/long word sizing ("I", "quick", "something")
-  rated 3/5. The height normalization produces acceptable but not natural
-  relative sizes. X-height normalization was attempted (A2/A3 in spec
-  2026-04-04) but made sizing worse (2/5): words with ascenders/descenders
-  scaled to pathological total heights while all-body words stayed small.
-  Reverted to ink-height normalization, which restored 3/5.
+  has fluctuated between 2/5 and 3/5 across reviews. The height
+  normalization produces inconsistent relative sizes: "something" renders
+  much smaller than "quick", and single-char words ("I") are too short.
+  X-height normalization was attempted and reverted. Ink-height
+  normalization is better but not sufficient.
 - **Evidence:** Review 1: 3/5, no specific complaints. Review 2 (x-height):
   2/5, "Capital I is way too small, smaller than lowercase q." Review 3
   (ink-height reverted): 3/5, "'something' noticeably smaller, uppercase I
-  could be larger, q descender appears cut off."
+  could be larger, q descender appears cut off." Review 4 (2026-04-09):
+  2/5, "I is a bit short, something looks much smaller than quick."
+  Sizing regression to 2/5 without code changes suggests font_scale is
+  sensitive to generation variance.
 - **Applies to:** reforge/quality/font_scale.py, reforge/config.py
   (HEIGHT_OUTLIER_THRESHOLD, SHORT_WORD_HEIGHT_TARGET)
 - **Code changes:** X-height normalization attempted and reverted. The
   fundamental issue: compute_x_height (50% peak density body zone) is
-  unreliable across diverse word shapes. Words with tall ascenders get
-  blown up, all-body words stay small. Ink-height normalization is the
-  correct approach; remaining sizing issues are per-word generation
-  variance from DiffusionPen.
+  unreliable across diverse word shapes. Ink-height normalization is the
+  correct approach but may need tighter outlier clamping or a different
+  height target for multi-char words like "something" that generate small.
 
-### Composition has persistent illegibility at fast preset
+### Composition quality is unstable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json
-- **Principle:** Full composition output at the fast preset has illegible words.
-  After spacing fix, rating improved from 2/5 to 3/5 and spacing_loose is no
-  longer the dominant complaint. Remaining issues: specific words like
-  "croissants" are unreadable, likely due to word length and chunking.
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json
+- **Principle:** Full composition output quality fluctuates between 2/5 and 3/5
+  across reviews. The dominant complaints have shifted from spacing (fixed) to
+  baseline drift and size inconsistency. Short words ("by", "for") drift
+  vertically, and per-word generation variance produces malformed letters.
 - **Evidence:** Reviews 1-2: 4 defect flags, "illegible." Review 3 (post-fix):
-  3/5, "words like croissants still look horrible, but this is improved."
-  Review 4 (quality preset, 2026-04-03_162051): 3/5, "punctuation is quite bad,
-  some words still illegible (breakfast)." Review 5 (2026-04-04, post gray-box
-  and x-height fixes): 3/5, defects: size_inconsistent, ink_weight_uneven,
-  "many illegible words." Review 6 (2026-04-09, x-height reverted): 3/5,
-  "letters malformed in several words." Rating holds at 3/5 across 4
-  consecutive reviews.
-- **Applies to:** reforge/model/generator.py (long word quality),
-  reforge/config.py (PRESET_FAST candidates)
+  3/5, spacing improved. Reviews 4-6: held at 3/5 with various defects.
+  Review 7 (2026-04-09): 2/5, 4 defect flags (size_inconsistent,
+  baseline_drift, ink_weight_uneven, letter_malformed). "baseline possibly
+  regressed, by is higher than it should be, morning too high, being and
+  for too low." This is the first regression below 3/5 since the spacing
+  fix, with no pipeline code changes.
+- **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
+  (sizing), reforge/model/generator.py (per-word quality)
 - **Code changes:** Spacing fix improved rating 2/5->3/5. Gray box cluster
   filter fix preserves punctuated word fragments. OCR threshold raised to 0.4.
   X-height chunk normalization. None of these moved composition past 3/5.
-  The 3/5 ceiling appears to be DiffusionPen's per-word generation quality,
-  not addressable through postprocessing or composition changes.
+  The regression to 2/5 without code changes indicates that baseline detection
+  and sizing normalization are fragile under generation variance, not that
+  the 3/5 ceiling was a hard limit.
 
 ## Graduated Findings
 

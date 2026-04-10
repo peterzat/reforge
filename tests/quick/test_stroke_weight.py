@@ -40,6 +40,97 @@ class TestStrokeWeight:
 
 
 @pytest.mark.quick
+class TestStrokeWidthHarmonization:
+    """Compliance tests for blended morphological stroke width normalization."""
+
+    def test_no_global_gate(self):
+        """Stroke width correction acts per-word, not gated on global variance."""
+        from reforge.quality.harmonize import harmonize_stroke_width
+
+        # One thick outlier among similar words: old global gate (std/mean < 15%)
+        # would skip everything. New code should still adjust the outlier.
+        normal1 = np.full((40, 100), 255, dtype=np.uint8)
+        normal1[10:30, 10:90] = 60
+        normal2 = np.full((40, 100), 255, dtype=np.uint8)
+        normal2[10:30, 10:90] = 60
+
+        # Make a thick-stroked word via dilation
+        import cv2
+        thick = np.full((40, 100), 255, dtype=np.uint8)
+        thick[10:30, 10:90] = 60
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        ink_mask = (thick < 180).astype(np.uint8) * 255
+        dilated = cv2.dilate(ink_mask, kernel, iterations=2)
+        thick[dilated > 0] = 60
+
+        result = harmonize_stroke_width([normal1, normal2, thick])
+
+        # Thick word should be modified (blended toward eroded version)
+        assert not np.array_equal(result[2], thick)
+        # Normal words should be unchanged
+        assert np.array_equal(result[0], normal1)
+
+    def test_blended_not_destructive(self):
+        """Blended erosion preserves most ink pixels, not hard removal."""
+        from reforge.quality.harmonize import harmonize_stroke_width
+
+        import cv2
+
+        # Create a moderately thick word (just above threshold)
+        normal = np.full((40, 100), 255, dtype=np.uint8)
+        normal[10:30, 10:90] = 60
+
+        thick = np.full((40, 100), 255, dtype=np.uint8)
+        thick[10:30, 10:90] = 60
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        ink_mask = (thick < 180).astype(np.uint8) * 255
+        dilated = cv2.dilate(ink_mask, kernel, iterations=1)
+        thick[dilated > 0] = 60
+
+        result = harmonize_stroke_width([normal, normal.copy(), thick])
+        # Blended result should retain most ink (not erase entire edge layer)
+        orig_ink = np.sum(thick < 180)
+        result_ink = np.sum(result[2] < 180)
+        # At least 90% of ink pixels preserved (blend, not hard removal)
+        assert result_ink >= orig_ink * 0.90
+
+    def test_near_median_unchanged(self):
+        """Words within 15% of median stroke width are not modified."""
+        from reforge.quality.harmonize import harmonize_stroke_width
+
+        w1 = np.full((40, 100), 255, dtype=np.uint8)
+        w1[10:30, 10:90] = 60
+        w2 = np.full((40, 100), 255, dtype=np.uint8)
+        w2[10:30, 12:88] = 60  # slightly narrower ink region
+
+        result = harmonize_stroke_width([w1, w2])
+        assert np.array_equal(result[0], w1)
+        assert np.array_equal(result[1], w2)
+
+    def test_thin_words_dilated(self):
+        """Words significantly thinner than median get partially dilated."""
+        from reforge.quality.harmonize import harmonize_stroke_width
+
+        # Normal word: 3px-wide horizontal strokes
+        normal = np.full((40, 100), 255, dtype=np.uint8)
+        normal[14:17, 10:90] = 60  # 3px stroke
+        normal[24:27, 10:90] = 60
+
+        # Thin word: 1px-wide horizontal strokes
+        thin = np.full((40, 100), 255, dtype=np.uint8)
+        thin[15:16, 10:90] = 60  # 1px stroke
+        thin[25:26, 10:90] = 60
+
+        result = harmonize_stroke_width([normal, normal.copy(), thin])
+
+        # Thin word should be modified (blended toward dilated version).
+        # Blended dilation adds partially-dark pixels around thin strokes.
+        assert not np.array_equal(result[2], thin)
+        # Pixels adjacent to ink should now be darker than pure white
+        assert np.mean(result[2]) < np.mean(thin)
+
+
+@pytest.mark.quick
 class TestHeightHarmonization:
     def test_outlier_scaled_down(self):
         """A word >120% median height gets scaled down."""
