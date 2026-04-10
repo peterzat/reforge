@@ -25,11 +25,13 @@ def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
 
     word_len = len(word.strip())
 
-    if word_len <= 3:
+    if word_len <= 2:
         target_height = SHORT_WORD_HEIGHT_TARGET
     else:
-        # Slightly higher target for longer words to account for denser ink
-        target_height = int(SHORT_WORD_HEIGHT_TARGET * 1.1)
+        # All words 3+ chars get the same target for consistency.
+        # The old split at 3 chars created an 8% jump between "the" (26px)
+        # and "quick" (28px) that humans perceived as size inconsistency.
+        target_height = int(SHORT_WORD_HEIGHT_TARGET * 1.08)
 
     scale = target_height / current_height
 
