@@ -8,10 +8,8 @@ Generates words with known descenders and reports:
 
 import numpy as np
 import pytest
-import torch
 
 from reforge.compose.layout import detect_baseline
-from reforge.config import DEFAULT_CANVAS_HEIGHT
 from reforge.model.generator import generate_word, postprocess_word, ddim_sample, compute_canvas_width
 
 

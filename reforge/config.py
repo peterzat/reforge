@@ -45,7 +45,7 @@ PRESETS = {"draft": PRESET_DRAFT, "fast": PRESET_FAST, "quality": PRESET_QUALITY
 VAE_SCALE_FACTOR = 0.18215
 
 # Font normalization
-SHORT_WORD_HEIGHT_TARGET = 26  # pixels, for 1-3 char words
+SHORT_WORD_HEIGHT_TARGET = 26  # pixels, for 1-2 char words
 # A1 lesson: these thresholds must not be tightened beyond 1.10/0.88.
 # Tightening to 1.05/0.93 achieved word_height_ratio 1.00 but distorted
 # letterforms (over-normalization, "The" -> "Tle"). The honest 0.91 at

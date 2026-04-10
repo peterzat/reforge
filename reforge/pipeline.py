@@ -142,9 +142,24 @@ def run(
     _log(f" done ({_fmt_time(time.monotonic() - t0)})", verbose)
 
     # --- Compute reference stroke width from style images ---
+    # Style words must be resized to the 64px DiffusionPen canvas height
+    # (preserving aspect ratio) before measuring stroke width, otherwise the
+    # reference is 3-4x larger than generated candidates and every candidate
+    # scores 0.0 on the stroke-width check.
     from reforge.quality.harmonize import compute_mean_stroke_width
 
-    style_widths = [compute_mean_stroke_width(w) for w in word_imgs_raw]
+    def _resize_to_canvas_height(img: np.ndarray, target_h: int = 64) -> np.ndarray:
+        h, w = img.shape[:2]
+        if h <= 0 or w <= 0:
+            return img
+        scale = target_h / h
+        new_h = max(1, int(h * scale))
+        new_w = max(1, int(w * scale))
+        return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    style_widths = [
+        compute_mean_stroke_width(_resize_to_canvas_height(w)) for w in word_imgs_raw
+    ]
     valid_style_widths = [w for w in style_widths if w > 0]
     reference_stroke_width = float(np.median(valid_style_widths)) if valid_style_widths else 0.0
 
