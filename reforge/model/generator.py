@@ -32,6 +32,7 @@ from reforge.config import (
     MAX_CANVAS_WIDTH,
     MAX_WORD_LENGTH,
     MIN_CHUNK_CHARS,
+    OCR_SELECTION_WEIGHT,
     STITCH_OVERLAP_PX,
     VAE_SCALE_FACTOR,
     WIDTH_MULTIPLE,
@@ -332,6 +333,35 @@ def postprocess_word(img: np.ndarray) -> np.ndarray:
     return img
 
 
+def pad_clipped_descender(img: np.ndarray) -> np.ndarray:
+    """Add bottom padding when descender ink is clipped by the canvas edge.
+
+    The 64px generation canvas clips deep descenders (g, j, p, q, y).
+    When ink reaches within 2px of the canvas bottom, add white padding
+    proportional to the descender depth so the composition stage can
+    place the word correctly.
+    """
+    h = img.shape[0]
+    ink_mask = img < 180
+    if not np.any(ink_mask):
+        return img
+
+    ink_rows = np.any(ink_mask, axis=1)
+    last_ink_row = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
+    first_ink_row = int(np.argmax(ink_rows))
+    ink_height = last_ink_row - first_ink_row + 1
+
+    # Only pad if ink reaches within 2px of canvas bottom
+    if last_ink_row < h - 3:
+        return img
+
+    # Padding proportional to ink height: descenders are typically 20-35%
+    # of body height. Add 25% of ink height, minimum 6px.
+    pad_amount = max(6, int(ink_height * 0.25))
+    padding = np.full((pad_amount, img.shape[1]), 255, dtype=np.uint8)
+    return np.vstack([img, padding])
+
+
 def halo_cleanup(img: np.ndarray) -> np.ndarray:
     """Layer 5: Post-upscale halo cleanup.
 
@@ -458,6 +488,7 @@ def generate_word(
     num_candidates: int = DEFAULT_NUM_CANDIDATES,
     device: str = "cuda",
     style_reference_imgs: list[np.ndarray] | None = None,
+    reference_stroke_width: float = 0.0,
 ) -> np.ndarray:
     """Generate a single word image with best-of-N candidate selection.
 
@@ -472,12 +503,27 @@ def generate_word(
         style_reference_imgs: Raw grayscale style word images for tiebreaking.
             When two candidates have quality scores within 0.05, the one
             with higher style similarity wins.
+        reference_stroke_width: Target stroke width from style images.
+            When > 0, candidate scoring penalizes stroke width deviation.
     """
+    import logging
+
     from reforge.quality.score import quality_score
+
+    log = logging.getLogger("reforge.generator")
 
     chunks = split_long_word(word)
 
-    def _generate_chunk(chunk_text: str) -> np.ndarray:
+    # OCR function: needed for candidate scoring (num_candidates > 1)
+    # and post-selection rejection loop.
+    ocr_fn = _get_ocr_fn() if num_candidates > 1 else None
+
+    def _generate_chunk(chunk_text: str) -> tuple[np.ndarray, float]:
+        """Generate a word chunk with best-of-N selection.
+
+        Returns (image, ocr_accuracy). ocr_accuracy is -1.0 when OCR
+        scoring was not performed (num_candidates == 1).
+        """
         canvas_width = compute_canvas_width(len(chunk_text))
         text_ctx = tokenizer(chunk_text, return_tensors="pt", padding="max_length", max_length=16)
 
@@ -492,56 +538,93 @@ def generate_word(
                 device=device,
             )
             img = postprocess_word(img)
-            score = quality_score(img)
-            candidates.append((img, score))
+            img = pad_clipped_descender(img)
+            img_score = quality_score(img, reference_stroke_width=reference_stroke_width)
+
+            # A1: OCR-aware scoring when multiple candidates
+            if ocr_fn is not None:
+                ocr_acc = ocr_fn(img, chunk_text)
+                combined = (1 - OCR_SELECTION_WEIGHT) * img_score + OCR_SELECTION_WEIGHT * ocr_acc
+                candidates.append((img, img_score, ocr_acc, combined))
+                log.debug(
+                    "candidate %s: quality=%.3f ocr=%.3f combined=%.3f",
+                    chunk_text, img_score, ocr_acc, combined,
+                )
+            else:
+                candidates.append((img, img_score, -1.0, img_score))
+
+        # Select best candidate by combined score
+        best_combined = max(c[3] for c in candidates)
 
         # Style similarity tiebreaker: among candidates within 0.05
-        # of the best quality score, prefer higher style similarity
-        best_score = max(s for _, s in candidates)
+        # of the best combined score, prefer higher style similarity
         if style_reference_imgs is not None and len(candidates) > 1:
             from reforge.evaluate.visual import compute_style_similarity
-            tied = [(img, s) for img, s in candidates if s >= best_score - 0.05]
+            tied = [c for c in candidates if c[3] >= best_combined - 0.05]
             if len(tied) > 1:
-                best_img = max(
+                winner = max(
                     tied,
-                    key=lambda x: compute_style_similarity(x[0], style_reference_imgs),
-                )[0]
-                return best_img
+                    key=lambda c: compute_style_similarity(c[0], style_reference_imgs),
+                )
+                log.debug(
+                    "selected %s: quality=%.3f ocr=%.3f combined=%.3f (style tiebreak)",
+                    chunk_text, winner[1], winner[2], winner[3],
+                )
+                return winner[0], winner[2]
 
-        return max(candidates, key=lambda x: x[1])[0]
+        winner = max(candidates, key=lambda c: c[3])
+        log.debug(
+            "selected %s: quality=%.3f ocr=%.3f combined=%.3f",
+            chunk_text, winner[1], winner[2], winner[3],
+        )
+        return winner[0], winner[2]
 
     if len(chunks) == 1:
-        best = _generate_chunk(word)
+        best, known_ocr_acc = _generate_chunk(word)
 
         # OCR-based rejection: retry if accuracy is too low.
         # Threshold 0.4 catches borderline cases (e.g. "an" at 0.33) that
         # 0.3 missed. Retries trigger on ~10% of words; cost is acceptable.
-        ocr_fn = _get_ocr_fn()
-        if ocr_fn is not None:
-            best_acc = 0.0
+        # A3: reuse known OCR accuracy from candidate scoring to avoid
+        # redundant TrOCR call on the selected candidate.
+        rejection_ocr_fn = _get_ocr_fn()
+        if rejection_ocr_fn is not None:
             ocr_threshold = 0.4
             max_retries = 2
-            for _ in range(max_retries):
-                acc = ocr_fn(best, word)
-                best_acc = max(best_acc, acc)
+            # If OCR-aware scoring already computed accuracy, reuse it
+            best_acc = known_ocr_acc if known_ocr_acc >= 0 else 0.0
+            first_check_done = known_ocr_acc >= 0
+
+            for attempt in range(max_retries):
+                if not first_check_done or attempt > 0:
+                    acc = rejection_ocr_fn(best, word)
+                    best_acc = max(best_acc, acc)
+                else:
+                    acc = known_ocr_acc
+                    best_acc = max(best_acc, acc)
+
                 if acc >= ocr_threshold:
                     break
+
                 # Retry with fresh generation
-                retry = _generate_chunk(word)
-                retry_acc = ocr_fn(retry, word)
+                retry, retry_known_acc = _generate_chunk(word)
+                if retry_known_acc >= 0:
+                    retry_acc = retry_known_acc
+                else:
+                    retry_acc = rejection_ocr_fn(retry, word)
                 best_acc = max(best_acc, retry_acc)
                 if retry_acc > acc:
                     best = retry
                     if retry_acc >= ocr_threshold:
                         break
             else:
-                # Exhausted retries without reaching threshold -- nominate as hard word
+                # Exhausted retries without reaching threshold
                 _record_hard_word_candidate(word, best_acc)
 
         return best
 
     # Multi-chunk: generate each, normalize heights, baseline-align, stitch
-    chunk_images = [_generate_chunk(chunk) for chunk in chunks]
+    chunk_images = [_generate_chunk(chunk)[0] for chunk in chunks]
     return stitch_chunks(chunk_images)
 
 

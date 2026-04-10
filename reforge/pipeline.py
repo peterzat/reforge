@@ -141,6 +141,13 @@ def run(
 
     _log(f" done ({_fmt_time(time.monotonic() - t0)})", verbose)
 
+    # --- Compute reference stroke width from style images ---
+    from reforge.quality.harmonize import compute_mean_stroke_width
+
+    style_widths = [compute_mean_stroke_width(w) for w in word_imgs_raw]
+    valid_style_widths = [w for w in style_widths if w > 0]
+    reference_stroke_width = float(np.median(valid_style_widths)) if valid_style_widths else 0.0
+
     # --- Generate words ---
     from reforge.model.generator import generate_word
 
@@ -185,6 +192,7 @@ def run(
             num_candidates=num_candidates,
             device=device,
             style_reference_imgs=word_imgs_raw,
+            reference_stroke_width=reference_stroke_width,
         )
         generated_images.append(img)
 

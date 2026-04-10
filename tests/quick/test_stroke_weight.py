@@ -1,7 +1,64 @@
-"""Quick tests for stroke weight harmonization."""
+"""Quick tests for stroke weight harmonization and scoring."""
 
 import numpy as np
 import pytest
+
+
+@pytest.mark.quick
+class TestStrokeWidthScoring:
+    """Compliance tests for stroke width in candidate quality scoring."""
+
+    def test_matching_width_scores_high(self):
+        """A word matching the reference stroke width scores near 1.0."""
+        from reforge.quality.score import _stroke_width_score
+
+        # 3px-wide strokes, reference width ~3px
+        img = np.full((40, 100), 255, dtype=np.uint8)
+        img[10:13, 10:90] = 60
+        img[20:23, 10:90] = 60
+        img[30:33, 10:90] = 60
+
+        from reforge.quality.harmonize import compute_mean_stroke_width
+        ref = compute_mean_stroke_width(img)
+        score = _stroke_width_score(img, ref)
+        assert score > 0.9
+
+    def test_deviating_width_scores_lower(self):
+        """A word deviating from reference scores lower than a matching one."""
+        from reforge.quality.score import _stroke_width_score
+        from reforge.quality.harmonize import compute_mean_stroke_width
+
+        thin = np.full((40, 100), 255, dtype=np.uint8)
+        thin[15:16, 10:90] = 60  # 1px stroke
+
+        thick = np.full((40, 100), 255, dtype=np.uint8)
+        thick[10:18, 10:90] = 60  # 8px stroke
+
+        ref = compute_mean_stroke_width(thick)  # reference matches thick
+        score_match = _stroke_width_score(thick, ref)
+        score_deviate = _stroke_width_score(thin, ref)
+        assert score_match > score_deviate
+
+    def test_quality_score_uses_reference(self):
+        """quality_score with reference_stroke_width differs from without."""
+        from reforge.quality.score import quality_score
+
+        img = np.full((40, 100), 255, dtype=np.uint8)
+        img[10:30, 10:90] = 60
+
+        score_no_ref = quality_score(img)
+        score_with_ref = quality_score(img, reference_stroke_width=1.0)
+        # Should differ because stroke width component is blended in
+        assert score_no_ref != score_with_ref
+
+    def test_zero_reference_no_effect(self):
+        """quality_score with reference=0.0 is identical to without."""
+        from reforge.quality.score import quality_score
+
+        img = np.full((40, 100), 255, dtype=np.uint8)
+        img[10:30, 10:90] = 60
+
+        assert quality_score(img) == quality_score(img, reference_stroke_width=0.0)
 
 
 @pytest.mark.quick

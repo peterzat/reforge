@@ -101,6 +101,12 @@ MARGIN_V_RATIO = 0.04     # top/bottom margin as fraction of page height (3-5% r
 # Overlap blending for chunk stitching
 STITCH_OVERLAP_PX = 8
 
+# OCR-aware candidate selection (A1): weight for OCR accuracy in combined score.
+# Combined = (1 - OCR_SELECTION_WEIGHT) * image_quality + OCR_SELECTION_WEIGHT * ocr_accuracy.
+# 0.4 gives OCR enough influence to override small image quality advantages
+# while still penalizing candidates with gray boxes or other visual defects.
+OCR_SELECTION_WEIGHT = 0.4
+
 # Quality scoring weights (per-word candidate selection in quality/score.py)
 QUALITY_WEIGHTS = {
     "background": 0.20,

@@ -81,8 +81,32 @@ def _contrast_score(img: np.ndarray) -> float:
     return min(1.0, contrast / 150.0)
 
 
-def quality_score(img: np.ndarray) -> float:
+def _stroke_width_score(img: np.ndarray, reference_width: float) -> float:
+    """Score stroke width similarity to reference (1.0 = matches reference).
+
+    Uses distance transform to measure mean stroke width, then scores
+    based on deviation from the reference. Linear falloff: 0% deviation = 1.0,
+    50%+ deviation = 0.0.
+    """
+    import cv2
+    ink_mask = (img < 180).astype(np.uint8)
+    if np.sum(ink_mask) < 10 or reference_width <= 0:
+        return 0.5  # neutral when unmeasurable
+    dist = cv2.distanceTransform(ink_mask, cv2.DIST_L2, 5)
+    ink_dists = dist[ink_mask > 0]
+    word_width = float(np.mean(ink_dists)) * 2.0
+    if word_width <= 0:
+        return 0.5
+    deviation = abs(word_width - reference_width) / reference_width
+    return max(0.0, 1.0 - deviation / 0.5)
+
+
+def quality_score(img: np.ndarray, reference_stroke_width: float = 0.0) -> float:
     """Compute weighted quality score for a word image.
+
+    Args:
+        reference_stroke_width: Target stroke width from style images.
+            When > 0, stroke width similarity is scored and blended in.
 
     Returns a score in [0, 1] where higher is better.
     """
@@ -94,4 +118,10 @@ def quality_score(img: np.ndarray) -> float:
         "contrast": _contrast_score(img),
     }
     total = sum(scores[k] * QUALITY_WEIGHTS[k] for k in scores)
+
+    if reference_stroke_width > 0:
+        sw_score = _stroke_width_score(img, reference_stroke_width)
+        # Blend: 80% image quality + 20% stroke width match
+        total = total * 0.80 + sw_score * 0.20
+
     return total
