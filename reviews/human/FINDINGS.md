@@ -7,9 +7,9 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 6 |
+| Active | 5 |
 | In Progress | 2 |
-| Resolved | 1 |
+| Resolved | 2 |
 | Acceptable | 0 |
 | Graduated | 0 |
 
@@ -91,9 +91,13 @@ CLAUDE.md section where they were added.
   better than E, second closest is A." Again disagrees with metric pick.
   Two consecutive reviews where human and metric disagree.
 - **Applies to:** reforge/quality/score.py (QUALITY_WEIGHTS)
-- **Code changes:** None yet. Needs investigation into which dimension
-  the metric overweights or underweights. Two data points now confirm
-  systematic disagreement.
+- **Code changes:** OCR-aware candidate scoring (40% OCR weight) and stroke
+  width scoring (20% of image quality component) added to candidate selection.
+  Review 3 (2026-04-10): human picked A, agrees with metric for the first
+  time. The OCR + stroke width scoring appears to have aligned the metric
+  with human preference. Needs more data points to confirm.
+- **Resolution candidate:** If the next 2 reviews also show agreement, this
+  can be moved to Resolved.
 
 ### Ink weight inconsistency across words
 
@@ -150,51 +154,48 @@ CLAUDE.md section where they were added.
   but human still sees gray artifacts from DiffusionPen's inherent generation
   quality on short/hard words.
 
-### Baseline alignment regressed
+### Baseline alignment fixed with median normalization
 
-- **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json
-- **Principle:** Baseline alignment showed a significant regression from 4/5
-  to 2/5 with no pipeline code changes between reviews. The "g" in
-  "jumping" looks mangled, and "gray" sits much higher than surrounding
-  words. Short words ("by", "for") also drift vertically in composition.
-  This suggests baseline detection is sensitive to per-word generation
-  variance, particularly for descender words.
-- **Evidence:** Review 1: 4/5, no complaints. Review 2 (2026-04-09): 2/5,
-  "j in jumping looks perfect, but g in jumping looks a bit mangled. gray
-  sits much higher than previous words." Composition review confirms:
-  "by is higher than it should be, morning too high, being and for too low."
-  CV baseline_alignment metric: 0.576 (low).
-- **Applies to:** reforge/compose/layout.py, reforge/compose/render.py
-- **Code changes:** None between reviews. The regression without code changes
-  indicates baseline detection is fragile under generation variance. The
-  descender detection algorithm may need robustness improvements, or
-  composition needs a cross-word baseline normalization pass.
+- **Status:** Resolved
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_021645.json, 2026-04-10_023103.json
+- **Principle:** Baseline alignment was fragile because the composition used
+  max-baseline per line. One word with a bad baseline detection would anchor
+  the whole line to the wrong position. Median-based normalization with
+  outlier clamping (> 20% from median snapped to median) fixes this.
+- **Evidence:** Review 1: 4/5. Review 2 (2026-04-09): regressed to 2/5.
+  Review 3 (2026-04-10, pre-fix): 1/5. Review 4 (2026-04-10, post median
+  fix): 4/5, "descenders in gray seem to struggle here, the rest looked
+  right." CV baseline_alignment: 0.576 -> 0.897. Only residual issue is
+  descender detection on specific words like "gray."
+- **Applies to:** reforge/compose/render.py (line baseline computation)
+- **Code changes:** Replaced max-baseline with median-baseline per line.
+  Added outlier clamping (> 20% deviation from line median). Updated SSIM
+  reference image. Compliance tests for outlier clamping and consistent
+  word alignment.
+- **Resolution:** Confirmed by human review 2026-04-10_023103: 4/5.
 
 ### Word sizing is inconsistent
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json, 2026-04-09_220812.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json, 2026-04-09_220812.json, 2026-04-10_023103.json, 2026-04-10_023824.json
 - **Principle:** Short/medium/long word sizing ("I", "quick", "something")
-  has fluctuated between 2/5 and 3/5 across reviews. The height
-  normalization produces inconsistent relative sizes: "something" renders
-  much smaller than "quick", and single-char words ("I") are too short.
-  X-height normalization was attempted and reverted. Ink-height
-  normalization is better but not sufficient.
-- **Evidence:** Review 1: 3/5, no specific complaints. Review 2 (x-height):
-  2/5, "Capital I is way too small, smaller than lowercase q." Review 3
-  (ink-height reverted): 3/5, "'something' noticeably smaller, uppercase I
-  could be larger, q descender appears cut off." Review 4 (2026-04-09):
-  2/5, "I is a bit short, something looks much smaller than quick."
-  Sizing regression to 2/5 without code changes suggests font_scale is
-  sensitive to generation variance.
+  holds at 2/5. The core complaint: capital "I" fills all available space,
+  making lowercase words look tiny. Human wants "lowercase body roughly
+  1/2 the size of capital I." This is fundamentally a case-awareness
+  problem, not a height normalization problem.
+- **Evidence:** Reviews 1-4: fluctuated 2/5 to 3/5. Review 5 (2026-04-10):
+  2/5, "I takes up all the room available, lowercase should be roughly
+  1/2 the size of capital I." Review 6 (2026-04-10, post cap-height fix):
+  2/5, no improvement; cap height ratio (0.72) was attempted and reverted
+  because it regressed composition 4/5 -> 3/5.
 - **Applies to:** reforge/quality/font_scale.py, reforge/config.py
-  (HEIGHT_OUTLIER_THRESHOLD, SHORT_WORD_HEIGHT_TARGET)
-- **Code changes:** X-height normalization attempted and reverted. The
-  fundamental issue: compute_x_height (50% peak density body zone) is
-  unreliable across diverse word shapes. Ink-height normalization is the
-  correct approach but may need tighter outlier clamping or a different
-  height target for multi-char words like "something" that generate small.
+- **Code changes:** X-height normalization (attempted, reverted). Unified
+  3+ char target (attempted, no visible effect). Case-aware cap height
+  ratio at 0.72 (attempted, regressed composition, reverted). Three
+  approaches tried and failed. The sizing problem may require generation-
+  time intervention (e.g., height-aware candidate selection) rather than
+  post-generation normalization, since DiffusionPen's per-word height
+  variance is the root cause.
 
 ### Composition quality improving but still variable
 
