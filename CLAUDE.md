@@ -192,6 +192,8 @@ Modes: view-only (default), survey with freeform text (`--ask "question"`), surv
 
 Used by `make test-human` for structured human evaluation via custom HTML mode (`--html`). The human review system serves a multi-step wizard page that collects ratings, A/B picks, and defect flags across 7 evaluation types in a single session.
 
+**When waiting for qpeek review:** The qpeek URL and waiting status must be the **last visible text** in the response. Never bury the URL inside a tool call or follow it with analysis. Format: `**qpeek ready: <url>** -- waiting for your review.` Wait for "qpeek ready" in the output before sharing the URL. When the user says "qpeek <file>", run `./qpeek.sh <file>` immediately via Bash.
+
 ## Architecture
 
 ```
