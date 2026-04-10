@@ -1,51 +1,51 @@
-## Spec -- 2026-04-09 -- Readability-weighted candidate selection
+## Spec -- 2026-04-10 -- Word sizing consistency and human eval baseline
 
-**Goal:** Improve composition quality by making the best-of-N candidate selection prefer readable words over visually clean but illegible ones. The current `quality_score` measures image properties (background, contrast, edges, height) but ignores readability, and human eval confirmed it disagrees with human preference. Adding OCR accuracy as a selection signal should reduce malformed words in final output, directly addressing the 3/5 composition ceiling.
+**Goal:** Break through the 2/5 sizing ceiling that has resisted three post-generation normalization approaches, and collect human evaluation data on the recent candidate selection and baseline improvements to confirm or disprove their effectiveness.
 
 ### Acceptance Criteria
 
-#### A. OCR-aware candidate scoring
+#### A. Height-aware candidate selection
 
-The current `quality_score` in `quality/score.py` uses 5 image-quality sub-scores. The `generate_word` function in `model/generator.py` picks the highest-scoring candidate, with a style-similarity tiebreaker within 0.05 of the best. OCR is only used post-selection for rejection/retry (threshold 0.4, 2 retries). This means a candidate with perfect image metrics but garbled letters beats a slightly noisier candidate that is clearly readable.
+Word sizing at 2/5 is the most persistent human complaint. Three post-generation approaches (x-height normalization, unified 3+ char target, case-aware cap height ratio) were tried and either had no effect or regressed composition. The sizing problem originates in DiffusionPen's per-word height variance: "I" fills the full 64px canvas while "quick" uses 30px. Post-generation normalization is fighting the model's output distribution. Selection-time intervention should prefer candidates closer to a target height, avoiding extreme outliers before they reach the normalization pipeline.
 
-- [ ] A1. Add an `ocr_readability` component to candidate scoring. Given a candidate image and the target word, compute `ocr_accuracy(img, word)` and incorporate it into the selection decision. The OCR score must not simply replace image quality; a candidate that is readable but has a gray box background is still bad. The two signals (image quality and readability) must both contribute.
-- [ ] A2. The cost of OCR per candidate is ~0.3s (TrOCR on CPU). At 3 candidates per word, this adds ~0.9s per word (~30% overhead on the quality preset). This overhead must not apply when `num_candidates == 1` (fast/draft presets), since there is no selection to make. When `num_candidates == 1`, the existing post-selection OCR rejection loop handles readability.
-- [ ] A3. When OCR-aware scoring is active (`num_candidates > 1`), the post-selection OCR rejection loop should still run but can use the already-computed OCR accuracy from candidate scoring to avoid redundant TrOCR calls for the selected candidate.
-- [ ] A4. `make test-quick` passes. Add a unit test in `tests/quick/` that verifies OCR-aware scoring selects a readable candidate over one with higher image-quality score but lower OCR accuracy (using mock OCR).
-- [ ] A5. `make test-regression` passes. The regression test uses the quality preset (3 candidates); verify the overall quality score does not regress.
+- [x] A1. Add a `height_consistency` component to candidate scoring in `generate_word()`. For each candidate, compute ink height and score closeness to the target (SHORT_WORD_HEIGHT_TARGET for 1-2 char words, ~28px for 3+ char words). The score should penalize extreme heights (filling the full canvas or using less than half the target) more than moderate deviations. This is selection-time, not post-generation normalization.
+- [x] A2. Height scoring must be weighted alongside existing signals (image quality 80%, stroke width 20%, OCR 40% via OCR_SELECTION_WEIGHT). The height score should replace or share weight with the existing `height_consistency` sub-score in QUALITY_WEIGHTS, which currently measures canvas coverage ratio rather than absolute target closeness. Define the weight so height preference does not override readability (OCR) or artifact detection (background score).
+- [x] A3. When `num_candidates == 1`, height scoring must not apply (same bypass as OCR scoring in A2 of the prior spec). No overhead for draft/fast presets.
+- [x] A4. `make test-quick` passes. Add a unit test that verifies height-aware selection picks a candidate with moderate ink height over one with higher image-quality score but extreme height (e.g., full canvas fill), using mocked candidates.
+- [x] A5. `make test-regression` passes. Overall quality score does not regress.
 
-#### B. Descender clipping diagnosis and fix
+#### B. Human eval data collection
 
-Human review flagged "q descender appears cut off" and "'for' is way too low (below descenders)" across multiple reviews. The 64px canvas constrains vertical space; deep descenders on some words may clip at the canvas bottom, and baseline detection may misplace words with unusual vertical profiles.
+The prior spec left three criteria requiring human evaluation (B3, B5, C2). The baseline fix (median normalization) landed and scored 4/5 in review. Candidate selection showed first metric-human agreement. These need formal data points.
 
-- [ ] B1. Diagnostic: generate words with known descenders (g, j, p, q, y, "jumping", "quickly") and measure how much ink falls below the detected baseline vs. the canvas bottom. Record whether clipping is happening at the generation stage (canvas too small) or the composition stage (baseline misplacement).
-- [ ] B2. If generation-stage clipping is confirmed: add bottom padding (white rows) to the raw 64px canvas output before postprocessing, preserving any descender ink that would otherwise be cropped. The padding amount should be proportional to the detected descender depth, not a fixed number of pixels.
-- [ ] B3. If composition-stage baseline misplacement is confirmed: adjust the baseline detection in `compose/layout.py` to account for the specific vertical profile of descender-heavy words. The current top-down density scan (BASELINE_DENSITY_DROP=0.15, BASELINE_BODY_DENSITY=0.35) may be setting the baseline too low for words where the descender accounts for a large fraction of total ink height.
-- [ ] B4. `make test-quick` passes after any layout.py or generator.py changes. If padding is added, verify existing postprocessing (body-zone noise removal, cluster filter) still works correctly on the padded image.
-- [ ] B5. Run `make test-human EVAL=baseline` to verify the fix does not regress the current 4/5 baseline alignment rating.
+- [x] B1. Run `make test-human EVAL=candidate` and record whether the human pick agrees with the metric pick. Update the "Quality score disagrees with human candidate preference" finding in FINDINGS.md with the result. If 2 consecutive agreements (this plus the prior one), move the finding to Resolved.
+- [x] B2. Run `make test-human EVAL=baseline` and record the rating. Update the "Baseline alignment fixed with median normalization" finding in FINDINGS.md. If the rating holds at 4/5, confirm Resolved status.
+- [x] B3. Run `make test-human EVAL=sizing` after implementing A1-A2 to measure whether height-aware candidate selection improves the 2/5 sizing rating. Record the result in FINDINGS.md.
+- [x] B4. Run `make test-human EVAL=composition` to get a fresh composition rating after this turn's changes. Record defects in FINDINGS.md.
 
-#### C. Scoring weight sanity check
+#### C. Prior spec cleanup
 
-Only 1 review data point shows quality_score disagreeing with human candidate preference. Before calibrating weights (proposal D in TODO), collect baseline data on the current disagreement rate.
+Three criteria from the prior spec were left unmet. Assess and close them.
 
-- [ ] C1. After implementing A1, log (to stderr or a debug flag) both the image-quality score and OCR accuracy for each candidate during generation, plus which candidate was selected and why. This is diagnostic output for tuning, not a permanent feature.
-- [ ] C2. Run `make test-human EVAL=candidate` to collect a human evaluation of the new OCR-aware candidate selection. Compare the human pick rate against the metric pick rate. Record the result in FINDINGS.md as evidence for or against further weight calibration.
+- [x] C1. B3 (baseline misplacement): the median-based baseline normalization in render.py resolved the composition-stage baseline problem. If `make test-human EVAL=baseline` (B2 above) confirms 4/5, mark the prior spec's B3 as resolved by the median approach rather than per-word detection tuning. If baseline regressed, the criterion remains and detection tuning is needed.
+- [x] C2. B5 and C2 from the prior spec are satisfied by B2 and B1 above respectively. No additional work beyond running the evals.
 
 ### Context
 
-**Why OCR in candidate selection, not just rejection?** The rejection loop (post-selection, threshold 0.4, 2 retries) only kicks in after the best candidate is already chosen. If candidate A scores 0.85 on image quality with 0.2 OCR and candidate B scores 0.80 with 0.9 OCR, the current code picks A and then may retry generation entirely. Using OCR during selection would pick B directly, avoiding the retry cost and getting a better result.
+**Why selection-time over post-generation for sizing?** Three post-generation approaches failed:
+1. X-height normalization: pathological height explosion, reverted.
+2. Unified 3+ char target: no visible effect (the problem is variance, not the target).
+3. Case-aware cap height ratio (0.72): regressed composition 4/5 to 3/5, reverted.
 
-**Cost model.** TrOCR runs on CPU (to avoid GPU contention with UNet inference). At ~0.3s per call, 3 candidates adds 0.9s per word. For the 43-word demo at quality preset, this is ~39s additional (from ~65s to ~104s). Acceptable for quality preset. Draft and fast presets (1 candidate) skip this entirely.
+All three operated on DiffusionPen's raw output after the fact. The model generates "I" at 60px ink height and "quick" at 28px, a 2:1 ratio. Normalizing this after generation requires aggressive scaling that destroys letterforms. Selection-time intervention is different: given 3 candidates for "I", pick the one closest to 28-32px rather than the one that fills the canvas. The model does produce height-varied candidates; we have just been ignoring height during selection.
 
-**Interaction with existing OCR rejection loop.** The rejection loop in `generate_word()` currently calls `ocr_accuracy(best, word)` after selecting the best candidate. With OCR-aware scoring, the selected candidate already has a known OCR accuracy. The rejection loop can reuse this value for the first check, only calling TrOCR again on retry candidates.
+**Height target math.** SHORT_WORD_HEIGHT_TARGET is 26px. 3+ char words target 28px (26 * 1.08). The human wants "lowercase body roughly 1/2 the size of capital I." If the best candidate for "I" is at 50px instead of 60px, that is 50 vs 28 = 1.8:1 instead of 2.1:1. Combined with post-generation normalization bringing the ratio tighter, this could move sizing from 2/5 toward 3/5.
 
-**Descender diagnosis is exploratory.** B1 is a diagnostic step. B2 and B3 are conditional on what B1 finds. If descender clipping is not confirmed (the visual issue is something else), those criteria can be dropped.
+**What the prior turn accomplished.** OCR-aware candidate selection (A1-A5), descender padding (B1-B2, B4), scoring diagnostics (C1), blended stroke width harmonization, stroke width scoring in candidate selection. Composition reached 4/5 ("easily our best so far"). Baseline resolved via median normalization (4/5). Candidate selection showed first human-metric agreement. Three criteria left unmet (B3, B5, C2), all human-eval-gated.
 
-**Why not the glyph cache (TODO proposal B)?** The glyph cache addresses short-word quality (1-3 chars) which is a DiffusionPen limitation, not a selection problem. OCR-aware candidate selection addresses the broader illegibility ceiling that affects all word lengths. The glyph cache remains a strong candidate for a follow-up spec if OCR-aware selection does not move composition past 3/5.
-
-**Prior turn context.** The prior spec (2026-04-04) completed 14/14 criteria: x-height normalization was attempted and reverted (pathological height explosion), proportional OCR penalty replaced the hard 0.45 score cap, ragged right margin was fixed, parameter optimality tests were added. The composition rating holds at 3/5 across 7 reviews; the ceiling appears to be per-word generation fidelity, which OCR-aware selection directly targets.
+**FINDINGS.md active items.** 5 Active findings, 2 In Progress. The sizing finding (6 reviews, 3 code changes, still 2/5) is the highest-priority target. Chunk stitching height mismatch is Active but secondary. Hard words (In Progress, 3/5) may benefit from height-aware selection indirectly if it reduces extreme canvas-fill on short words.
 
 ---
-*Prior spec (2026-04-04): Height consistency and score accuracy (14/14 criteria met). X-height normalization reverted; proportional OCR penalty; ragged right margin fix; parameter optimality tests.*
+*Prior spec (2026-04-09): Readability-weighted candidate selection (9/12 criteria met). OCR-aware candidate selection, descender padding, stroke width scoring. Composition 4/5. Remaining criteria were human-eval-gated.*
 
-<!-- SPEC_META: {"date":"2026-04-09","title":"Readability-weighted candidate selection","criteria_total":12,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-10","title":"Word sizing consistency and human eval baseline","criteria_total":11,"criteria_met":11} -->

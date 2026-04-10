@@ -91,13 +91,13 @@ CLAUDE.md section where they were added.
   better than E, second closest is A." Again disagrees with metric pick.
   Two consecutive reviews where human and metric disagree.
 - **Applies to:** reforge/quality/score.py (QUALITY_WEIGHTS)
-- **Code changes:** OCR-aware candidate scoring (40% OCR weight) and stroke
-  width scoring (20% of image quality component) added to candidate selection.
-  Review 3 (2026-04-10): human picked A, agrees with metric for the first
-  time. The OCR + stroke width scoring appears to have aligned the metric
-  with human preference. Needs more data points to confirm.
-- **Resolution candidate:** If the next 2 reviews also show agreement, this
-  can be moved to Resolved.
+- **Code changes:** OCR-aware candidate scoring (40% OCR weight), stroke
+  width scoring (20% of image quality component), and height-aware scoring
+  (target closeness in height_consistency weight) added to candidate
+  selection. Review 3 (2026-04-10): agreed for first time. Review 4
+  (2026-04-10, post height scoring): disagreed again, picked D. The
+  one agreement was an outlier, not a trend. The metric still does not
+  reliably match human preference. Three of four reviews disagree.
 
 ### Ink weight inconsistency across words
 
@@ -191,11 +191,13 @@ CLAUDE.md section where they were added.
 - **Applies to:** reforge/quality/font_scale.py, reforge/config.py
 - **Code changes:** X-height normalization (attempted, reverted). Unified
   3+ char target (attempted, no visible effect). Case-aware cap height
-  ratio at 0.72 (attempted, regressed composition, reverted). Three
-  approaches tried and failed. The sizing problem may require generation-
-  time intervention (e.g., height-aware candidate selection) rather than
-  post-generation normalization, since DiffusionPen's per-word height
-  variance is the root cause.
+  ratio at 0.72 (attempted, regressed composition, reverted). Height-
+  aware candidate selection with target-closeness scoring (attempted,
+  2/5 unchanged in review 7). Four approaches tried: three post-generation
+  and one selection-time. None moved sizing past 2/5. The sizing problem
+  appears to be a fundamental DiffusionPen limitation: the model generates
+  single-char words at full canvas height regardless of candidate selection
+  pressure, because all candidates for "I" fill the canvas similarly.
 
 ### Composition quality improving but still variable
 
