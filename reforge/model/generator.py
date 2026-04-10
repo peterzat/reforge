@@ -539,7 +539,11 @@ def generate_word(
             )
             img = postprocess_word(img)
             img = pad_clipped_descender(img)
-            img_score = quality_score(img, reference_stroke_width=reference_stroke_width)
+            img_score = quality_score(
+                img,
+                reference_stroke_width=reference_stroke_width,
+                word_len=len(chunk_text) if num_candidates > 1 else 0,
+            )
 
             # A1: OCR-aware scoring when multiple candidates
             if ocr_fn is not None:

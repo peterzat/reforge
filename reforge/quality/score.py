@@ -1,12 +1,12 @@
 """Per-word quality scoring for best-of-N candidate selection.
 
 Evaluates background cleanliness, ink density, edge sharpness,
-height consistency, and contrast.
+height consistency (target closeness), and contrast.
 """
 
 import numpy as np
 
-from reforge.config import QUALITY_WEIGHTS
+from reforge.config import QUALITY_WEIGHTS, SHORT_WORD_HEIGHT_TARGET
 
 
 def _background_score(img: np.ndarray) -> float:
@@ -49,8 +49,15 @@ def _edge_sharpness_score(img: np.ndarray) -> float:
     return min(1.0, mean_grad / 30.0)
 
 
-def _height_consistency_score(img: np.ndarray) -> float:
-    """Score vertical consistency of ink distribution."""
+def _height_consistency_score(img: np.ndarray, word_len: int = 0) -> float:
+    """Score ink height closeness to the normalization target.
+
+    When word_len > 0 (selection-time scoring), computes how close
+    the candidate's ink height is to the expected target. Candidates
+    that fill the full canvas or are extremely short score low.
+    When word_len == 0 (legacy/no-word-info), falls back to canvas
+    coverage ratio scoring.
+    """
     ink_mask = img < 128
     if not np.any(ink_mask):
         return 0.0
@@ -58,12 +65,31 @@ def _height_consistency_score(img: np.ndarray) -> float:
     ink_rows = row_ink > 0.01
     if not np.any(ink_rows):
         return 0.0
-    # Compact ink region is better
-    first_row = np.argmax(ink_rows)
-    last_row = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
+    first_row = int(np.argmax(ink_rows))
+    last_row = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
     ink_height = last_row - first_row + 1
+
+    if word_len > 0:
+        # Target-aware scoring: how close is ink height to what
+        # font normalization will expect?
+        if word_len <= 2:
+            target = SHORT_WORD_HEIGHT_TARGET
+        else:
+            target = int(SHORT_WORD_HEIGHT_TARGET * 1.08)
+        # Candidates near the target need minimal scaling later.
+        # Linear falloff: 0% deviation = 1.0, 100%+ deviation = 0.0.
+        # Asymmetric: penalize canvas-fill (too tall) more than too short,
+        # because tall words get aggressively downscaled and lose quality.
+        deviation = (ink_height - target) / target
+        if deviation > 0:
+            # Too tall: heavier penalty (canvas-fill is the main problem)
+            return max(0.0, 1.0 - deviation / 0.8)
+        else:
+            # Too short: gentler penalty
+            return max(0.0, 1.0 - abs(deviation) / 1.2)
+
+    # Fallback: canvas coverage ratio (legacy behavior)
     total_height = img.shape[0]
-    # Penalize if ink takes up too much or too little of the canvas
     ratio = ink_height / total_height
     if 0.3 <= ratio <= 0.8:
         return 1.0
@@ -101,12 +127,18 @@ def _stroke_width_score(img: np.ndarray, reference_width: float) -> float:
     return max(0.0, 1.0 - deviation / 0.5)
 
 
-def quality_score(img: np.ndarray, reference_stroke_width: float = 0.0) -> float:
+def quality_score(
+    img: np.ndarray,
+    reference_stroke_width: float = 0.0,
+    word_len: int = 0,
+) -> float:
     """Compute weighted quality score for a word image.
 
     Args:
         reference_stroke_width: Target stroke width from style images.
             When > 0, stroke width similarity is scored and blended in.
+        word_len: Length of the target word. When > 0, height scoring
+            uses target-aware closeness instead of canvas coverage ratio.
 
     Returns a score in [0, 1] where higher is better.
     """
@@ -114,7 +146,7 @@ def quality_score(img: np.ndarray, reference_stroke_width: float = 0.0) -> float
         "background": _background_score(img),
         "ink_density": _ink_density_score(img),
         "edge_sharpness": _edge_sharpness_score(img),
-        "height_consistency": _height_consistency_score(img),
+        "height_consistency": _height_consistency_score(img, word_len=word_len),
         "contrast": _contrast_score(img),
     }
     total = sum(scores[k] * QUALITY_WEIGHTS[k] for k in scores)
