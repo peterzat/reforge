@@ -182,7 +182,7 @@ make setup-hooks    # install pre-commit hook (runs quick tests on every commit)
 
 ### Key instruments
 
-**Quality regression test** (`test_quality_regression.py`). Generates 5 fixed words with a fixed seed, computes all metrics, and compares against a recorded baseline in `quality_baseline.json`. Any metric that drops by more than 0.05 fails the test. When overall quality improves, the baseline auto-ratchets upward. This prevents gradual quality erosion across many small changes.
+**Quality regression test** (`test_quality_regression.py`). Generates 5 fixed words across 3 fixed seeds (42, 137, 2718), computes all metrics, and compares against a recorded per-seed baseline in `quality_baseline.json`. Only metrics in `PRIMARY_METRICS` (the metric(s) selected by the Spearman correlation analysis in `docs/metric_correlation.md`) gate the build; the rest are diagnostics that print on regression but do not fail. A primary metric that drops by more than 0.05 on any seed fails the test. Baseline updates are manual only via `pytest tests/medium/test_quality_regression.py --update-baseline -x -s`; auto-ratcheting was removed to prevent silent baseline drift.
 
 **OCR rejection loop** (inside `generate_word()`). During generation, each word's best candidate is evaluated by TrOCR. If character accuracy is below 0.3, the word is regenerated up to 2 times. This is a generation-time quality gate: the agent's postprocessing changes can affect what passes this gate, creating a direct feedback signal.
 

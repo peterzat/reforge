@@ -84,7 +84,13 @@ tracked = ('overall', 'composition_score', 'stroke_weight_consistency',
 if os.path.exists(baseline_path):
     with open(baseline_path) as f:
         data = json.load(f)
-    metrics = data.get('metrics', {})
+    # New format (spec 2026-04-10 C3): per-seed entries under 'seeds'.
+    # Read the reference seed (42) with a fallback to the legacy flat
+    # 'metrics' key for backward compatibility.
+    metrics = (
+        data.get('seeds', {}).get('42', {}).get('metrics')
+        or data.get('metrics', {})
+    )
     parts = []
     for k in tracked:
         if k in metrics:

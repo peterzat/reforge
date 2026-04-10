@@ -107,6 +107,26 @@ STITCH_OVERLAP_PX = 8
 # while still penalizing candidates with gray boxes or other visual defects.
 OCR_SELECTION_WEIGHT = 0.4
 
+# Primary metrics for the quality regression gate (spec 2026-04-10 B1).
+# Selected by Spearman correlation with human composition ratings across
+# reviews/human/*.json. Bar: positive rho, |rho| >= 0.2, p < 0.3 (scipy two-
+# sided). See docs/metric_correlation.md for the full analysis and rationale.
+#
+# Only these metrics gate the regression test. All other TRACKED_METRICS are
+# diagnostics: logged to the ledger and printed on regression, but not fatal.
+# The existing ocr_min floor (0.3) still gates independently as a readability
+# guardrail; it is not a correlation-derived primary metric.
+#
+# The selection is deliberately narrow. Only one metric cleared the bar at
+# N=16: `height_outlier_score` (rho = +0.302, p = 0.255). `baseline_alignment`
+# was a near-miss (rho = +0.273, p = 0.307) and is tracked as a diagnostic.
+# This narrowness is itself a finding: the current CV metric set barely
+# contains any signal that positively tracks human composition rating on this
+# dataset. Fixing that is a future spec, not this one.
+PRIMARY_METRICS = [
+    "height_outlier_score",
+]
+
 # Quality scoring weights (per-word candidate selection in quality/score.py)
 QUALITY_WEIGHTS = {
     "background": 0.20,

@@ -7,10 +7,11 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 5 |
+| Active | 4 |
 | In Progress | 2 |
 | Resolved | 2 |
 | Acceptable | 0 |
+| Plateaued | 1 |
 | Graduated | 0 |
 
 ## How this file works
@@ -25,7 +26,23 @@ they are committed.
 - **In Progress** -- code changes are underway.
 - **Resolved** -- human confirmed improvement via a targeted eval.
 - **Acceptable** -- human reviewed it and decided current quality is good enough.
+- **Plateaued** -- iteration has stalled at the wrapper layer. See promotion rule
+  below. Agents should skip Plateaued findings when picking the next work target.
 - **Graduated** -- promoted to CLAUDE.md per the graduation rules below.
+
+### Plateau promotion rule (spec 2026-04-10 D1)
+
+A finding moves to **Plateaued** when:
+
+- **3 or more code changes** have been applied to address it, AND
+- **3 or more reviews** have rated it, AND
+- the human rating has not moved by at least 1 point across those reviews.
+
+A Plateaued finding requires a **design-level change** to leave that status:
+retraining, a different architecture, intervention at a different layer, or
+the user explicitly accepting the current quality as the target. Plateaued
+findings do not consume iteration budget. The finding-driven iteration pattern
+in CLAUDE.md instructs agents to skip them when selecting the next work item.
 
 ### Graduation to CLAUDE.md
 
@@ -176,7 +193,7 @@ CLAUDE.md section where they were added.
 
 ### Word sizing is inconsistent
 
-- **Status:** Active
+- **Status:** Plateaued (promoted 2026-04-10 per spec D2)
 - **Reviews:** 2026-04-03_021330.json, 2026-04-09_023255.json, 2026-04-09_024632.json, 2026-04-09_220812.json, 2026-04-10_023103.json, 2026-04-10_023824.json
 - **Principle:** Short/medium/long word sizing ("I", "quick", "something")
   holds at 2/5. The core complaint: capital "I" fills all available space,
@@ -194,10 +211,22 @@ CLAUDE.md section where they were added.
   ratio at 0.72 (attempted, regressed composition, reverted). Height-
   aware candidate selection with target-closeness scoring (attempted,
   2/5 unchanged in review 7). Four approaches tried: three post-generation
-  and one selection-time. None moved sizing past 2/5. The sizing problem
-  appears to be a fundamental DiffusionPen limitation: the model generates
-  single-char words at full canvas height regardless of candidate selection
-  pressure, because all candidates for "I" fill the canvas similarly.
+  and one selection-time. None moved sizing past 2/5.
+- **Plateau rationale:** 6 reviews and 4 code changes without the rating
+  moving past 2/5. Promotion rule met (3+ reviews, 3+ code changes, no
+  movement >= 1 point). This is a DiffusionPen-level limitation on single-
+  character word generation: the model produces "I" at full canvas height
+  regardless of candidate selection pressure, because all candidates for
+  short words fill the canvas similarly. Wrapper-layer interventions
+  (post-generation normalization, candidate scoring) have been exhausted.
+- **Exit criteria:** To leave Plateaued status, one of (a) retraining or
+  fine-tuning DiffusionPen on case-proportional data, (b) a different
+  generative model with case awareness, (c) pre-generation case handling
+  (e.g., generating "I" in a forced narrow canvas and adjusting composition
+  baseline to compensate, which would require architectural changes to the
+  pipeline layering), or (d) the user explicitly accepting 2/5 as the target.
+  Agents should skip this finding when selecting the next iteration target
+  unless one of these exit paths is being explored.
 
 ### Composition quality improving but still variable
 

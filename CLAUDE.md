@@ -15,6 +15,66 @@ This is an applied science project. Development is experiment-driven: every qual
 - Non-Latin scripts (IAM dataset is Latin only)
 - Web UI (CLI-first, library-second)
 
+## Quality Target (spec 2026-04-10 E1)
+
+The project has a concrete "done" target so the iteration loop can declare
+victory instead of chasing proxies forever. The target is "the best achievable
+wrapper around frozen DiffusionPen," not "indistinguishable from real
+handwriting."
+
+**Primary gate targets** (must hold on every seed in the multi-seed regression):
+
+- `height_outlier_score >= 0.90` (the only metric cleared the B1 bar at N=16)
+- `ocr_min >= 0.30` (existing readability floor, gates independently)
+
+`height_outlier_score` was chosen by the Spearman correlation analysis in
+`docs/metric_correlation.md` as the only CV metric with positive rho >= 0.2 and
+p < 0.3 against human composition ratings. `baseline_alignment` was a near
+miss (rho = +0.273, p = 0.307) and is tracked as a diagnostic. All other
+metrics (`composition_score`, `style_fidelity`, `stroke_weight_consistency`,
+`ocr_accuracy`, `layout_regularity`, `background_cleanliness`, etc.) are
+diagnostics that print on regression but do not gate; four of them are
+*negatively* correlated with human rating on this dataset, which is itself a
+finding about the current metric set, not evidence the metrics should be
+inverted.
+
+The narrowness of the primary set is deliberate. With one gating metric plus
+the OCR floor, the regression is strict but honest: it catches "don't break
+height harmonization and don't produce unreadable output," which is the only
+thing the current CV metric set supports gating on. Widening requires either
+more review data (N=16 is weak) or new metrics designed to positively track
+human preference.
+
+**Human-preference target:** median composition rating >= 4/5 across the most
+recent 5 `make test-human` reviews. The observed ceiling is 4/5 ("easily our
+best so far," review 2026-04-10_002757); the target requires that ceiling to
+become the new floor, not a lucky peak. Current median across the last 5 is
+3/5, so this is a meaningful but achievable lift.
+
+**Multi-seed stability:** all primary gate targets must hold on all 3 seeds
+(42, 137, 2718). Improving one seed at the cost of another is not progress.
+The quality regression test enforces this automatically.
+
+### Scope limits (spec 2026-04-10 E2)
+
+- **Sizing at 2/5 is not part of the target.** It is a DiffusionPen-level
+  limitation on single-character word generation (see the Plateaued finding
+  in `reviews/human/FINDINGS.md`). Four wrapper-layer interventions have been
+  exhausted without moving it past 2/5. Fixing it requires retraining,
+  fine-tuning, or a different model entirely, which is a non-goal.
+- **The target is a wrapper ceiling, not a handwriting ceiling.** If a future
+  turn demonstrates the target is too aspirational for this system, it may be
+  lowered with human review. If the targets are reached with room to spare,
+  they may be raised. Either move should be explicit, not a side effect.
+- **Do not chase problems that retraining would solve.** Interventions in the
+  wrapper layer (preprocessing, candidate selection, post-processing,
+  composition) are fair game. Anything that would require the base model to
+  generate different pixels is out of scope.
+
+When all primary gate targets hold on all 3 seeds AND the median of the
+last 5 human composition ratings is >= 4/5, the project is "done" at the
+methodology level. Further work is optional polish or target-raising.
+
 ## Commands
 
 All commands assume an activated venv. Always use `.venv/bin/python` (or activate first).
@@ -142,10 +202,17 @@ reviews and 2+ code changes are candidates for graduation to CLAUDE.md.
 
 **Finding-driven iteration pattern:**
 1. Read `reviews/human/FINDINGS.md` and pick the most actionable Active finding.
+   **Skip Plateaued findings**: they represent base-model limitations that have
+   exhausted wrapper-layer interventions and require a design-level change
+   (retraining, new architecture, different intervention layer, or explicit
+   user acceptance) to exit that status. Iterating on a Plateaued finding with
+   another wrapper-layer tweak wastes budget and will not move the human rating.
 2. Implement a fix (smallest change that addresses the root cause).
 3. Run targeted eval: `make test-human EVAL=<affected types>` (see mapping below).
-4. Update the finding's status based on human feedback (Resolved, Acceptable, or
-   remains In Progress for another iteration).
+4. Update the finding's status based on human feedback (Resolved, Acceptable,
+   Plateaued, or remains In Progress for another iteration). A finding moves to
+   Plateaued after 3+ code changes and 3+ reviews without the rating moving by
+   at least 1 point (see FINDINGS.md for the full rule).
 5. Repeat with the next finding, or run a full eval every 3 spec iterations as a
    health check.
 

@@ -1,51 +1,42 @@
-## Review -- 2026-04-10 (commit: 7a19459)
+## Review -- 2026-04-10 (commit: 2ab52b6)
 
-**Summary:** Refresh review of 17 unpushed commits implementing SPEC criteria A1-A5 (height-aware candidate selection), B1-B4 (human eval data collection), and C1-C2 (prior spec cleanup). Also reviews prior-spec work from commits b8e92d9 (stroke width scoring), e4ab619 (blended stroke width harmonization), 4436dcd (median baseline normalization), 987329b (unified font height target), 3bfe444 (revert cap-height normalization), 68acd5f (height-aware scoring), and 7a19459 (demo refresh). The .claude/settings.local.json unstaged change is out of scope.
+**Summary:** Refresh review of spec 2026-04-10 ("Objective alignment and convergence discipline") covering A1-A5, B1-B4, C1-C3, D1-D3, E1-E3. All 17 criteria marked met. The change set includes two new source files (`reforge/evaluate/regression_gate.py`, `scripts/metric_correlation.py`), two new quick test files (30 tests, all pass), a format migration of `quality_baseline.json` to per-seed entries, a rewrite of `test_quality_regression.py` for multi-seed gating via `PRIMARY_METRICS`, disable of auto-update-on-improvement per B3, and doc updates (CLAUDE.md Quality Target, FINDINGS.md Plateaued status, TESTING.md, `docs/metric_correlation.md`). Prior review (7a19459) is an ancestor of HEAD; commits e242118 and 2ab52b6 plus the uncommitted changes are in the focus set.
 
-**Review scope:** Refresh review. Focus: 25 file(s) changed since prior review (commit 844e31b). 0 already-reviewed file(s) checked for interactions only. Security review (paths scope, 6 files) completed and found no issues.
+**Review scope:** Refresh review. Focus: 25+ files changed since prior review 7a19459. Already-reviewed set: none. Found two BLOCK issues from the baseline format migration that silently broke external consumers (archive script, A/B harness floor test), three WARNs (broken drift detector after multi-seed, stale README, CLAUDE.md wording error), and two NOTEs. All BLOCK and WARN findings auto-fixed via codefix. Quick tests: 209/209 pass before and after fixes.
 
-**External reviewers:**
-[openai] o3 (high) -- 19787 in / 15099 out / 14912 reasoning -- ~$0.2796
-[qwen] Qwen/Qwen2.5-Coder-14B-Instruct-AWQ -- 21157 in / 5 out -- 49s
-All 4 external findings were false positives or pre-existing issues out of scope. Details:
-- openai pipeline.py:148 "np not imported" -- false positive, line 7 imports `numpy as np`.
-- openai generator.py:570 "_get_ocr_fn called twice wastes memory" -- false positive, `_load_trocr` uses `@functools.lru_cache`.
-- openai generator.py:654 "multi-chunk skips rejection loop" -- correct observation but pre-existing in prior commit 844e31b (carried forward as NOTE #5 below).
-- openai render.py:145 "baselines mutated during iteration" -- false positive, mutation is key-value replacement within a stable list iteration; median is pre-computed so clamping is order-independent.
+**External reviewers:** Not configured.
 
 ### Findings
 
-1. [WARN] reforge/quality/score.py:110-127 and reforge/pipeline.py:147-149 -- Stroke width reference is computed on raw style images whose scale is 3-4x larger than the 64px DiffusionPen canvas, causing `_stroke_width_score` to return 0.0 for essentially every generated candidate. **Partially fixed.**
+1. [BLOCK] scripts/archive-output.sh:75-117 -- Baseline format migration (spec C3) changed `quality_baseline.json` from a flat top-level `metrics` key to a nested `seeds.<seed>.metrics` structure, but the archive script still read `data.get('metrics', {})`. After the migration, every `make test-full` run silently wrote "metrics unavailable (empty baseline)" into `docs/OUTPUT_HISTORY.md`, losing all metric metadata in the historical archive. **Fixed.** Script now reads `data.get('seeds', {}).get('42', {}).get('metrics')` with a fallback to the legacy `data.get('metrics', {})` for backward compatibility. Verified by running the script, which produced a new 20260410-143302 entry with valid metric values for overall, composition_score, stroke_weight_consistency, word_height_ratio, ocr_accuracy, style_fidelity, ink_contrast, and background_cleanliness.
 
-   Evidence: `styles/hw-sample.png` is 1057x1607. Segmented style words have heights 118-186px. `compute_mean_stroke_width` on these returns ~9.7px (median, verified against real pipeline). DiffusionPen generates at 64x256 with 2-4px ink strokes; a synthetic 3px stroke at 64 rows measures 2.66 via distance transform. In `_stroke_width_score`, `deviation = |2.66 - 9.7| / 9.7 = 0.726`, exceeding the 0.5 falloff cap, so the score clamps to 0.0. Every candidate gets a stroke width score of 0, reducing quality_score from `total * 1.0` to `total * 0.8` uniformly. Ranking is preserved, so regression tests do not catch this.
+2. [BLOCK] tests/medium/test_ab_harness.py:27-36 -- `_baseline_floor()` also read the pre-migration flat `data["metrics"]`, so after C3 it silently returned `None` for every metric. The floor assertion at `test_harmonization_improves_stroke_consistency` (`if floor is not None: assert score_after >= floor`) became a no-op. The test still enforced `score_after >= score_before` but the absolute-floor guard against harmonization quality eroding over time was gone, with no CI signal. **Fixed.** Function now reads `data["seeds"]["42"]["metrics"]` with a legacy fallback matching the pattern used in test_quality_regression.py::_seed_baseline_metrics.
 
-   **Fix applied:** pipeline.py now resizes each style word to 64px canvas height before measuring stroke width. This addresses the stated scale mismatch in the code.
+3. [WARN] tests/medium/test_quality_regression.py:315-325 + reforge/evaluate/ledger.py:72 -- The drift-check comment at line 315 said "runs on the reference seed only to keep the ledger view uncluttered," but `detect_drift(LEDGER_PATH, metric)` had no seed filter. The ledger now contains interleaved per-seed entries, so `window=5` spanned at most 2 full runs and mixed all 3 seeds. Cross-seed baseline variance (up to 0.0714 on `height_outlier_score`, near the 0.08 drift threshold) would produce spurious drift warnings. **Fixed.** Added a backward-compatible `context_filter` keyword to `detect_drift` that substring-filters ledger entries. The test now calls `detect_drift(..., context_filter=f"regression test seed={REFERENCE_SEED}")`. All 43 existing tests in `test_evaluate.py` pass unchanged (positional-arg callers are unaffected).
 
-   **Residual issue (not fixed, consider follow-up):** For the default `hw-sample.png` style, the resized reference is still ~9.68 (essentially identical to the raw 9.70) because the segmentation of that image produces two near-fully-black crops (99% ink ratio, stroke widths of 34.67 and inf) that dominate the median alongside a genuinely thick word (9.68). Even if the junk segmentations were filtered out, the real words' scaled stroke widths (~5px) would still produce a reference too far from DiffusionPen's 2-4px typical output to score > 0. Recommend considering a scale-and-thickness-invariant metric (e.g., stroke_width / ink_height ratio) or widening the falloff range. Tracked for future spec.
+4. [WARN] README.md:185 -- Stale documentation. The paragraph described `test_quality_regression.py` as using "a fixed seed" (now 3 seeds: 42, 137, 2718), claimed "Any metric that drops by more than 0.05 fails the test" (now only PRIMARY_METRICS fail; the rest are diagnostics), and stated "baseline auto-ratchets upward" (removed per spec B3). All three claims were materially wrong after this spec. **Fixed.** Rewrote to describe the new behavior: 3 fixed seeds, per-seed baseline, primary-metric gating with reference to `docs/metric_correlation.md`, and manual `--update-baseline` only.
 
-2. [WARN] reforge/config.py:48 -- Stale comment on `SHORT_WORD_HEIGHT_TARGET`. Comment read "pixels, for 1-3 char words", but commit 987329b moved the threshold to `<= 2` (1-2 char words) in both `font_scale.py:28` and `score.py:75`. **Fixed.** Comment updated to "1-2 char words".
+5. [WARN] CLAUDE.md:74 -- Quality Target conclusion said "When all three primary gate targets hold on all 3 seeds..." but the section above lists only two (`height_outlier_score >= 0.90` and `ocr_min >= 0.30`). Likely an artifact from an earlier draft that envisioned 3 correlated metrics clearing the B1 bar. **Fixed.** Changed to "all primary gate targets" (robust to future list-size changes).
 
-3. [WARN] tests/medium/test_descender_diagnostic.py:11,14 -- Two dead imports (`import torch` and `from reforge.config import DEFAULT_CANVAS_HEIGHT`). **Fixed.** Both removed.
+6. [NOTE] reforge/evaluate/regression_gate.py -- New helper module is well-isolated from GPU code and covered by `tests/quick/test_regression_gate.py` (TestPrimaryMetricsConfig, TestGateFiresOnPrimaryRegression, TestDiagnosticsDoNotGate, TestInvertedMetric, TestOcrMinGate). Clean extraction from the medium test. No issue.
 
-4. [NOTE] reforge/model/generator.py:586-628 -- OCR rejection retry loop re-computes OCR on the selected image at iteration 1 when `num_candidates=1`, even if iteration 0 already computed it for the same image. `first_check_done` is set once and never flipped inside the loop. Wastes one TrOCR call per retry iteration on hard words only. Not a correctness bug.
-
-5. [NOTE] reforge/model/generator.py:631 -- Multi-chunk words call OCR for every candidate in `_generate_chunk` (via `ocr_fn` wired at line 519), but the OCR rejection loop is only invoked in the `len(chunks) == 1` branch. The per-candidate OCR scoring is still useful (it selects a readable chunk), so the per-candidate call is not wasted. The absence of multi-chunk rejection retry is pre-existing (identical branch structure in commit 844e31b). External reviewer (openai) flagged this.
-
-6. [NOTE] tests/medium/test_descender_diagnostic.py:115 -- Diagnostic test uses `assert True`; findings are only visible via captured stdout. Consistent with the test's stated purpose ("diagnostic: no hard assertion, just record findings") but provides no regression protection.
+7. [NOTE] scripts/metric_correlation.py:40 -- The script imports `scipy.stats.spearmanr` at module level AND carries a hand-rolled `spearman()` helper (lines 119-139) with a stated motivation (lines 33-39) of keeping unit tests dependency-free. The test `test_scipy_wrapper_matches_pure_python_rho` pins both implementations to the same rho. This dual-implementation is a small maintenance cost; consider whether to drop the pure-python version once scipy is guaranteed in all test environments. Not urgent.
 
 ### Fixes Applied
 
-1. Resized style word images to 64px canvas height before computing reference stroke width in pipeline.py (WARN #1, partial -- addresses scale mismatch in code; runtime reference for hw-sample.png is essentially unchanged due to segmentation quality and handwriting thickness; follow-up recommended).
-2. Updated `SHORT_WORD_HEIGHT_TARGET` comment from "1-3 char words" to "1-2 char words" in config.py (WARN #2).
-3. Removed unused `import torch` and `DEFAULT_CANVAS_HEIGHT` imports from test_descender_diagnostic.py (WARN #3).
+1. **BLOCK #1:** Updated `scripts/archive-output.sh` to read `seeds.42.metrics` with a legacy-format fallback. Verified by running the script.
+2. **BLOCK #2:** Updated `tests/medium/test_ab_harness.py::_baseline_floor()` to read `seeds.42.metrics` with a legacy-format fallback.
+3. **WARN #3:** Added `context_filter` kwarg to `reforge.evaluate.ledger.detect_drift` and called it with `f"regression test seed={REFERENCE_SEED}"` from the regression test. Backward-compatible: all existing `detect_drift` callers (tests/quick/test_evaluate.py, 43 tests) use positional args and are unaffected.
+4. **WARN #4:** Rewrote README.md:185 to describe the 3-seed primary-metric gating and manual baseline updates.
+5. **WARN #5:** Corrected CLAUDE.md:74 from "all three primary gate targets" to "all primary gate targets."
 
-Post-fix verification: 179/179 quick tests pass. 180 tests collected (unchanged). No regression.
+Post-fix verification: 209/209 quick tests pass. Medium regression tests were not re-run (GPU-bound, outside preliminary review scope); the logic changes are backward-compatible and the critical paths are exercised by quick tests plus the archive-script dry-run.
 
 ### Accepted Risks
 
 None.
 
 ---
-*Prior review (2026-04-09, commit 844e31b): Refresh review of 1 commit implementing SPEC B/C/D. 1 WARN (unused DEFAULT_GUIDANCE_SCALE import in test_parameter_optimality.py, auto-fixed) and 1 NOTE (dead guard in height tests, carried forward).*
+*Prior review (2026-04-10, commit 7a19459): Refresh review of 17 unpushed commits implementing SPEC criteria A1-A5, B1-B4, C1-C2 for height-aware candidate selection and human eval. 3 WARN (stroke width reference scale mismatch partially fixed, stale SHORT_WORD_HEIGHT_TARGET comment fixed, dead imports in test_descender_diagnostic.py fixed) and 3 NOTE. All fixes applied.*
 
-<!-- REVIEW_META: {"date":"2026-04-10","commit":"7a19459","reviewed_up_to":"7a194593669f59518547ea7025c0da114312d001","base":"origin/main","tier":"refresh","block":0,"warn":3,"note":3} -->
+<!-- REVIEW_META: {"date":"2026-04-10","commit":"2ab52b6","reviewed_up_to":"2ab52b6d9473e4244b14db4ccddea63a1e40ad5d","base":"origin/main","tier":"refresh","block":2,"warn":3,"note":2} -->

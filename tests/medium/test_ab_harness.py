@@ -25,12 +25,20 @@ FLOOR_DISCOUNT = 0.15
 
 
 def _baseline_floor(metric: str) -> float | None:
-    """Load baseline floor for a metric. Returns None if unavailable."""
+    """Load baseline floor for a metric. Returns None if unavailable.
+
+    Reads the reference seed (42) from the new per-seed format (spec
+    2026-04-10 C3), with a fallback to the legacy flat `metrics` key.
+    """
     if not os.path.exists(BASELINE_PATH):
         return None
     with open(BASELINE_PATH) as f:
         data = json.load(f)
-    value = data.get("metrics", {}).get(metric)
+    metrics = (
+        data.get("seeds", {}).get("42", {}).get("metrics")
+        or data.get("metrics", {})
+    )
+    value = metrics.get(metric)
     if value is None or not isinstance(value, (int, float)):
         return None
     return value - FLOOR_DISCOUNT

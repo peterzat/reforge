@@ -74,14 +74,27 @@ def detect_drift(
     metric: str,
     window: int = 5,
     threshold: float = 0.08,
+    context_filter: str | None = None,
 ) -> tuple[bool, float | None, float | None]:
     """Check if a metric has declined over a window of recent runs.
 
     Compares the metric value in the first run of the window against the
     last run. Returns (drifted, first_value, last_value). If insufficient
     data (fewer than 2 runs with the metric), returns (False, None, None).
+
+    If `context_filter` is provided, only ledger entries whose `context`
+    field contains the substring are considered. This lets multi-seed
+    ledgers filter to a single seed so cross-seed variance is not
+    interpreted as drift.
     """
-    runs = recent_runs(ledger_path, window)
+    # When filtering, we need more raw entries to find `window` matches.
+    # Fetch a larger slice and filter, then take the last `window` hits.
+    fetch_n = window if context_filter is None else max(window * 10, window)
+    runs = recent_runs(ledger_path, fetch_n)
+    if context_filter is not None:
+        runs = [r for r in runs if context_filter in r.get("context", "")]
+        runs = runs[-window:]
+
     values = []
     for run in runs:
         v = run.get("scores", {}).get(metric)

@@ -7,6 +7,45 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260410-144654
+
+![output](output-history/20260410-144654.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `2ab52b6 (uncommitted changes)` |
+| Commit message | New spec and test review for 2026-04-10 convergence turn |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
+## 20260410-143302
+
+![output](output-history/20260410-143302.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `2ab52b6 (uncommitted changes)` |
+| Commit message | New spec and test review for 2026-04-10 convergence turn |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
+## 20260410-140301
+
+![output](output-history/20260410-140301.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `2ab52b6 (uncommitted changes)` |
+| Commit message | New spec and test review for 2026-04-10 convergence turn |
+| Style input | `styles/hw-sample.png` |
+| Metrics | metrics unavailable (empty baseline) |
+
+---
+
 ## 20260410-035223
 
 ![output](output-history/20260410-035223.png)

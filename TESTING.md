@@ -27,14 +27,25 @@
 ```
 
 ```
-[NOTE] quality-baseline-isolation -- quality_baseline.json is a committed, mutable test artifact
-  Current state: tests/medium/quality_baseline.json is committed to git and updated
-    in-place by test_quality_regression.py when all metrics are non-regressing and at
-    least one improves (ratchet upward). Running the medium suite can produce a dirty
-    working tree even when all tests pass. Acceptable for the current workflow where
-    the developer reviews and commits baseline updates.
-  Recommendation: If this becomes friction, separate "update baseline" into a
-    distinct command (e.g., make update-baseline).
+[NOTE] quality-baseline-isolation -- RESOLVED (spec 2026-04-10 B3)
+  Prior state: tests/medium/quality_baseline.json auto-updated on any run where
+    all metrics were non-regressing and one improved, ratcheting the baseline
+    upward without human review.
+  Current state: Auto-update is disabled. Baseline updates require
+    `pytest --update-baseline`. Improvements are printed but not promoted.
+  Baseline file format (spec 2026-04-10 C3): top-level "seeds" dict keyed by
+    seed string, each containing a "metrics" sub-dict. Example:
+      {
+        "words": [...], "num_steps": 20, "guidance_scale": 3.0,
+        "updated_at": "<iso>", "update_reason": "manual --update-baseline",
+        "seeds": {
+          "42":   {"metrics": {...}},
+          "137":  {"metrics": {...}},
+          "2718": {"metrics": {...}}
+        }
+      }
+    Legacy single-seed baselines with a top-level "metrics" key are read only
+    for seed 42; other seeds return None and the test prompts for a rebootstrap.
 ```
 
 ```
@@ -56,7 +67,7 @@
 From the 2026-04-09 review:
 - **OPEN** (carried forward): ci-pipeline. Still no CI. Appropriate for single-developer stage.
 - **OPEN** (carried forward): coverage-tracking. Still no coverage tooling.
-- **OPEN** (carried forward): quality-baseline-isolation. Still auto-updates on test run.
+- **RESOLVED**: quality-baseline-isolation. Spec 2026-04-10 B3 disabled auto-update; baseline only moves on explicit `--update-baseline`.
 - **NEW**: diagnostic-tests-no-assertions. Surfaced from CODEREVIEW NOTE #6 (refresh review on commit 7a19459); two diagnostic tests in the medium tier consume GPU time without assertions.
 
 ---
