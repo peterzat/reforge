@@ -20,19 +20,6 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
-## 20260410-004045
-
-![output](output-history/20260410-004045.png)
-
-| Field | Value |
-|-------|-------|
-| Git state | `958f1cd (uncommitted changes)` |
-| Commit message | Update FINDINGS.md: composition reaches 4/5 after stroke width scoring |
-| Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.793, composition_score=0.352, stroke_weight_consistency=0.916, word_height_ratio=1.000, ocr_accuracy=0.900, style_fidelity=0.358, ink_contrast=1.000, background_cleanliness=1.000 |
-
----
-
 ## 20260409-050133
 
 ![output](output-history/20260409-050133.png)

@@ -46,7 +46,11 @@
       "Bash(fuser -k 2020/tcp)",
       "Bash(break)",
       "Bash(.venv/bin/pip install:*)",
-      "Bash(.venv/bin/pip uninstall:*)"
+      "Bash(.venv/bin/pip uninstall:*)",
+      "Bash(dmesg)",
+      "Bash(dpkg -l)",
+      "Bash(dkms status:*)",
+      "Bash(lsmod)"
     ]
   }
 }
