@@ -7,8 +7,8 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 7 |
-| In Progress | 1 |
+| Active | 6 |
+| In Progress | 2 |
 | Resolved | 1 |
 | Acceptable | 0 |
 | Graduated | 0 |
@@ -97,24 +97,29 @@ CLAUDE.md section where they were added.
 
 ### Ink weight inconsistency across words
 
-- **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json
+- **Status:** In Progress
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_002757.json
 - **Principle:** Adjacent words have visibly different stroke weight. The
-  current harmonization (shifting ink brightness median) has no visible
-  effect, meaning it operates on the wrong signal. Humans perceive weight
-  as stroke width and density, not brightness. This is flagged as a
-  composition defect (ink_weight_uneven) in every review with defect flags.
-- **Evidence:** Review 1: comparing STROKE_WEIGHT_SHIFT_STRENGTH 0.92 vs
-  0.70 produced "no difference," both "equally inconsistent." Review 2
-  (2026-04-09): preferred A, "possibly identical. jump high has noticeably
-  greater ink weight in both versions." Composition defect ink_weight_uneven
-  flagged in reviews 2026-04-04 and 2026-04-09.
-- **Applies to:** reforge/quality/harmonize.py (harmonize_stroke_weight)
-- **Code changes:** None effective yet. Current brightness-median approach
-  does not address the problem. Needs a fundamentally different strategy:
-  morphological stroke width estimation, erosion/dilation normalization,
-  or generation-time control (e.g., rejecting candidates with outlier
-  stroke weight).
+  brightness-median harmonization has no visible effect (wrong signal).
+  Two-pronged fix applied: (1) blended morphological stroke width
+  harmonization in post-processing, (2) stroke width scoring in candidate
+  selection using style images as reference.
+- **Evidence:** Review 1: harmonization A/B "no difference." Review 2
+  (2026-04-09): "identical." Review 3 (2026-04-10, post stroke-width
+  scoring): ink_weight A/B still "identical," but composition jumped to
+  4/5 (best ever), "easily our best so far." ink_weight_uneven no longer
+  flagged as a composition defect. Stroke width scoring in candidate
+  selection appears to be having a positive effect on overall composition
+  quality even though the A/B ink weight comparison is too subtle to show.
+- **Applies to:** reforge/quality/harmonize.py, reforge/quality/score.py,
+  reforge/model/generator.py (candidate selection)
+- **Code changes:** (1) Blended morphological harmonization: removed broken
+  global gate, per-word 15% threshold with proportional alpha blend.
+  (2) Stroke width scoring in quality_score: reference from style images,
+  20% weight in combined score, active during best-of-N selection.
+  Composition 4/5 suggests the candidate selection approach is more
+  effective than post-hoc harmonization. The ink weight A/B eval may need
+  redesign to test candidate selection quality, not post-processing.
 
 ### Hard words show gray box artifacts
 
@@ -191,29 +196,27 @@ CLAUDE.md section where they were added.
   correct approach but may need tighter outlier clamping or a different
   height target for multi-char words like "something" that generate small.
 
-### Composition quality is unstable
+### Composition quality improving but still variable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json
-- **Principle:** Full composition output quality fluctuates between 2/5 and 3/5
-  across reviews. The dominant complaints have shifted from spacing (fixed) to
-  baseline drift and size inconsistency. Short words ("by", "for") drift
-  vertically, and per-word generation variance produces malformed letters.
-- **Evidence:** Reviews 1-2: 4 defect flags, "illegible." Review 3 (post-fix):
-  3/5, spacing improved. Reviews 4-6: held at 3/5 with various defects.
-  Review 7 (2026-04-09): 2/5, 4 defect flags (size_inconsistent,
-  baseline_drift, ink_weight_uneven, letter_malformed). "baseline possibly
-  regressed, by is higher than it should be, morning too high, being and
-  for too low." This is the first regression below 3/5 since the spacing
-  fix, with no pipeline code changes.
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json
+- **Principle:** Composition quality has ranged from 2/5 to 4/5. The dominant
+  remaining complaints are baseline drift and size inconsistency. Candidate
+  selection improvements (OCR-aware scoring, stroke width scoring) appear
+  to have the largest positive effect on composition quality.
+- **Evidence:** Reviews 1-2: 2/5, illegible. Review 3 (spacing fix): 3/5.
+  Reviews 4-6: held at 3/5. Review 7 (2026-04-09): regressed to 2/5 with
+  no code changes. Review 8 (2026-04-10, post stroke-width scoring + OCR
+  selection): 4/5, "easily our best so far." Defects: size_inconsistent,
+  baseline_drift, letter_malformed (but no ink_weight_uneven for first time).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
-  (sizing), reforge/model/generator.py (per-word quality)
-- **Code changes:** Spacing fix improved rating 2/5->3/5. Gray box cluster
-  filter fix preserves punctuated word fragments. OCR threshold raised to 0.4.
-  X-height chunk normalization. None of these moved composition past 3/5.
-  The regression to 2/5 without code changes indicates that baseline detection
-  and sizing normalization are fragile under generation variance, not that
-  the 3/5 ceiling was a hard limit.
+  (sizing), reforge/model/generator.py (candidate selection)
+- **Code changes:** Spacing fix (2->3/5). OCR-aware candidate selection,
+  stroke width scoring in candidate selection, blended morphological
+  harmonization. The 4/5 rating came after candidate selection improvements,
+  suggesting that improving per-word generation quality at selection time
+  has more impact than post-processing fixes. Remaining defects (baseline,
+  sizing) are the next targets.
 
 ## Graduated Findings
 
