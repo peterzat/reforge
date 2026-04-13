@@ -37,7 +37,7 @@ def compute_mean_stroke_width(img: np.ndarray) -> float:
         return 0.0
     dist = cv2.distanceTransform(ink_mask, cv2.DIST_L2, 5)
     ink_dists = dist[ink_mask > 0]
-    return float(np.mean(ink_dists)) * 2.0
+    return float(np.mean(ink_dists, dtype=np.float64)) * 2.0
 
 
 def harmonize_stroke_width(word_images: list[np.ndarray]) -> list[np.ndarray]:
