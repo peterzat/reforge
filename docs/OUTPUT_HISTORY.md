@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260413-224346
+
+![output](output-history/20260413-224346.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `40abadb (uncommitted changes)` |
+| Commit message | Remove duplicate output history entries, add commit-based dedup |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
 ## 20260410-144654
 
 ![output](output-history/20260410-144654.png)
