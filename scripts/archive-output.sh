@@ -27,7 +27,7 @@ mkdir -p "$HISTORY_DIR"
 LATEST_ARCHIVE="$(ls "$HISTORY_DIR"/*.png 2>/dev/null | sort | tail -1 || true)"
 
 # Skip if the new image is nearly identical to the latest archive.
-# Uses mean absolute pixel difference; threshold of 1.0 (out of 255) catches
+# Uses mean absolute pixel difference; threshold of 3.0 (out of 255) catches
 # visually identical images even if PNG compression differs.
 if [ -n "$LATEST_ARCHIVE" ]; then
     IS_DUPLICATE="$(.venv/bin/python3 -c "
@@ -50,6 +50,21 @@ print('yes' if mad < 3.0 else 'no')
     if [ "$IS_DUPLICATE" = "yes" ]; then
         echo "Output unchanged from latest archive ($(basename "$LATEST_ARCHIVE")), skipping."
         exit 0
+    fi
+fi
+
+# Skip if HEAD commit hasn't changed since the last archive. Stochastic
+# generation means pixel-dedup won't catch re-runs of demo.sh at the same
+# code state. Extract the commit from the most recent OUTPUT_HISTORY.md entry.
+if [ -f "$HISTORY_MD" ]; then
+    COMMIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+    LAST_ARCHIVED_COMMIT="$(grep -m1 '| Git state |' "$HISTORY_MD" \
+        | grep -oP '`\K[a-f0-9]+' || true)"
+    if [ "$COMMIT_SHORT" = "$LAST_ARCHIVED_COMMIT" ]; then
+        echo "HEAD ($COMMIT_SHORT) matches latest archive, skipping. Use --force to override."
+        if [ "${1:-}" != "--force" ]; then
+            exit 0
+        fi
     fi
 fi
 
