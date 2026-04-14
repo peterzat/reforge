@@ -1,18 +1,19 @@
 """Human evaluation system for reforge quality assessment.
 
-Generates test images for 8 evaluation types, presents them via qpeek's
+Generates test images for 9 evaluation types, presents them via qpeek's
 --html mode as a single-page wizard, captures structured JSON responses,
 and persists review data.
 
 Evaluation types:
     candidate   -- Best-of-N candidate selection calibration (B1)
-    stitch      -- Chunk stitching overlap comparison (B2)
+    stitch      -- Chunk stitching overlap comparison (B2, SUSPENDED)
     sizing      -- Short vs long word size consistency (B3)
     baseline    -- Baseline alignment with descenders (B4)
     spacing     -- Word spacing and jitter comparison (B5)
     ink_weight  -- Stroke weight consistency comparison (B6)
     composition -- Full two-paragraph composition rating (B7)
     hard_words  -- Curated hard words readability check (D2)
+    punctuation -- Punctuation rendering readability check
 
 Review JSON schema (saved to reviews/human/YYYY-MM-DD_HHMMSS.json):
     {
@@ -70,6 +71,7 @@ PIPELINE_FILES = [
 EVAL_TYPES = [
     "candidate", "stitch", "sizing", "baseline",
     "spacing", "ink_weight", "composition", "hard_words",
+    "punctuation",
 ]
 
 STYLE_PATH = "styles/hw-sample.png"
@@ -307,6 +309,12 @@ def _normalize_chunks_to_same_height(chunk_images: list[np.ndarray]) -> list[np.
 
 def generate_stitch_eval(models, output_dir):
     """B2: Generate a long word with different STITCH_OVERLAP_PX values.
+
+    SUSPENDED (2026-04-14): Called broken 3 consecutive reviews because
+    chunk baseline mismatch makes overlap comparison meaningless. The
+    eval generates and displays results, but the persistent visual
+    misalignment is a stitch_chunks baseline-alignment issue, not an
+    eval bug. Unblocked when stitch_chunks baseline alignment improves.
 
     stitch_chunks() handles x-height normalization and baseline alignment
     internally. We record chunk heights for the label but do not
@@ -585,6 +593,63 @@ def generate_hard_words_eval(models, output_dir):
     }
 
 
+def generate_punctuation_eval(models, output_dir):
+    """Generate words with different punctuation marks for readability review.
+
+    Tests: apostrophe contraction, comma-adjacent, period, question mark,
+    exclamation, semicolon. Covers both synthetic punctuation (contractions)
+    and DiffusionPen-rendered punctuation.
+    """
+    from reforge.evaluate.compare import create_comparison_image
+    from reforge.evaluate.ocr import ocr_accuracy
+    from reforge.model.generator import generate_word
+
+    # Words exercising different punctuation types from the charset
+    punct_words = [
+        "can't",      # apostrophe contraction (synthetic)
+        "hello,",     # trailing comma
+        "world.",     # trailing period
+        "really?",    # trailing question mark
+        "great!",     # trailing exclamation
+        "wait;",      # trailing semicolon
+        "it's",       # short contraction (synthetic)
+        "she'd",      # contraction with d (synthetic)
+    ]
+
+    word_images = []
+    word_meta = []
+    for word in punct_words:
+        img = generate_word(
+            word,
+            models["unet"], models["vae"], models["tokenizer"],
+            models["style_features"],
+            uncond_context=models["uncond_context"],
+            num_steps=20, guidance_scale=3.0,
+            num_candidates=1,
+            device=models["device"],
+        )
+        acc = ocr_accuracy(img, word)
+        word_images.append(img)
+        word_meta.append({
+            "word": word,
+            "ocr_accuracy": round(acc, 4),
+        })
+
+    comparison = create_comparison_image(
+        word_images,
+        [f'{m["word"]} (OCR: {m["ocr_accuracy"]:.2f})' for m in word_meta],
+        title="Punctuation readability check",
+    )
+    comp_path = os.path.join(output_dir, "punctuation_comparison.png")
+    comparison.save(comp_path)
+
+    return {
+        "type": "punctuation",
+        "words": word_meta,
+        "comparison_image": comp_path,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
@@ -598,6 +663,7 @@ GENERATORS = {
     "ink_weight": generate_ink_weight_eval,
     "composition": generate_composition_eval,
     "hard_words": generate_hard_words_eval,
+    "punctuation": generate_punctuation_eval,
 }
 
 
@@ -648,10 +714,13 @@ def build_html_page(eval_metadata, eval_types, output_dir):
                  "label": "Agree with quality score pick?"},
             ]
         elif et == "stitch":
-            step["title"] = "Chunk Stitching"
+            step["title"] = "Chunk Stitching (SUSPENDED)"
             step["description"] = (
                 f'Which overlap produces the least visible seam for '
-                f'"{meta["word"]}" ({" + ".join(meta["chunks"])})?'
+                f'"{meta["word"]}" ({" + ".join(meta["chunks"])})?  '
+                f'Note: this eval is suspended due to persistent chunk '
+                f'baseline misalignment. Rating is still collected but '
+                f'does not drive iteration.'
             )
             step["input_type"] = "pick"
             step["options"] = [f"{o}px" for o in meta["overlaps"]]
@@ -701,6 +770,15 @@ def build_html_page(eval_metadata, eval_types, output_dir):
             step["description"] = (
                 f"Rate overall readability of these difficult words: {word_list}. "
                 "Flag any that are unreadable."
+            )
+            step["input_type"] = "hard_words_rating"
+            step["unreadable_options"] = [w["word"] for w in meta.get("words", [])]
+        elif et == "punctuation":
+            word_list = ", ".join(w["word"] for w in meta.get("words", []))
+            step["title"] = "Punctuation Readability"
+            step["description"] = (
+                f"Rate overall readability of punctuated words: {word_list}. "
+                "Flag any where punctuation is missing, malformed, or unreadable."
             )
             step["input_type"] = "hard_words_rating"
             step["unreadable_options"] = [w["word"] for w in meta.get("words", [])]

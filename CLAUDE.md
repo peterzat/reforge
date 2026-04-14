@@ -171,11 +171,11 @@ The review identifies issues that CV metrics miss: letter formation quality, nat
 ### Human review workflow
 
 Human evaluation captures quality dimensions that CV metrics and multimodal AI miss:
-naturalness, spacing feel, overall "handwritten note" impression. Eight structured
+naturalness, spacing feel, overall "handwritten note" impression. Nine structured
 evaluation types isolate specific quality dimensions.
 
 ```bash
-make test-human                          # all 8 eval types (~2 min generation + review time)
+make test-human                          # all 9 eval types (~2 min generation + review time)
 make test-human EVAL=candidate,stitch    # run only specific types
 ```
 
@@ -228,6 +228,7 @@ reviews and 2+ code changes are candidates for graduation to CLAUDE.md.
 | ink_weight | quality/harmonize.py, config.py (STROKE_WEIGHT_*) | After harmonization changes |
 | composition | full pipeline (end-to-end) | After any quality-affecting change; uses quality preset |
 | hard_words | model/generator.py (generate_word, postprocess) | After generation or gray-box defense changes |
+| punctuation | model/generator.py (stitch_contraction, make_synthetic_apostrophe) | After contraction splitting or punctuation rendering changes |
 
 Human review is advisory only. It is not a commit gate and does not modify git hooks.
 
@@ -307,7 +308,7 @@ docs/
   output-history/        Archived output PNGs (one per make test-full run)
 scripts/
   archive-output.sh      Captures output + git state + metrics into history
-  human_eval.py          Human evaluation: 8 eval types, qpeek orchestration, staleness check
+  human_eval.py          Human evaluation: 9 eval types, qpeek orchestration, staleness check
   human_eval_page.html   Custom HTML wizard template for qpeek --html
   prune_reviews.py       Prune stale review JSON files (dry-run/--apply)
 reviews/

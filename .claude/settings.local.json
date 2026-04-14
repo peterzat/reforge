@@ -50,7 +50,19 @@
       "Bash(dmesg)",
       "Bash(dpkg -l)",
       "Bash(dkms status:*)",
-      "Bash(lsmod)"
+      "Bash(lsmod)",
+      "Bash(codereview-skip:*)",
+      "Bash(xargs -r kill)",
+      "Bash(bash:*)",
+      "Bash(grep -oP '`\\\\K[a-f0-9]+')",
+      "Bash(curl -s \"https://arxiv.org/abs/1308.0850\")",
+      "WebFetch(domain:arxiv.org)",
+      "WebSearch",
+      "WebFetch(domain:link.springer.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:www.sciencedirect.com)",
+      "WebFetch(domain:research.gold.ac.uk)",
+      "WebFetch(domain:luc.devroye.org)"
     ]
   }
 }

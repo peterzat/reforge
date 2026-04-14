@@ -7,8 +7,8 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 4 |
-| In Progress | 2 |
+| Active | 5 |
+| In Progress | 1 |
 | Resolved | 1 |
 | Acceptable | 1 |
 | Plateaued | 1 |
@@ -103,12 +103,15 @@ CLAUDE.md section where they were added.
   the right overlap." The eval has been called broken in 3 consecutive
   reviews. Until the baseline mismatch between chunks is fixed, the
   overlap comparison is not producing useful signal.
+  Review 7 (2026-04-14, post x-height equalization): picked 4px.
+  "still has severely vertical misalignment: 'tanding' is way above 'unders'."
+  Stitch eval now marked SUSPENDED in human_eval.py per spec D2.
 - **Test design note:** The stitch eval is designed to compare overlap widths, but
   when chunk baseline positions differ dramatically, the overlap is
   irrelevant. The problem is baseline alignment between chunks, not height.
-  Human has flagged this test as broken 3 times running. It should either
-  be fixed (equalize chunk baselines before comparing overlaps) or
-  suspended until stitch_chunks baseline alignment is addressed.
+  Human has flagged this test as broken 4 times running. The eval is now
+  **suspended** (2026-04-14) with a note in the docstring and HTML title.
+  Ratings are still collected but do not drive iteration.
 - **Applies to:** reforge/model/generator.py (stitch_chunks baseline alignment)
 - **Code changes:** (1) Replaced bounding-box height normalization with ink-height
   alignment. (2) Added horizontal tight-crop. (3) X-height normalization.
@@ -132,6 +135,8 @@ CLAUDE.md section where they were added.
   Review 6 (2026-04-14): Human picked B, again disagrees with metric.
   Review 7 (2026-04-14, second run): Human picked C, again disagrees with
   metric. Six of seven reviews show human-metric disagreement.
+  Review 8 (2026-04-14, post x-height equalization): Human picked E,
+  again disagrees with metric. Seven of eight reviews disagree.
 - **Applies to:** reforge/quality/score.py (QUALITY_WEIGHTS)
 - **Code changes:** OCR-aware candidate scoring (40% OCR weight), stroke
   width scoring (20% of image quality component), and height-aware scoring
@@ -250,17 +255,22 @@ CLAUDE.md section where they were added.
   disproportionately large) remains the most likely root cause. The
   combination of letters in a word should not affect its relative scaling.
   Composition still lists baseline_drift as a defect.
+  Review 8 (2026-04-14, post x-height equalization): improved to 4/5.
+  The equalize_body_zones() pass in font_scale.py scales down words
+  whose x-height (body zone) exceeds 105% of median, addressing the
+  "gray too big" problem. CV baseline_alignment: 1.0. Three code changes
+  now contributing: median baseline, character-aware detection, and
+  body-zone equalization. Rating trajectory: 2/5 -> 3/5 -> 3/5 -> 4/5.
 - **Applies to:** reforge/compose/render.py (line baseline computation),
   reforge/compose/layout.py (per-word baseline detection),
-  reforge/quality/font_scale.py (ink height includes dots/ascenders)
+  reforge/quality/font_scale.py (body-zone equalization)
 - **Code changes:** (1) Replaced max-baseline with median-baseline per line.
   (2) Added outlier clamping. (3) Character-aware detect_baseline: words
   with descender letters (g,j,p,q,y) use a higher body-density threshold
   (25% vs 35%) to avoid treating descender ink as body text.
-- **Next step:** The font normalization issue (total ink height includes
-  dots/ascenders, distorting relative body sizes) may need x-height-based
-  normalization instead of total-ink-height-based. This would be a
-  significant change to font_scale.py.
+  (4) equalize_body_zones(): post-normalization pass scales down words
+  whose x-height exceeds 105% of median, preventing non-ascender words
+  from appearing disproportionately large.
 
 ### Word sizing is inconsistent
 
@@ -341,8 +351,13 @@ CLAUDE.md section where they were added.
   Notable: letter_malformed dropped from defects for the first time in 4
   reviews. This is the second 4/5 rating overall. The generous self-
   assessment means the true quality is closer to 3.5/5; the 4 should not
-  be treated as solid evidence of a quality jump. Last 5 composition
-  ratings: 3, 3, 3, 3, 4; median: 3/5 (target: 4/5).
+  be treated as solid evidence of a quality jump.
+  Review 12 (2026-04-14, post x-height equalization): 4/5, defects:
+  size_inconsistent, baseline_drift (from notes). '"by" is tiny,
+  punctuation is completely invisible.' Third 4/5 rating. letter_malformed
+  still absent from defects (2 reviews running). New finding: trailing
+  punctuation (commas, periods, etc.) is invisible in composition output.
+  Last 5 composition ratings: 3, 3, 3, 4, 4; median: 3/5 (target: 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting)
 - **Code changes:** Spacing fix (2->3/5). OCR-aware candidate selection,
@@ -389,14 +404,34 @@ CLAUDE.md section where they were added.
   17 unit tests cover detection, splitting, and stitching.
 - **Progress note:** The synthetic punctuation approach is a net positive:
   it avoids DiffusionPen's worst punctuation artifacts (double apostrophes,
-  oversized blobs) that previously degraded output quality. The approach
-  needs refinement (tight cropping on right-side "t", canvas-fill on
-  single-char parts) but the direction is correct.
-- **Next step:** Perfect the contraction splitting output, and add targeted
-  human eval test loops for punctuation rendering specifically. The current
-  hard_words eval covers contractions incidentally but does not isolate
-  punctuation quality. A dedicated punctuation eval type would provide
-  focused signal for iteration.
+  oversized blobs) that previously degraded output quality. Tight-crop
+  padding increased from 1px to 3px for 1-2 char right-side parts to
+  preserve thin stroke edges. A dedicated `punctuation` eval type now
+  provides focused signal (first result: 1/5, "punctuation is all bad,
+  largely invisible"). The punctuation eval reveals a broader issue:
+  DiffusionPen renders trailing punctuation (commas, periods, question
+  marks, semicolons) as invisible, not just malformed apostrophes.
+
+### Trailing punctuation is invisible in generated output
+
+- **Status:** Active
+- **Reviews:** 2026-04-14_154117.json
+- **Principle:** DiffusionPen renders trailing punctuation marks (commas,
+  periods, question marks, exclamation marks, semicolons) as invisible or
+  imperceptible in the output. The model simply does not produce visible
+  ink for these characters. This is distinct from the apostrophe problem
+  (contraction splitting works around that). Trailing punctuation is
+  passed directly to DiffusionPen, which ignores it.
+- **Evidence:** First punctuation eval (2026-04-14): 1/5. Human: "punctuation
+  is all bad (largely invisible)." Composition review (same session): 4/5
+  but noted "punctuation is completely invisible."
+- **Applies to:** reforge/model/generator.py (word generation path for
+  non-contraction punctuated words)
+- **Code changes:** None yet. The contraction splitting approach (synthetic
+  mark generation) could potentially be extended to trailing punctuation:
+  strip the punctuation, generate the base word, then append a synthetic
+  mark. This is a wrapper-layer intervention. The alternative (getting
+  DiffusionPen to render punctuation) would require retraining.
 
 ## Graduated Findings
 

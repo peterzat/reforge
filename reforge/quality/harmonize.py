@@ -124,7 +124,7 @@ def harmonize_stroke_weight(word_images: list[np.ndarray]) -> list[np.ndarray]:
 
 
 def harmonize_heights(word_images: list[np.ndarray]) -> list[np.ndarray]:
-    """Scale words toward median height to reduce height variance.
+    """Scale words toward median body-zone height to reduce height variance.
 
     Scale DOWN words above HEIGHT_OUTLIER_THRESHOLD of median.
     Scale UP words below HEIGHT_UNDERSIZE_THRESHOLD of median.

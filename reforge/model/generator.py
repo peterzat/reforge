@@ -117,11 +117,13 @@ def stitch_contraction(
     left_img: np.ndarray,
     apostrophe_img: np.ndarray,
     right_img: np.ndarray,
+    right_part_len: int = 0,
 ) -> np.ndarray:
     """Stitch a contraction: [left] [apostrophe] [right].
 
     Aligns all three parts by ink bottom (baseline) and places
-    the apostrophe with minimal spacing.
+    the apostrophe with minimal spacing. Short right-side parts
+    (1-2 chars) get extra horizontal padding to preserve thin strokes.
     """
     INK_THRESH = 180
 
@@ -131,18 +133,22 @@ def stitch_contraction(
             return 0
         return img.shape[0] - 1 - int(np.argmax(ink_rows[::-1]))
 
-    def _tight_crop_h(img):
-        """Tight horizontal crop to ink bounds with 1px padding."""
+    def _tight_crop_h(img, pad_px=1):
+        """Tight horizontal crop to ink bounds with configurable padding."""
         col_has_ink = np.any(img < INK_THRESH, axis=0)
         if not np.any(col_has_ink):
             return img
-        left = max(0, int(np.argmax(col_has_ink)) - 1)
-        right = min(img.shape[1] - 1, len(col_has_ink) - 1 - int(np.argmax(col_has_ink[::-1])) + 1)
+        left = max(0, int(np.argmax(col_has_ink)) - pad_px)
+        right = min(img.shape[1] - 1, len(col_has_ink) - 1 - int(np.argmax(col_has_ink[::-1])) + pad_px)
         return img[:, left:right + 1]
+
+    # Short right-side parts (1-2 chars) get wider padding to preserve
+    # thin stroke edges (human feedback: "t" cropped too close)
+    right_pad = 3 if 0 < right_part_len <= 2 else 1
 
     # Tight-crop each part horizontally
     left_img = _tight_crop_h(left_img)
-    right_img = _tight_crop_h(right_img)
+    right_img = _tight_crop_h(right_img, pad_px=right_pad)
 
     parts = [left_img, apostrophe_img, right_img]
     bottoms = [_ink_bottom(p) for p in parts]
@@ -868,7 +874,10 @@ def _generate_contraction(
 
     apostrophe_img = make_synthetic_apostrophe(ink_intensity, body_h)
 
-    result = stitch_contraction(left_img, apostrophe_img, right_img)
+    result = stitch_contraction(
+        left_img, apostrophe_img, right_img,
+        right_part_len=len(right_text),
+    )
     log.debug(
         "contraction stitched: %s (%dx%d) + ' + %s (%dx%d) -> %dx%d",
         left_text, left_img.shape[1], left_img.shape[0],

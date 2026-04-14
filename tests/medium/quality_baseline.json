@@ -8,7 +8,7 @@
   ],
   "num_steps": 20,
   "guidance_scale": 3.0,
-  "updated_at": "2026-04-10T13:49:38.418593+00:00",
+  "updated_at": "2026-04-14T15:22:05.717099+00:00",
   "update_reason": "manual --update-baseline",
   "seeds": {
     "42": {

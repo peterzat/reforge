@@ -215,11 +215,23 @@ def run(
     _log(f"\r  [{n_words}/{n_words}] done ({_fmt_time(gen_time)})" + " " * 20, verbose)
 
     # --- Font normalization ---
-    from reforge.quality.font_scale import normalize_font_size
+    from reforge.quality.font_scale import equalize_body_zones, normalize_font_size
 
     for i, (img, word) in enumerate(zip(generated_images, flat_words)):
         if img is not None and word is not None:
             generated_images[i] = normalize_font_size(img, word)
+
+    # --- X-height equalization ---
+    # After ink-height normalization, words without ascenders (e.g. "gray")
+    # can appear disproportionately large because their entire height is body
+    # zone. This pass scales down body-zone outliers.
+    real_for_xh = [img for img in generated_images if img is not None]
+    equalized = equalize_body_zones(real_for_xh)
+    eq_idx = 0
+    for i in range(len(generated_images)):
+        if generated_images[i] is not None:
+            generated_images[i] = equalized[eq_idx]
+            eq_idx += 1
 
     # --- Harmonize ---
     from reforge.quality.harmonize import harmonize_words
