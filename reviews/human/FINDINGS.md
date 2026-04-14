@@ -371,7 +371,14 @@ CLAUDE.md section where they were added.
   multiple times without code changes) or interaction between the new
   trailing-punctuation path and composition text (5 words in the test text
   trigger synthetic mark attachment).
-  Last 5 composition ratings: 3, 4, 4, 2; median: 3/5 (target: 4/5).
+  Review 14 (2026-04-14, composition re-run): 3/5, defects: ink_weight_uneven.
+  Human: "punctuation is nearly completely broken." letter_malformed and
+  size_inconsistent dropped from defects. Only ink_weight_uneven remains.
+  CV: height_outlier_score 0.923, baseline_alignment 0.854, ocr_min 0.0.
+  Confirms prior 2/5 was generation variance; composition holds at 3/5.
+  The dominant complaint is now synthetic punctuation quality in context,
+  not baseline, sizing, or letter formation.
+  Last 5 composition ratings: 4, 4, 2, 3; median: 3.5/5 (target: 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
@@ -454,6 +461,11 @@ CLAUDE.md section where they were added.
   rather than mark visibility, since marks were invisible before and are
   now visible. Rating improvement 1/5 -> 2/5 reflects marks being present
   but the surrounding words still being hard to read.
+  Composition re-run (2026-04-14): 3/5. Human: "punctuation is nearly
+  completely broken." The synthetic marks are present but too small relative
+  to the surrounding text at composition scale. The marks are derived from
+  the generated word's body_height (x-height), which is correct for
+  isolated words but may be too small when the composition upscales.
 - **Applies to:** reforge/model/generator.py (strip_trailing_punctuation,
   _generate_punctuated_word, make_synthetic_mark)
 - **Code changes:** (1) make_synthetic_mark() renders 5 mark types using
