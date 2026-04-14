@@ -7,8 +7,8 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 5 |
-| In Progress | 1 |
+| Active | 4 |
+| In Progress | 2 |
 | Resolved | 1 |
 | Acceptable | 1 |
 | Plateaued | 1 |
@@ -117,8 +117,13 @@ CLAUDE.md section where they were added.
   alignment. (2) Added horizontal tight-crop. (3) X-height normalization.
   (4) Pre-normalization of chunk heights before stitch (attempted, reverted:
   interfered with internal baseline alignment, making "unders" sit below
-  "tanding"). These improved but did not solve the problem. The baseline
-  alignment between chunks remains fragile under generation variance.
+  "tanding"). (5) Ink-profile cross-correlation alignment (2026-04-14):
+  replaced single-point ink-bottom alignment with vertical ink-density
+  profile cross-correlation. A/B comparison on "understanding" showed
+  dramatic improvement: ink-bottom placed "tanding" well above "unders";
+  cross-correlation aligned both chunks on the same baseline. Integrated
+  as the new default in stitch_chunks. Awaiting human review in
+  composition context (stitch eval is suspended).
 
 ### Quality score disagrees with human candidate preference
 
@@ -357,15 +362,25 @@ CLAUDE.md section where they were added.
   punctuation is completely invisible.' Third 4/5 rating. letter_malformed
   still absent from defects (2 reviews running). New finding: trailing
   punctuation (commas, periods, etc.) is invisible in composition output.
-  Last 5 composition ratings: 3, 3, 3, 4, 4; median: 3/5 (target: 4/5).
+  Review 13 (2026-04-14, post Bezier punctuation + cross-correlation
+  stitching): 2/5, defects: size_inconsistent, ink_weight_uneven,
+  letter_malformed. ink_weight_uneven reappeared after being absent for
+  2 reviews. letter_malformed returned. CV metrics: height_outlier_score
+  0.818 (below 0.90 gate), ocr_min 0.0 (below 0.30 gate), baseline_alignment
+  0.806. The dip may reflect generation variance (composition has hit 2/5
+  multiple times without code changes) or interaction between the new
+  trailing-punctuation path and composition text (5 words in the test text
+  trigger synthetic mark attachment).
+  Last 5 composition ratings: 3, 4, 4, 2; median: 3/5 (target: 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
-  (sizing), reforge/model/generator.py (candidate selection, contraction splitting)
+  (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
+  trailing punctuation)
 - **Code changes:** Spacing fix (2->3/5). OCR-aware candidate selection,
   stroke width scoring in candidate selection, blended morphological
-  harmonization, contraction splitting, character-aware baseline detection.
-  Two 4/5 ratings now achieved; the second came after contraction splitting
-  and baseline fixes. Remaining defects: baseline_drift (stabilizing at 3/5
-  in targeted eval), size_inconsistent (Plateaued for single-char).
+  harmonization, contraction splitting, character-aware baseline detection,
+  Bezier synthetic punctuation, cross-correlation stitch alignment.
+  Three 4/5 ratings achieved. Remaining defects: baseline_drift, size_inconsistent
+  (Plateaued for single-char), ink_weight_uneven (intermittent).
 
 ### Apostrophe rendering is consistently poor
 
@@ -408,30 +423,45 @@ CLAUDE.md section where they were added.
   padding increased from 1px to 3px for 1-2 char right-side parts to
   preserve thin stroke edges. A dedicated `punctuation` eval type now
   provides focused signal (first result: 1/5, "punctuation is all bad,
-  largely invisible"). The punctuation eval reveals a broader issue:
-  DiffusionPen renders trailing punctuation (commas, periods, question
-  marks, semicolons) as invisible, not just malformed apostrophes.
+  largely invisible"). Apostrophe migrated from pixel-loop to Bezier
+  curve rendering (2026-04-14) for consistency with the new synthetic
+  mark system. Contractions ("it's", "she'd") still flagged unreadable
+  in second punctuation eval (2/5): the single-character right-side parts
+  remain the bottleneck, not the apostrophe mark itself.
 
 ### Trailing punctuation is invisible in generated output
 
-- **Status:** Active
-- **Reviews:** 2026-04-14_154117.json
+- **Status:** In Progress
+- **Reviews:** 2026-04-14_154117.json, 2026-04-14_170508.json
 - **Principle:** DiffusionPen renders trailing punctuation marks (commas,
   periods, question marks, exclamation marks, semicolons) as invisible or
   imperceptible in the output. The model simply does not produce visible
   ink for these characters. This is distinct from the apostrophe problem
   (contraction splitting works around that). Trailing punctuation is
-  passed directly to DiffusionPen, which ignores it.
+  now stripped before generation, with synthetic Bezier-rendered marks
+  attached afterward.
 - **Evidence:** First punctuation eval (2026-04-14): 1/5. Human: "punctuation
   is all bad (largely invisible)." Composition review (same session): 4/5
   but noted "punctuation is completely invisible."
-- **Applies to:** reforge/model/generator.py (word generation path for
-  non-contraction punctuated words)
-- **Code changes:** None yet. The contraction splitting approach (synthetic
-  mark generation) could potentially be extended to trailing punctuation:
-  strip the punctuation, generate the base word, then append a synthetic
-  mark. This is a wrapper-layer intervention. The alternative (getting
-  DiffusionPen to render punctuation) would require retraining.
+  Second punctuation eval (2026-04-14, post Bezier marks): 2/5. Human:
+  "lots of regression." Flagged unreadable: hello,, world., great!, wait;,
+  it's, she'd. The synthetic marks themselves are now visible (period on
+  "world.", question mark on "really?", semicolon on "wait;", comma on
+  "hello,"), but the overall word quality around the marks is poor. "great!"
+  has severe gray box artifacts; the contraction words ("it's", "she'd")
+  still suffer from canvas-fill problems on single-character parts.
+  The "regression" note likely refers to the base word generation quality
+  rather than mark visibility, since marks were invisible before and are
+  now visible. Rating improvement 1/5 -> 2/5 reflects marks being present
+  but the surrounding words still being hard to read.
+- **Applies to:** reforge/model/generator.py (strip_trailing_punctuation,
+  _generate_punctuated_word, make_synthetic_mark)
+- **Code changes:** (1) make_synthetic_mark() renders 5 mark types using
+  cubic Bezier curves. (2) strip_trailing_punctuation() detects and strips
+  trailing marks. (3) _generate_punctuated_word() generates base word
+  then attaches synthetic mark. (4) generate_word() routes punctuated
+  words through the new path. Marks are now visible; word quality around
+  marks needs further work.
 
 ## Graduated Findings
 
