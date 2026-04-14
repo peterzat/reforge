@@ -1,23 +1,24 @@
 {
   "text_length": 43,
-  "updated_at": "2026-04-03T23:10:02.256138+00:00",
+  "updated_at": "2026-04-14T21:53:46.922987+00:00",
   "update_reason": "manual --update-demo-baseline",
   "metrics": {
     "gray_boxes": 1.0,
     "ink_contrast": 1.0,
-    "background_cleanliness": 0.9982,
-    "stroke_weight_consistency": 0.89,
-    "word_height_ratio": 0.9231,
-    "height_outlier_ratio": 1.0,
+    "background_cleanliness": 0.9873,
+    "stroke_weight_consistency": 0.8372,
+    "word_height_ratio": 0.7826,
+    "height_outlier_ratio": 1.037,
     "slant_consistency": 0.0,
-    "style_fidelity": 0.399,
-    "baseline_alignment": 0.5895,
-    "composition_score": 0.3834,
-    "layout_regularity": 0.7016,
-    "ocr_accuracy": 0.9108,
+    "style_fidelity": 0.3828,
+    "baseline_alignment": 0.8428,
+    "composition_score": 0.4612,
+    "layout_regularity": 0.6896,
+    "ocr_accuracy": 0.9492,
     "ocr_min": 0.3333,
     "blank_word_ratio": 1.0,
-    "height_outlier_score": 1.0,
-    "overall": 0.45
+    "height_outlier_score": 0.9259,
+    "word_readability_rate": 0.9767,
+    "overall": 0.7454
   }
 }
