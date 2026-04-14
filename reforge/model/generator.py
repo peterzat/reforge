@@ -167,9 +167,11 @@ def make_synthetic_mark(mark: str, ink_intensity: int, body_height: int) -> np.n
     body_height = max(8, body_height)
     ink_intensity = max(10, min(200, ink_intensity))
 
-    # Stroke width proportional to body height
-    stroke_w = max(0.8, body_height * 0.04)
-    dot_radius = max(1.0, body_height * 0.06)
+    # Stroke width and dot radius proportional to body height.
+    # These must be large enough to survive 2x upscale in composition.
+    # At body_h=21 (typical), stroke_w=2.5, dot_radius=3.4.
+    stroke_w = max(1.5, body_height * 0.12)
+    dot_radius = max(2.0, body_height * 0.16)
 
     if mark == ".":
         return _make_period(ink_intensity, body_height, dot_radius)
@@ -187,7 +189,7 @@ def make_synthetic_mark(mark: str, ink_intensity: int, body_height: int) -> np.n
 
 def _make_period(ink_intensity: int, body_height: int, dot_radius: float) -> np.ndarray:
     """Period: single dot at baseline."""
-    img_w = max(4, int(dot_radius * 2 + 4))
+    img_w = max(6, int(dot_radius * 2 + 6))
     img_h = body_height
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
     cx = img_w / 2
@@ -199,8 +201,8 @@ def _make_period(ink_intensity: int, body_height: int, dot_radius: float) -> np.
 
 def _make_comma(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
     """Comma: dot at baseline + tapered curve descending below."""
-    descender = max(3, int(body_height * 0.30))
-    img_w = max(5, int(dot_radius * 2 + 6))
+    descender = max(4, int(body_height * 0.35))
+    img_w = max(7, int(dot_radius * 2 + 8))
     img_h = body_height + descender
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
 
@@ -221,7 +223,7 @@ def _make_comma(ink_intensity: int, body_height: int, stroke_w: float, dot_radiu
 
 def _make_exclamation(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
     """Exclamation: tapered vertical stroke from top to near-baseline + dot at baseline."""
-    img_w = max(5, int(stroke_w * 4 + 6))
+    img_w = max(7, int(dot_radius * 2 + 8))
     img_h = body_height
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
 
@@ -246,7 +248,7 @@ def _make_exclamation(ink_intensity: int, body_height: int, stroke_w: float, dot
 
 def _make_question(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
     """Question mark: open curve at top + short vertical stroke + dot at baseline."""
-    img_w = max(7, int(body_height * 0.4 + 4))
+    img_w = max(9, int(body_height * 0.5 + 6))
     img_h = body_height
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
 
@@ -280,8 +282,8 @@ def _make_question(ink_intensity: int, body_height: int, stroke_w: float, dot_ra
 
 def _make_semicolon(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
     """Semicolon: dot above mid-body + comma below baseline."""
-    descender = max(3, int(body_height * 0.25))
-    img_w = max(5, int(dot_radius * 2 + 6))
+    descender = max(4, int(body_height * 0.30))
+    img_w = max(7, int(dot_radius * 2 + 8))
     img_h = body_height + descender
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
 
