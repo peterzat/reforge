@@ -1,6 +1,6 @@
-## Security Review -- 2026-04-09 (scope: paths)
+## Security Review -- 2026-04-13 (scope: paths)
 
-**Summary:** No security issues identified. All 6 reviewed files are pure computational code in the local image-generation pipeline: numpy/cv2/torch image processing, numeric constants, pipeline orchestration over user-supplied file paths already validated upstream via `validate_charset`. No network I/O, no subprocess, no deserialization of untrusted data, no secret handling, no PII in file contents.
+**Summary:** No security issues identified. All 9 reviewed files are local-only computational code: image generation (DDIM sampling, postprocessing, chunking), canvas composition (layout, rendering), cross-word harmonization, human evaluation orchestration, and pytest test assertions. Subprocess calls in human_eval.py and test_hard_words.py use hardcoded commands with no user-controlled arguments. No network listeners, no deserialization of untrusted data, no secret handling, no PII in file contents.
 
 ### Findings
 
@@ -12,6 +12,6 @@ No security issues identified.
 
 ---
 
-*Prior review (2026-04-09, commit 485f4db, scope: 8 files): No issues. Pure computational code -- in-memory numpy/cv2/PyTorch image processing, layout calculations, CV metric evaluation, and pytest assertions.*
+*Prior review (2026-04-13, commit 525e903, scope: 11 files): No issues. Numeric constants, metric math, pipeline orchestration, shell-based output archival, statistical correlation analysis, and pytest assertions.*
 
-<!-- SECURITY_META: {"date":"2026-04-09","commit":"7a194593669f59518547ea7025c0da114312d001","scope":"paths","scanned_files":["reforge/compose/render.py","reforge/config.py","reforge/model/generator.py","reforge/pipeline.py","reforge/quality/harmonize.py","reforge/quality/score.py"],"block":0,"warn":0,"note":0} -->
+<!-- SECURITY_META: {"date":"2026-04-13","commit":"1fc02ad95d6bdd818b795f089a26fd01f128c7ef","scope":"paths","scanned_files":["pytest.ini","reforge/compose/layout.py","reforge/compose/render.py","reforge/model/generator.py","reforge/quality/harmonize.py","scripts/human_eval.py","tests/medium/test_hard_words.py","tests/quick/test_baseline.py","tests/quick/test_contraction.py"],"block":0,"warn":0,"note":0} -->

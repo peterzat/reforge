@@ -120,7 +120,8 @@ def compose_words(
         idx = pos["word_idx"]
         img = word_images[idx]
         if img is not None:
-            baselines[idx] = detect_baseline(img)
+            word_text = words[idx] if idx < len(words) and words[idx] is not None else None
+            baselines[idx] = detect_baseline(img, word=word_text)
 
     # Group positions by line
     lines = {}

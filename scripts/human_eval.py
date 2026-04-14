@@ -270,8 +270,49 @@ def generate_candidate_eval(models, output_dir):
     }
 
 
+def _measure_ink_height(img: np.ndarray, threshold: int = 180) -> int:
+    """Measure the ink height (vertical extent of ink pixels) in a word image."""
+    ink_rows = np.any(img < threshold, axis=1)
+    if not np.any(ink_rows):
+        return 0
+    first = int(np.argmax(ink_rows))
+    last = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
+    return last - first + 1
+
+
+def _normalize_chunks_to_same_height(chunk_images: list[np.ndarray]) -> list[np.ndarray]:
+    """Normalize chunk images so all have the same ink height.
+
+    Uses median ink height as the target. Returns copies; does not
+    modify the input list.
+    """
+    heights = [_measure_ink_height(c) for c in chunk_images]
+    valid = [h for h in heights if h > 0]
+    if not valid:
+        return list(chunk_images)
+    target_h = int(np.median(valid))
+    if target_h < 4:
+        return list(chunk_images)
+
+    normalized = []
+    for i, chunk in enumerate(chunk_images):
+        if heights[i] > 0 and heights[i] != target_h:
+            scale = target_h / heights[i]
+            new_h = max(1, int(chunk.shape[0] * scale))
+            new_w = max(1, int(chunk.shape[1] * scale))
+            chunk = cv2.resize(chunk, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        normalized.append(chunk)
+    return normalized
+
+
 def generate_stitch_eval(models, output_dir):
-    """B2: Generate a long word with different STITCH_OVERLAP_PX values."""
+    """B2: Generate a long word with different STITCH_OVERLAP_PX values.
+
+    stitch_chunks() handles x-height normalization and baseline alignment
+    internally. We record chunk heights for the label but do not
+    pre-normalize, which was found to interfere with the internal
+    baseline alignment (review 2026-04-14: "unders way below tanding").
+    """
     from reforge.evaluate.compare import create_comparison_image
     from reforge.model.generator import (
         compute_canvas_width,
@@ -280,7 +321,6 @@ def generate_stitch_eval(models, output_dir):
         split_long_word,
         stitch_chunks,
     )
-    from reforge.quality.font_scale import normalize_font_size
 
     word = "understanding"
     chunks = split_long_word(word)
@@ -302,7 +342,13 @@ def generate_stitch_eval(models, output_dir):
         img = postprocess_word(img)
         chunk_images.append(img)
 
-    # Stitch with different overlap values
+    # D2: Record raw chunk heights for the label (diagnostic only)
+    raw_heights = [_measure_ink_height(c) for c in chunk_images]
+    height_note = "Raw heights: " + ", ".join(
+        f"{chunks[i]} {raw_heights[i]}px" for i in range(len(chunks))
+    )
+
+    # Stitch with different overlap values (stitch_chunks normalizes internally)
     overlaps = [4, 8, 12, 16]
     stitched = []
     for overlap in overlaps:
@@ -313,7 +359,7 @@ def generate_stitch_eval(models, output_dir):
     comparison = create_comparison_image(
         stitched,
         [f"Overlap: {o}px" for o in overlaps],
-        title=f'Chunk stitching: "{word}" ({" + ".join(chunks)})',
+        title=f'Chunk stitching: "{word}" ({" + ".join(chunks)})\n{height_note}',
     )
     comp_path = os.path.join(output_dir, "stitch_comparison.png")
     comparison.save(comp_path)
@@ -323,16 +369,23 @@ def generate_stitch_eval(models, output_dir):
         "word": word,
         "chunks": chunks,
         "overlaps": overlaps,
+        "raw_heights": raw_heights,
         "comparison_image": comp_path,
     }
 
 
 def generate_sizing_eval(models, output_dir):
-    """B3: Generate short, medium, and long words on a single line."""
+    """B3: Generate multi-char words of varied length on a single line.
+
+    Tests whether the font normalization pipeline produces consistent
+    sizing across words of different lengths (all >= 3 chars). Does not
+    include single-char words, which are a Plateaued DiffusionPen
+    limitation tracked separately in FINDINGS.md.
+    """
     from reforge.compose.render import compose_words
     from reforge.quality.harmonize import harmonize_words
 
-    words = ["I", "quick", "something"]
+    words = ["the", "quick", "something"]
     word_images = _generate_words(words, models)
     word_images = harmonize_words(word_images)
 

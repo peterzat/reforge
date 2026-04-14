@@ -89,3 +89,49 @@ def test_hard_words_ocr(unet, vae, tokenizer, style_features, uncond_context, de
         f.write(json.dumps(ledger_entry) + "\n")
 
     assert avg > 0.5, f"Average hard word OCR {avg:.3f} below 0.5 threshold"
+
+
+# A1: Punctuation-specific generation test covering multiple charset marks
+PUNCTUATION_WORDS = [
+    "can't",       # apostrophe in contraction
+    "don't",       # apostrophe in contraction
+    "it's",        # apostrophe in short word
+    "hello,",      # comma (generated as part of word)
+    "what?",       # question mark
+    "wow!",        # exclamation mark
+]
+
+
+def test_punctuation_ocr(unet, vae, tokenizer, style_features, uncond_context, device):
+    """A1: Generate words with punctuation marks and check OCR readability.
+
+    Tests different punctuation characters from the charset: apostrophe,
+    comma, question mark, exclamation mark. Asserts average OCR >= 0.3
+    across the set.
+    """
+    from reforge.evaluate.ocr import ocr_accuracy, ocr_read
+    from reforge.model.generator import generate_word
+    from reforge.quality.font_scale import normalize_font_size
+
+    results = []
+    print(f"\n  Punctuation test: {len(PUNCTUATION_WORDS)} words")
+    print(f"  {'Word':20s} {'OCR':>6s} {'Read as':20s}")
+    print(f"  {'-'*20} {'-'*6} {'-'*20}")
+
+    for word in PUNCTUATION_WORDS:
+        img = generate_word(
+            word, unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
+            num_steps=20, guidance_scale=3.0, num_candidates=1, device=device,
+        )
+        img = normalize_font_size(img, word)
+        acc = ocr_accuracy(img, word)
+        read_as = ocr_read(img)
+
+        print(f"  {word:20s} {acc:6.3f} {read_as:20s}")
+        results.append({"word": word, "ocr_accuracy": round(acc, 4)})
+
+    avg = float(np.mean([r["ocr_accuracy"] for r in results]))
+    print(f"\n  Average punctuation OCR: {avg:.3f}")
+
+    assert avg >= 0.3, f"Average punctuation OCR {avg:.3f} below 0.3 threshold"

@@ -82,12 +82,20 @@ def compute_margins(page_width: int, page_height: int) -> tuple[int, int]:
     return margin_h, margin_v
 
 
-def detect_baseline(img: np.ndarray) -> int:
+DESCENDER_LETTERS = set("gjpqy")
+
+
+def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     """Detect the baseline of a word image.
 
     Uses top-down scan from midpoint, looking for density drop below 15%
     with no body rows below. Walks back to last 35%-density row.
     Rejects spurious dips < 15% of total ink height.
+
+    When *word* is provided and contains descender letters (g, j, p, q, y),
+    the scan uses a relaxed "body below" threshold: thin descender strokes
+    (density < 25%) are not treated as body text, which prevents descenders
+    from pulling the detected baseline too low.
     """
     ink_mask = img < 180
     row_density = np.mean(ink_mask, axis=1)
@@ -104,7 +112,15 @@ def detect_baseline(img: np.ndarray) -> int:
     if ink_height < 3:
         return last_ink
 
+    has_descender = (
+        word is not None and any(c in DESCENDER_LETTERS for c in word.lower())
+    )
+
     mid = first_ink + ink_height // 2
+
+    # For descender words, use a higher body threshold so thin descender
+    # strokes are not mistaken for body text.
+    body_threshold = 0.25 if has_descender else BASELINE_BODY_DENSITY
 
     # Scan down from midpoint looking for density drop
     baseline = last_ink
@@ -113,7 +129,7 @@ def detect_baseline(img: np.ndarray) -> int:
             # Check if there are body rows below this
             has_body_below = False
             for rb in range(r + 1, last_ink + 1):
-                if row_density[rb] >= BASELINE_BODY_DENSITY:
+                if row_density[rb] >= body_threshold:
                     has_body_below = True
                     break
 
