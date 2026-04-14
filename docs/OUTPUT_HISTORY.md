@@ -20,19 +20,6 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
-## 20260414-043601
-
-![output](output-history/20260414-043601.png)
-
-| Field | Value |
-|-------|-------|
-| Git state | `abd49fa (uncommitted changes)` |
-| Commit message | Contraction splitting, character-aware baseline, eval redesigns |
-| Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
-
----
-
 ## 20260410-144654
 
 ![output](output-history/20260410-144654.png)
