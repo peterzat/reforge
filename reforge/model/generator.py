@@ -69,13 +69,247 @@ def split_contraction(word: str) -> tuple[str, str]:
     return word[:idx], word[idx + 1:]
 
 
+def _bezier_point(t: float, p0, p1, p2, p3):
+    """Evaluate a cubic Bezier curve at parameter t in [0, 1]."""
+    u = 1 - t
+    return (
+        u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+        u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
+    )
+
+
+def _rasterize_bezier_stroke(
+    img: np.ndarray,
+    p0, p1, p2, p3,
+    ink_intensity: int,
+    width_start: float,
+    width_end: float,
+    n_samples: int = 40,
+):
+    """Rasterize a cubic Bezier curve as a tapered stroke onto img.
+
+    The stroke width interpolates linearly from width_start to width_end
+    along the curve. Each sample point fills a circular region.
+    """
+    import cv2
+
+    for i in range(n_samples + 1):
+        t = i / n_samples
+        x, y = _bezier_point(t, p0, p1, p2, p3)
+        ix, iy = int(round(x)), int(round(y))
+        radius = width_start + (width_end - width_start) * t
+        # Intensity fades toward stroke ends for a natural feel
+        fade = 1.0 - 0.3 * abs(t - 0.5) * 2  # lightest at tips
+        intensity = int(ink_intensity + (200 - ink_intensity) * (1.0 - fade) * 0.4)
+        intensity = min(190, max(ink_intensity, intensity))
+        r = max(0.5, radius)
+        ri = int(round(r))
+        for dy in range(-ri, ri + 1):
+            for dx in range(-ri, ri + 1):
+                if dx * dx + dy * dy <= r * r:
+                    px, py = ix + dx, iy + dy
+                    if 0 <= py < img.shape[0] and 0 <= px < img.shape[1]:
+                        img[py, px] = min(img[py, px], intensity)
+
+
+def _rasterize_dot(
+    img: np.ndarray,
+    cx: float,
+    cy: float,
+    radius: float,
+    ink_intensity: int,
+):
+    """Rasterize a filled dot (period, part of !, ?, ;) onto img."""
+    ri = int(round(radius))
+    ix, iy = int(round(cx)), int(round(cy))
+    for dy in range(-ri - 1, ri + 2):
+        for dx in range(-ri - 1, ri + 2):
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= radius:
+                px, py = ix + dx, iy + dy
+                if 0 <= py < img.shape[0] and 0 <= px < img.shape[1]:
+                    # Slight antialiasing at edge
+                    if dist > radius - 0.8:
+                        edge_blend = (radius - dist) / 0.8
+                        val = int(ink_intensity + (255 - ink_intensity) * (1.0 - edge_blend))
+                    else:
+                        val = ink_intensity
+                    img[py, px] = min(img[py, px], val)
+
+
+# Trailing punctuation marks that can be synthesized
+SYNTHETIC_MARKS = {",", ".", "?", "!", ";"}
+# All marks handled by the synthetic system (including apostrophe from contraction path)
+ALL_SYNTHETIC_MARKS = SYNTHETIC_MARKS | {"'"}
+
+
+def make_synthetic_mark(mark: str, ink_intensity: int, body_height: int) -> np.ndarray:
+    """Render a synthetic punctuation mark using Bezier curves.
+
+    Supports: comma, period, question mark, exclamation mark, semicolon.
+    Each mark is built from 1-3 Bezier curves and/or dots, parameterized
+    by ink_intensity and body_height. The returned image is body_height
+    tall with the mark positioned at the correct baseline-relative offset.
+
+    Args:
+        mark: One of ',', '.', '?', '!', ';'
+        ink_intensity: Median ink pixel value (0=black, 255=white).
+        body_height: Approximate x-height of surrounding text in pixels.
+
+    Returns:
+        Grayscale uint8 image on white background. The image height equals
+        body_height (plus descender space for comma/semicolon). The mark is
+        positioned relative to the baseline (bottom of body zone).
+    """
+    if mark not in SYNTHETIC_MARKS:
+        raise ValueError(f"Unsupported mark: {mark!r}. Supported: {SYNTHETIC_MARKS}")
+
+    body_height = max(8, body_height)
+    ink_intensity = max(10, min(200, ink_intensity))
+
+    # Stroke width proportional to body height
+    stroke_w = max(0.8, body_height * 0.04)
+    dot_radius = max(1.0, body_height * 0.06)
+
+    if mark == ".":
+        return _make_period(ink_intensity, body_height, dot_radius)
+    elif mark == ",":
+        return _make_comma(ink_intensity, body_height, stroke_w, dot_radius)
+    elif mark == "!":
+        return _make_exclamation(ink_intensity, body_height, stroke_w, dot_radius)
+    elif mark == "?":
+        return _make_question(ink_intensity, body_height, stroke_w, dot_radius)
+    elif mark == ";":
+        return _make_semicolon(ink_intensity, body_height, stroke_w, dot_radius)
+    else:
+        raise ValueError(f"Unsupported mark: {mark!r}")
+
+
+def _make_period(ink_intensity: int, body_height: int, dot_radius: float) -> np.ndarray:
+    """Period: single dot at baseline."""
+    img_w = max(4, int(dot_radius * 2 + 4))
+    img_h = body_height
+    img = np.full((img_h, img_w), 255, dtype=np.uint8)
+    cx = img_w / 2
+    # Baseline is at the bottom of the body zone
+    cy = body_height - dot_radius - 1
+    _rasterize_dot(img, cx, cy, dot_radius, ink_intensity)
+    return img
+
+
+def _make_comma(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
+    """Comma: dot at baseline + tapered curve descending below."""
+    descender = max(3, int(body_height * 0.30))
+    img_w = max(5, int(dot_radius * 2 + 6))
+    img_h = body_height + descender
+    img = np.full((img_h, img_w), 255, dtype=np.uint8)
+
+    cx = img_w / 2
+    baseline_y = body_height - 1
+
+    # Dot at baseline
+    _rasterize_dot(img, cx, baseline_y - dot_radius, dot_radius * 0.8, ink_intensity)
+
+    # Tapered curve from dot downward-left
+    p0 = (cx, baseline_y)
+    p1 = (cx + dot_radius * 0.3, baseline_y + descender * 0.4)
+    p2 = (cx - dot_radius * 0.5, baseline_y + descender * 0.7)
+    p3 = (cx - dot_radius * 0.8, baseline_y + descender * 0.9)
+    _rasterize_bezier_stroke(img, p0, p1, p2, p3, ink_intensity, stroke_w, stroke_w * 0.3)
+    return img
+
+
+def _make_exclamation(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
+    """Exclamation: tapered vertical stroke from top to near-baseline + dot at baseline."""
+    img_w = max(5, int(stroke_w * 4 + 6))
+    img_h = body_height
+    img = np.full((img_h, img_w), 255, dtype=np.uint8)
+
+    cx = img_w / 2
+    baseline_y = body_height - 1
+
+    # Vertical stroke from top down to 70% of body height
+    top_y = max(1, int(body_height * 0.05))
+    stroke_end_y = int(body_height * 0.70)
+
+    p0 = (cx, top_y)
+    p1 = (cx + 0.3, top_y + (stroke_end_y - top_y) * 0.33)
+    p2 = (cx - 0.2, top_y + (stroke_end_y - top_y) * 0.66)
+    p3 = (cx, stroke_end_y)
+    _rasterize_bezier_stroke(img, p0, p1, p2, p3, ink_intensity, stroke_w * 1.2, stroke_w * 0.5)
+
+    # Dot near baseline
+    dot_y = baseline_y - dot_radius - 0.5
+    _rasterize_dot(img, cx, dot_y, dot_radius, ink_intensity)
+    return img
+
+
+def _make_question(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
+    """Question mark: open curve at top + short vertical stroke + dot at baseline."""
+    img_w = max(7, int(body_height * 0.4 + 4))
+    img_h = body_height
+    img = np.full((img_h, img_w), 255, dtype=np.uint8)
+
+    cx = img_w / 2
+    baseline_y = body_height - 1
+
+    # Open curve (the hook): from upper-left, arcing right and down
+    hook_top = max(1, int(body_height * 0.05))
+    hook_bottom = int(body_height * 0.55)
+    hook_w = img_w * 0.35
+
+    p0 = (cx - hook_w * 0.5, hook_top + (hook_bottom - hook_top) * 0.2)
+    p1 = (cx + hook_w * 0.3, hook_top - body_height * 0.05)
+    p2 = (cx + hook_w * 0.8, hook_top + (hook_bottom - hook_top) * 0.5)
+    p3 = (cx, hook_bottom)
+    _rasterize_bezier_stroke(img, p0, p1, p2, p3, ink_intensity, stroke_w * 0.8, stroke_w * 1.0)
+
+    # Short vertical segment from hook bottom toward baseline
+    vert_end = int(body_height * 0.72)
+    p0v = (cx, hook_bottom)
+    p1v = (cx + 0.2, hook_bottom + (vert_end - hook_bottom) * 0.5)
+    p2v = (cx - 0.1, vert_end - 1)
+    p3v = (cx, vert_end)
+    _rasterize_bezier_stroke(img, p0v, p1v, p2v, p3v, ink_intensity, stroke_w * 0.9, stroke_w * 0.4)
+
+    # Dot near baseline
+    dot_y = baseline_y - dot_radius - 0.5
+    _rasterize_dot(img, cx, dot_y, dot_radius, ink_intensity)
+    return img
+
+
+def _make_semicolon(ink_intensity: int, body_height: int, stroke_w: float, dot_radius: float) -> np.ndarray:
+    """Semicolon: dot above mid-body + comma below baseline."""
+    descender = max(3, int(body_height * 0.25))
+    img_w = max(5, int(dot_radius * 2 + 6))
+    img_h = body_height + descender
+    img = np.full((img_h, img_w), 255, dtype=np.uint8)
+
+    cx = img_w / 2
+    baseline_y = body_height - 1
+
+    # Upper dot at ~40% of body height
+    upper_dot_y = int(body_height * 0.40)
+    _rasterize_dot(img, cx, upper_dot_y, dot_radius, ink_intensity)
+
+    # Lower part: dot at baseline + comma tail
+    _rasterize_dot(img, cx, baseline_y - dot_radius, dot_radius * 0.8, ink_intensity)
+
+    # Comma tail from baseline downward
+    p0 = (cx, baseline_y)
+    p1 = (cx + dot_radius * 0.2, baseline_y + descender * 0.35)
+    p2 = (cx - dot_radius * 0.4, baseline_y + descender * 0.65)
+    p3 = (cx - dot_radius * 0.7, baseline_y + descender * 0.85)
+    _rasterize_bezier_stroke(img, p0, p1, p2, p3, ink_intensity, stroke_w, stroke_w * 0.3)
+    return img
+
+
 def make_synthetic_apostrophe(ink_intensity: int, body_height: int) -> np.ndarray:
     """Create a synthetic apostrophe glyph matching the ink style.
 
-    The apostrophe is a thin curved stroke positioned at the top of
-    the character body. It is drawn programmatically rather than
-    generated by DiffusionPen, which produces oversized dark blobs
-    for punctuation marks.
+    Uses a Bezier curve for a smooth tapered stroke positioned at the top
+    of the character body. Drawn programmatically rather than generated by
+    DiffusionPen, which produces oversized dark blobs for punctuation.
 
     Args:
         ink_intensity: Median ink pixel value from surrounding words (0-255,
@@ -85,31 +319,28 @@ def make_synthetic_apostrophe(ink_intensity: int, body_height: int) -> np.ndarra
     Returns:
         Grayscale uint8 image on a white background.
     """
-    # Apostrophe dimensions: proportional to body height
-    mark_h = max(4, int(body_height * 0.25))
-    mark_w = max(2, int(body_height * 0.08))
-    # Total image: mark at top third of body height, white padding below
-    img_h = body_height
-    img_w = mark_w + 4  # 2px padding each side
-
+    img_h = max(1, body_height)
+    stroke_w = max(0.8, img_h * 0.04)
+    img_w = max(2, int(img_h * 0.12) + 4)
     img = np.full((img_h, img_w), 255, dtype=np.uint8)
 
-    # Draw a slightly tapered stroke: thicker at top, thinner at bottom
-    # Position at top 10-35% of body height
-    y_start = max(1, int(body_height * 0.10))
-    y_end = y_start + mark_h
+    if img_h < 4:
+        # Too small for Bezier; draw a simple pixel mark
+        cx = img_w // 2
+        for y in range(min(img_h, 2)):
+            img[y, cx] = ink_intensity
+        return img
 
-    cx = img_w // 2
-    for y in range(y_start, min(y_end, img_h)):
-        # Taper: full width at top, narrower toward bottom
-        progress = (y - y_start) / max(1, mark_h - 1)
-        half_w = max(0, int(mark_w * (1.0 - 0.5 * progress) / 2))
-        # Gradually lighten toward the bottom for a natural stroke feel
-        intensity = int(ink_intensity + (200 - ink_intensity) * progress * 0.6)
-        intensity = min(180, max(ink_intensity, intensity))
-        for x in range(max(0, cx - half_w), min(img_w, cx + half_w + 1)):
-            img[y, x] = intensity
+    cx = img_w / 2
+    # Apostrophe sits at top 10-35% of body height
+    y_start = max(1, int(img_h * 0.10))
+    y_end = int(img_h * 0.35)
 
+    p0 = (cx, y_start)
+    p1 = (cx + 0.5, y_start + (y_end - y_start) * 0.3)
+    p2 = (cx - 0.3, y_start + (y_end - y_start) * 0.7)
+    p3 = (cx - 0.5, y_end)
+    _rasterize_bezier_stroke(img, p0, p1, p2, p3, ink_intensity, stroke_w * 1.1, stroke_w * 0.3)
     return img
 
 
@@ -662,6 +893,24 @@ def generate_word(
             reference_stroke_width=reference_stroke_width,
         )
 
+    # Trailing punctuation path: strip the mark, generate the base word,
+    # then attach a synthetic Bezier-rendered mark. DiffusionPen renders
+    # trailing punctuation as invisible (IAM dataset bias).
+    base_word, trailing_mark = strip_trailing_punctuation(word)
+    if trailing_mark is not None:
+        log.debug("trailing punctuation: %s -> %s + '%s'", word, base_word, trailing_mark)
+        return _generate_punctuated_word(
+            word, trailing_mark, base_word,
+            unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
+            num_steps=num_steps,
+            guidance_scale=guidance_scale,
+            num_candidates=num_candidates,
+            device=device,
+            style_reference_imgs=style_reference_imgs,
+            reference_stroke_width=reference_stroke_width,
+        )
+
     chunks = split_long_word(word)
 
     # OCR function: needed for candidate scoring (num_candidates > 1)
@@ -887,13 +1136,334 @@ def _generate_contraction(
     return result
 
 
-def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
+def strip_trailing_punctuation(word: str) -> tuple[str, str | None]:
+    """Strip a trailing punctuation mark that can be synthesized.
+
+    Returns (base_word, mark) where mark is the single trailing character
+    if it is in SYNTHETIC_MARKS, or None if no strippable punctuation.
+    Only strips one trailing mark. Does not strip apostrophes (handled
+    by the contraction path).
+    """
+    if len(word) >= 2 and word[-1] in SYNTHETIC_MARKS:
+        return word[:-1], word[-1]
+    return word, None
+
+
+def _attach_mark_to_word(
+    word_img: np.ndarray,
+    mark_img: np.ndarray,
+    gap_px: int = 1,
+) -> np.ndarray:
+    """Attach a synthetic punctuation mark to the right side of a word image.
+
+    Aligns by ink bottom (baseline). The mark descends below baseline for
+    comma/semicolon; the word image is padded as needed to accommodate.
+    """
+    INK_THRESH = 180
+
+    def _ink_bottom(img):
+        ink_rows = np.any(img < INK_THRESH, axis=1)
+        if not np.any(ink_rows):
+            return 0
+        return img.shape[0] - 1 - int(np.argmax(ink_rows[::-1]))
+
+    def _tight_crop_h(img, pad_px=1):
+        col_has_ink = np.any(img < INK_THRESH, axis=0)
+        if not np.any(col_has_ink):
+            return img
+        left = max(0, int(np.argmax(col_has_ink)) - pad_px)
+        right = min(img.shape[1] - 1, len(col_has_ink) - 1 - int(np.argmax(col_has_ink[::-1])) + pad_px)
+        return img[:, left:right + 1]
+
+    word_img = _tight_crop_h(word_img)
+
+    word_bottom = _ink_bottom(word_img)
+    # For the mark, "baseline" is at body_height - 1 in the mark image.
+    # We need to find where the mark's body-level ink ends (not descender).
+    # The mark images have body_height encoded as the point where baseline sits.
+    # Use ink_bottom to find the lowest ink row and align there with word baseline.
+    # For marks that descend (comma, semicolon), the descender portion extends
+    # below baseline. We align the mark's body baseline with the word baseline.
+
+    # For marks with descenders, we need to know the body_height used to
+    # create them. Since we can't recover it directly, use a heuristic:
+    # find the first significant gap in the mark's vertical ink profile
+    # that suggests a baseline break. If none, treat all ink as at baseline.
+    mark_bottom = _ink_bottom(mark_img)
+
+    # Align at ink bottom
+    max_bottom = max(word_bottom, mark_bottom)
+    parts = [word_img, mark_img]
+    bottoms = [word_bottom, mark_bottom]
+
+    max_h = max(
+        p.shape[0] + (max_bottom - b) for p, b in zip(parts, bottoms)
+    )
+
+    aligned = []
+    for p, b in zip(parts, bottoms):
+        bottom_pad = max_bottom - b
+        if bottom_pad > 0:
+            pad = np.full((bottom_pad, p.shape[1]), 255, dtype=np.uint8)
+            p = np.vstack([p, pad])
+        if p.shape[0] < max_h:
+            top_pad = np.full((max_h - p.shape[0], p.shape[1]), 255, dtype=np.uint8)
+            p = np.vstack([top_pad, p])
+        aligned.append(p)
+
+    gap = np.full((max_h, gap_px), 255, dtype=np.uint8)
+    return np.hstack([aligned[0], gap, aligned[1]])
+
+
+def strip_and_reattach_punctuation(
+    word: str,
+    word_img: np.ndarray,
+    generate_fn=None,
+    unet=None, vae=None, tokenizer=None, style_features=None,
+    **gen_kwargs,
+) -> np.ndarray:
+    """Pipeline helper: detect trailing punctuation, generate base word, reattach mark.
+
+    If the word ends with a synthesizable mark (. , ! ? ;), strips it,
+    generates the base word (or uses word_img if generate_fn is None),
+    and appends the synthetic mark at the correct baseline position.
+
+    For apostrophes, delegates to the contraction path (handled separately
+    in generate_word).
+
+    Args:
+        word: The full word including trailing punctuation.
+        word_img: Pre-generated image of the base word (used when generate_fn
+            is None, e.g. in testing).
+        generate_fn: Optional callable(base_word) -> np.ndarray that generates
+            the base word image. Used in the live pipeline.
+
+    Returns:
+        Word image with synthetic punctuation attached, or word_img unchanged
+        if no trailing punctuation is detected.
+    """
+    from reforge.quality.ink_metrics import compute_x_height
+
+    base_word, mark = strip_trailing_punctuation(word)
+    if mark is None:
+        return word_img
+
+    # Generate the base word if a generate function is provided
+    if generate_fn is not None:
+        word_img = generate_fn(base_word)
+
+    # Derive mark properties from the generated word
+    ink_pixels = word_img[word_img < 180]
+    ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
+    body_h = compute_x_height(word_img)
+
+    mark_img = make_synthetic_mark(mark, ink_intensity, body_h)
+    return _attach_mark_to_word(word_img, mark_img)
+
+
+def _generate_punctuated_word(
+    word: str,
+    mark: str,
+    base_word: str,
+    unet,
+    vae,
+    tokenizer,
+    style_features,
+    uncond_context=None,
+    num_steps=DEFAULT_DDIM_STEPS,
+    guidance_scale=DEFAULT_GUIDANCE_SCALE,
+    num_candidates=DEFAULT_NUM_CANDIDATES,
+    device="cuda",
+    style_reference_imgs=None,
+    reference_stroke_width=0.0,
+) -> np.ndarray:
+    """Generate a word with trailing punctuation by producing the base word
+    and attaching a synthetic mark.
+
+    This mirrors _generate_contraction but for trailing punctuation marks.
+    """
+    import logging
+
+    from reforge.quality.ink_metrics import compute_x_height
+    from reforge.quality.score import quality_score
+
+    log = logging.getLogger("reforge.generator")
+
+    ocr_fn = _get_ocr_fn() if num_candidates > 1 else None
+
+    # Generate base word (without trailing punctuation)
+    canvas_width = compute_canvas_width(len(base_word))
+    text_ctx = tokenizer(base_word, return_tensors="pt", padding="max_length", max_length=16)
+
+    best_img = None
+    best_score = -999
+    for _ in range(num_candidates):
+        img = ddim_sample(
+            unet, vae, text_ctx, style_features,
+            uncond_context=uncond_context,
+            canvas_width=canvas_width,
+            num_steps=num_steps,
+            guidance_scale=guidance_scale,
+            device=device,
+        )
+        img = postprocess_word(img)
+        img = pad_clipped_descender(img)
+        score = quality_score(
+            img,
+            reference_stroke_width=reference_stroke_width,
+            word_len=len(base_word) if num_candidates > 1 else 0,
+        )
+        if ocr_fn is not None:
+            ocr_acc = ocr_fn(img, base_word)
+            combined = (1 - OCR_SELECTION_WEIGHT) * score + OCR_SELECTION_WEIGHT * ocr_acc
+        else:
+            combined = score
+        if combined > best_score:
+            best_score = combined
+            best_img = img
+
+    # Derive mark properties and attach
+    ink_pixels = best_img[best_img < 180]
+    ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
+    body_h = compute_x_height(best_img)
+
+    mark_img = make_synthetic_mark(mark, ink_intensity, body_h)
+    result = _attach_mark_to_word(best_img, mark_img)
+
+    log.debug(
+        "punctuated word: %s (%dx%d) + '%s' -> %dx%d",
+        base_word, best_img.shape[1], best_img.shape[0],
+        mark, result.shape[1], result.shape[0],
+    )
+    return result
+
+
+def _ink_density_profile(img: np.ndarray, ink_thresh: int = 180) -> np.ndarray:
+    """Compute vertical ink-density profile: fraction of ink pixels per row.
+
+    Returns a 1D array of length img.shape[0], where each element is the
+    fraction of pixels in that row that are below ink_thresh.
+    """
+    ink = img < ink_thresh
+    if img.shape[1] == 0:
+        return np.zeros(img.shape[0], dtype=np.float64)
+    return np.mean(ink, axis=1).astype(np.float64)
+
+
+def _cross_correlation_offset(
+    profile_a: np.ndarray,
+    profile_b: np.ndarray,
+    max_shift: int | None = None,
+) -> int:
+    """Find vertical offset that maximizes cross-correlation between profiles.
+
+    Returns the offset d such that profile_b shifted down by d pixels
+    best aligns with profile_a. Positive d means profile_b should be
+    placed lower relative to profile_a.
+
+    Uses normalized cross-correlation (zero-mean, unit-variance) so that
+    the body zone (dense ink) naturally dominates the signal.
+    """
+    la, lb = len(profile_a), len(profile_b)
+    if max_shift is None:
+        max_shift = max(la, lb) // 2
+
+    # Normalize profiles (zero-mean, unit-variance)
+    def _norm(p):
+        std = np.std(p)
+        if std < 1e-8:
+            return p - np.mean(p)
+        return (p - np.mean(p)) / std
+
+    a = _norm(profile_a)
+    b = _norm(profile_b)
+
+    best_corr = -np.inf
+    best_d = 0
+
+    for d in range(-max_shift, max_shift + 1):
+        # Overlapping range after shifting b by d
+        a_start = max(0, d)
+        a_end = min(la, lb + d)
+        b_start = max(0, -d)
+        b_end = b_start + (a_end - a_start)
+
+        if a_end <= a_start or b_end > lb:
+            continue
+
+        overlap = a_end - a_start
+        if overlap < 4:
+            continue
+
+        corr = np.dot(a[a_start:a_end], b[b_start:b_end]) / overlap
+        if corr > best_corr:
+            best_corr = corr
+            best_d = d
+
+    return best_d
+
+
+def align_chunks_cross_correlation(
+    chunks: list[np.ndarray],
+    ink_thresh: int = 180,
+) -> list[np.ndarray]:
+    """Align chunks vertically using ink-profile cross-correlation.
+
+    Computes the vertical ink-density profile for each chunk and finds
+    pairwise offsets that maximize cross-correlation. This uses the full
+    vertical ink distribution rather than single-point baseline detection,
+    producing more robust alignment when chunks have different ascender/
+    descender distributions.
+
+    Returns a list of vertically padded chunks, all the same height,
+    aligned by their ink density profiles.
+    """
+    if len(chunks) <= 1:
+        return chunks
+
+    profiles = [_ink_density_profile(c, ink_thresh) for c in chunks]
+
+    # Compute offsets relative to the first chunk
+    offsets = [0]
+    for i in range(1, len(chunks)):
+        d = _cross_correlation_offset(profiles[0], profiles[i])
+        offsets.append(d)
+
+    # Convert to absolute top-padding amounts
+    min_offset = min(offsets)
+    top_pads = [o - min_offset for o in offsets]
+
+    # Compute maximum total height needed
+    max_h = max(
+        top_pads[i] + chunks[i].shape[0] for i in range(len(chunks))
+    )
+
+    padded = []
+    for i, chunk in enumerate(chunks):
+        tp = top_pads[i]
+        bp = max_h - tp - chunk.shape[0]
+        if tp > 0:
+            pad_top = np.full((tp, chunk.shape[1]), 255, dtype=np.uint8)
+            chunk = np.vstack([pad_top, chunk])
+        if bp > 0:
+            pad_bot = np.full((bp, chunk.shape[1]), 255, dtype=np.uint8)
+            chunk = np.vstack([chunk, pad_bot])
+        padded.append(chunk)
+
+    return padded
+
+
+def stitch_chunks(chunks: list[np.ndarray], alignment: str = "cross_correlation") -> np.ndarray:
     """Stitch word chunks with ink-height alignment and overlap blending.
 
     - Measure each chunk's ink region (top/bottom ink rows)
     - Scale chunks so ink heights match (median ink height)
-    - Align by ink bottom (baseline), not image bottom
+    - Align by ink bottom (baseline) or cross-correlation, per alignment param
     - Overlap blending at stitch boundaries
+
+    Args:
+        alignment: "ink_bottom" (default, current method) or
+            "cross_correlation" (experimental ink-profile matching).
     """
     import cv2
 
@@ -950,34 +1520,40 @@ def stitch_chunks(chunks: list[np.ndarray]) -> np.ndarray:
             chunk = cv2.resize(chunk, (new_w, new_h), interpolation=cv2.INTER_AREA)
         normalized.append(chunk)
 
-    # Re-measure ink bottoms after scaling (scaling shifts pixel positions)
-    scaled_ink_bottoms = []
-    for chunk in normalized:
-        ink_rows = np.any(chunk < INK_THRESH, axis=1)
-        if np.any(ink_rows):
-            last_ink = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
-            scaled_ink_bottoms.append(chunk.shape[0] - 1 - last_ink)
-        else:
-            scaled_ink_bottoms.append(0)
+    if alignment == "cross_correlation":
+        # C1: experimental ink-profile cross-correlation alignment
+        padded = align_chunks_cross_correlation(normalized, INK_THRESH)
+        max_h = padded[0].shape[0] if padded else 0
+    else:
+        # Default: ink-bottom (baseline) alignment
+        # Re-measure ink bottoms after scaling (scaling shifts pixel positions)
+        scaled_ink_bottoms = []
+        for chunk in normalized:
+            ink_rows = np.any(chunk < INK_THRESH, axis=1)
+            if np.any(ink_rows):
+                last_ink = len(ink_rows) - 1 - np.argmax(ink_rows[::-1])
+                scaled_ink_bottoms.append(chunk.shape[0] - 1 - last_ink)
+            else:
+                scaled_ink_bottoms.append(0)
 
-    # Align by ink bottom (baseline): pad so all chunks have the same
-    # distance from their last ink row to the image bottom
-    max_ink_bottom = max(scaled_ink_bottoms)
-    max_h = max(c.shape[0] + (max_ink_bottom - scaled_ink_bottoms[i])
-                for i, c in enumerate(normalized))
+        # Align by ink bottom (baseline): pad so all chunks have the same
+        # distance from their last ink row to the image bottom
+        max_ink_bottom = max(scaled_ink_bottoms)
+        max_h = max(c.shape[0] + (max_ink_bottom - scaled_ink_bottoms[i])
+                    for i, c in enumerate(normalized))
 
-    padded = []
-    for i, chunk in enumerate(normalized):
-        # Pad at bottom to align baselines
-        bottom_pad = max_ink_bottom - scaled_ink_bottoms[i]
-        if bottom_pad > 0:
-            pad_bottom = np.full((bottom_pad, chunk.shape[1]), 255, dtype=np.uint8)
-            chunk = np.vstack([chunk, pad_bottom])
-        # Pad at top to equalize total height
-        if chunk.shape[0] < max_h:
-            pad_top = np.full((max_h - chunk.shape[0], chunk.shape[1]), 255, dtype=np.uint8)
-            chunk = np.vstack([pad_top, chunk])
-        padded.append(chunk)
+        padded = []
+        for i, chunk in enumerate(normalized):
+            # Pad at bottom to align baselines
+            bottom_pad = max_ink_bottom - scaled_ink_bottoms[i]
+            if bottom_pad > 0:
+                pad_bottom = np.full((bottom_pad, chunk.shape[1]), 255, dtype=np.uint8)
+                chunk = np.vstack([chunk, pad_bottom])
+            # Pad at top to equalize total height
+            if chunk.shape[0] < max_h:
+                pad_top = np.full((max_h - chunk.shape[0], chunk.shape[1]), 255, dtype=np.uint8)
+                chunk = np.vstack([pad_top, chunk])
+            padded.append(chunk)
 
     # Stitch with overlap blending
     total_width = sum(c.shape[1] for c in padded) - STITCH_OVERLAP_PX * (len(padded) - 1)

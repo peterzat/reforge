@@ -6,33 +6,33 @@
 
 #### A. Research document
 
-- [ ] A1. `docs/research_survey.md` exists and covers at least: (a) Graves 2013 sequence generation and its relevance to synthetic stroke generation, (b) Bezier curve approaches to programmatic glyph synthesis, (c) ink-profile or cross-correlation methods for baseline alignment in stitching, (d) learned perceptual metrics (HWD, LPIPS, VGG-based features) for candidate scoring, (e) post-DiffusionPen models (DiffBrush, One-DM, WriteViT) and whether any are worth evaluating as replacements. Each section states what the approach is, which reforge problem it addresses, and a concrete recommendation (integrate / prototype / skip / requires model swap).
-- [ ] A2. The document includes a summary table mapping each open problem to the recommended wrapper-layer fix, with citations. Problems covered: trailing punctuation invisible, chunk stitching baseline mismatch, candidate selection disagreement, stroke weight inconsistency.
+- [x] A1. `docs/research_survey.md` exists and covers at least: (a) Graves 2013 sequence generation and its relevance to synthetic stroke generation, (b) Bezier curve approaches to programmatic glyph synthesis, (c) ink-profile or cross-correlation methods for baseline alignment in stitching, (d) learned perceptual metrics (HWD, LPIPS, VGG-based features) for candidate scoring, (e) post-DiffusionPen models (DiffBrush, One-DM, WriteViT) and whether any are worth evaluating as replacements. Each section states what the approach is, which reforge problem it addresses, and a concrete recommendation (integrate / prototype / skip / requires model swap).
+- [x] A2. The document includes a summary table mapping each open problem to the recommended wrapper-layer fix, with citations. Problems covered: trailing punctuation invisible, chunk stitching baseline mismatch, candidate selection disagreement, stroke weight inconsistency.
 
 #### B. Synthetic punctuation prototype (Bezier curves)
 
-- [ ] B1. A `make_synthetic_mark(mark, ink_intensity, body_height)` function exists (in generator.py or a new module) that renders at least: comma, period, question mark, exclamation mark, semicolon. Each mark uses Bezier curves or parametric strokes (not pixel-by-pixel row loops like the current apostrophe). The function returns a grayscale ndarray suitable for stitching.
-- [ ] B2. A `strip_and_reattach_punctuation(word, img)` pipeline helper exists that: detects trailing punctuation on a word, strips it before generation, generates the base word, then appends the synthetic mark at the correct baseline position. Works for at least the 5 marks in B1 plus the existing apostrophe path.
-- [ ] B3. `make test-quick` passes. Unit tests verify each mark type produces non-empty output with ink pixels, correct baseline positioning (comma/semicolon below baseline, period at baseline, exclamation/question extending above), and dimensions proportional to body_height.
-- [ ] B4. `make test-regression` passes on all 3 seeds. Primary gates hold.
-- [ ] B5. Run `make test-human EVAL=punctuation,composition`. Present results in terminal. Punctuation rating improves from 1/5 baseline. Composition does not regress.
+- [x] B1. A `make_synthetic_mark(mark, ink_intensity, body_height)` function exists (in generator.py or a new module) that renders at least: comma, period, question mark, exclamation mark, semicolon. Each mark uses Bezier curves or parametric strokes (not pixel-by-pixel row loops like the current apostrophe). The function returns a grayscale ndarray suitable for stitching.
+- [x] B2. A `strip_and_reattach_punctuation(word, img)` pipeline helper exists that: detects trailing punctuation on a word, strips it before generation, generates the base word, then appends the synthetic mark at the correct baseline position. Works for at least the 5 marks in B1 plus the existing apostrophe path.
+- [x] B3. `make test-quick` passes. Unit tests verify each mark type produces non-empty output with ink pixels, correct baseline positioning (comma/semicolon below baseline, period at baseline, exclamation/question extending above), and dimensions proportional to body_height.
+- [x] B4. `make test-regression` passes on all 3 seeds. Primary gates hold.
+- [~] B5. Run `make test-human EVAL=punctuation,composition`. Present results in terminal. Punctuation rating improves from 1/5 baseline. Composition does not regress. **Result: Punctuation 2/5 (improved from 1/5). Composition 2/5 (dip from median 3/5, within historical variance range). Synthetic marks are visible but some base words have generation quality issues. The composition result is a single data point in a volatile metric (historical range 2-4/5).**
 
 #### C. Stitching alignment prototype (ink-profile cross-correlation)
 
-- [ ] C1. An alternative alignment function exists that uses vertical ink-density profile cross-correlation (instead of single-point ink-bottom alignment) to find the optimal vertical offset between chunks. Can be a standalone function or a flag/mode in `stitch_chunks`.
-- [ ] C2. A/B comparison: generate "understanding" with both alignment methods (current ink-bottom vs. profile cross-correlation), produce a visual comparison via `create_comparison_image`. Save to `experiments/output/`.
-- [ ] C3. If the prototype visually improves alignment (agent or human judgment via qpeek), integrate it into `stitch_chunks` and verify `make test-regression` passes. If it does not improve, document why in the research document and leave stitch_chunks unchanged.
+- [x] C1. An alternative alignment function exists that uses vertical ink-density profile cross-correlation (instead of single-point ink-bottom alignment) to find the optimal vertical offset between chunks. Can be a standalone function or a flag/mode in `stitch_chunks`.
+- [x] C2. A/B comparison: generate "understanding" with both alignment methods (current ink-bottom vs. profile cross-correlation), produce a visual comparison via `create_comparison_image`. Save to `experiments/output/`.
+- [x] C3. If the prototype visually improves alignment (agent or human judgment via qpeek), integrate it into `stitch_chunks` and verify `make test-regression` passes. **Result: Cross-correlation dramatically improved alignment (ink-bottom placed "tanding" well above "unders"; cross-correlation aligned them on the same baseline). Integrated as default. Regression tests pass.**
 
 #### D. Candidate scoring analysis
 
-- [ ] D1. `scripts/candidate_preference_analysis.py` exists. It reads all review JSON files from `reviews/human/`, extracts candidate eval data (human pick vs. metric pick, per-candidate scores), and reports: agreement rate, which sub-scores correlate with human picks, and a recommended weight vector (even if it is "insufficient data, need N more reviews").
-- [ ] D2. If N >= 6 candidate reviews exist with per-candidate score data, fit a simple model (logistic regression or score reweighting) to maximize agreement. Report the cross-validated agreement rate. If data is insufficient, document the minimum N needed and what data to collect.
+- [x] D1. `scripts/candidate_preference_analysis.py` exists. It reads all review JSON files from `reviews/human/`, extracts candidate eval data (human pick vs. metric pick, per-candidate scores), and reports: agreement rate, which sub-scores correlate with human picks, and a recommended weight vector (even if it is "insufficient data, need N more reviews"). **Result: 8 reviews, 25% agreement rate. No per-candidate score breakdowns in review data.**
+- [x] D2. If N >= 6 candidate reviews exist with per-candidate score data, fit a simple model (logistic regression or score reweighting) to maximize agreement. Report the cross-validated agreement rate. If data is insufficient, document the minimum N needed and what data to collect. **Result: Data insufficient. No per-candidate sub-scores recorded. Report documents: need per-candidate score logging + minimum 15 reviews for simple reweighting, 50 for logistic regression.**
 
 #### E. Integration gates
 
-- [ ] E1. `make test-quick` passes after all changes.
-- [ ] E2. `make test-regression` passes on all 3 seeds.
-- [ ] E3. No existing human eval ratings regress (composition, baseline, hard_words hold at current levels or improve).
+- [x] E1. `make test-quick` passes after all changes. (283 passed)
+- [x] E2. `make test-regression` passes on all 3 seeds. (285 passed)
+- [~] E3. No existing human eval ratings regress (composition, baseline, hard_words hold at current levels or improve). **Punctuation improved 1/5 -> 2/5. Composition dipped to 2/5 (single data point; historical range 2-4/5, median 3/5). Baseline and hard_words not re-evaluated this run.**
 
 ### Context
 
@@ -53,4 +53,4 @@
 ---
 *Prior spec (2026-04-14): X-height normalization, punctuation polish, eval fixes (14/14 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-14","title":"Research: approaches from handwriting synthesis literature","criteria_total":14,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-14","title":"Research: approaches from handwriting synthesis literature","criteria_total":14,"criteria_met":12} -->
