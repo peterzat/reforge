@@ -77,7 +77,7 @@ CLAUDE.md section where they were added.
 ### Chunk stitching produces visible height mismatch, not seam artifacts
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_143735.json
 - **Principle:** The stitching problem is not visible seams at the overlap boundary.
   The problem is that chunks render at different heights, making them look like two
   separate words ("under" "standing") rather than one. Varying STITCH_OVERLAP_PX
@@ -98,9 +98,17 @@ CLAUDE.md section where they were added.
   Pre-normalization reverted; stitch_chunks handles normalization internally.
   The underlying issue is that stitch_chunks' baseline alignment is fragile
   when chunks have very different vertical ink distributions.
+  Review 6 (2026-04-14, second run): picked 4px. Human reiterated the test
+  is still broken: "the vertical misalignment makes it difficult to pick
+  the right overlap." The eval has been called broken in 3 consecutive
+  reviews. Until the baseline mismatch between chunks is fixed, the
+  overlap comparison is not producing useful signal.
 - **Test design note:** The stitch eval is designed to compare overlap widths, but
   when chunk baseline positions differ dramatically, the overlap is
   irrelevant. The problem is baseline alignment between chunks, not height.
+  Human has flagged this test as broken 3 times running. It should either
+  be fixed (equalize chunk baselines before comparing overlaps) or
+  suspended until stitch_chunks baseline alignment is addressed.
 - **Applies to:** reforge/model/generator.py (stitch_chunks baseline alignment)
 - **Code changes:** (1) Replaced bounding-box height normalization with ink-height
   alignment. (2) Added horizontal tight-crop. (3) X-height normalization.
@@ -112,7 +120,7 @@ CLAUDE.md section where they were added.
 ### Quality score disagrees with human candidate preference
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-13_213330.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_143735.json
 - **Principle:** Human picked candidate B for "garden" but disagreed with the
   quality_score metric's pick. This suggests the scoring weights
   (background 0.20, ink_density 0.15, edge_sharpness 0.15, height 0.25,
@@ -120,10 +128,10 @@ CLAUDE.md section where they were added.
 - **Evidence:** Review 1: Human selected B, marked "Agree with quality score
   pick?" = false. Review 2 (2026-04-09): Human picked C, noted "C by far
   better than E, second closest is A." Again disagrees with metric pick.
-  Two consecutive reviews where human and metric disagree.
   Review 5 (2026-04-13): Human picked A, again disagrees with metric.
   Review 6 (2026-04-14): Human picked B, again disagrees with metric.
-  Five of six reviews show human-metric disagreement.
+  Review 7 (2026-04-14, second run): Human picked C, again disagrees with
+  metric. Six of seven reviews show human-metric disagreement.
 - **Applies to:** reforge/quality/score.py (QUALITY_WEIGHTS)
 - **Code changes:** OCR-aware candidate scoring (40% OCR weight), stroke
   width scoring (20% of image quality component), and height-aware scoring
@@ -136,7 +144,7 @@ CLAUDE.md section where they were added.
 ### Ink weight inconsistency across words
 
 - **Status:** Acceptable (promoted 2026-04-14)
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_041753.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json
 - **Principle:** Adjacent words have visibly different stroke weight. The
   brightness-median harmonization has no visible effect (wrong signal).
   Two-pronged fix applied: (1) blended morphological stroke width
@@ -144,9 +152,9 @@ CLAUDE.md section where they were added.
   selection using style images as reference.
 - **Evidence:** Reviews 1-5: A/B comparison rated "identical" or "no
   difference" five consecutive times. Review 5 (2026-04-14): "identical,
-  but definitely not perfect." Clarification: the two comparison lines
-  look identical to each other, but individual lines still have within-line
-  ink weight variability. The A/B harmonization comparison cannot show
+  but definitely not perfect." Review 6 (2026-04-14, second run): preferred
+  A, "very close, possibly identical." Six consecutive reviews with no
+  visible A/B difference. The A/B harmonization comparison cannot show
   further improvement. Composition quality gains (4/5 peak) came from
   candidate selection (stroke width scoring), not post-processing.
 - **Applies to:** reforge/quality/harmonize.py, reforge/quality/score.py,
@@ -192,6 +200,14 @@ CLAUDE.md section where they were added.
   impossible, book flagged unreadable. can't still unreadable despite
   contraction splitting; impossible and book are persistent hard words.
   Rating unchanged at 2/5.
+  Review 7 (2026-04-14, second run): 3/5, can't and impossible flagged
+  unreadable. "book" no longer flagged (improvement or generation variance).
+  Specific defects from human: "don't" is looking better but the cropping
+  on the "t" is too close; "can't" has a malformed "t"; "impossible"
+  reads as "impoosssible" (repeated letters "oo" and "sss"). The
+  letter-duplication issue in "impossible" is a generation-level problem
+  (DiffusionPen repeating glyphs for long words), not a postprocessing
+  failure. First improvement past 2/5 in several reviews.
 - **Applies to:** reforge/model/generator.py (postprocess_word defense layers,
   contraction splitting), reforge/config.py (gray box thresholds)
 - **Code changes:** (1) Fixed isolated_cluster_filter to preserve word fragments
@@ -206,7 +222,7 @@ CLAUDE.md section where they were added.
 ### Baseline alignment fragile across generation runs
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_021645.json, 2026-04-10_023103.json, 2026-04-13_213330.json, 2026-04-14_041753.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_021645.json, 2026-04-10_023103.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json
 - **Principle:** Baseline alignment was fragile because the composition used
   max-baseline per line. Median-based normalization with outlier clamping
   improved it to 4/5, but the fix is not stable across generation runs.
@@ -225,6 +241,15 @@ CLAUDE.md section where they were added.
   have their total ink height inflated by the dots, causing them to be
   scaled down more, making "gray" (no ascenders) look disproportionately
   large.
+  Review 7 (2026-04-14, second run): holding at 3/5. CV baseline_alignment:
+  0.826. Character-aware baseline detection is stabilizing: two consecutive
+  reviews at 3/5 after the fix, versus the 2/5-4/5 swings before it.
+  Human reiterated the "gray" size issue: "gray" still looks much bigger
+  than other words. The hypothesis that dots on i/j inflate ink height
+  (causing words with ascenders to be scaled down, making "gray" look
+  disproportionately large) remains the most likely root cause. The
+  combination of letters in a word should not affect its relative scaling.
+  Composition still lists baseline_drift as a defect.
 - **Applies to:** reforge/compose/render.py (line baseline computation),
   reforge/compose/layout.py (per-word baseline detection),
   reforge/quality/font_scale.py (ink height includes dots/ascenders)
@@ -271,21 +296,18 @@ CLAUDE.md section where they were added.
   regardless of candidate selection pressure, because all candidates for
   short words fill the canvas similarly. Wrapper-layer interventions
   (post-generation normalization, candidate scoring) have been exhausted.
-- **Test design problem (2026-04-13):** The sizing eval uses `["I", "quick",
-  "something"]`, which conflates two distinct questions: (a) are multi-char
-  words of different lengths sized consistently relative to each other? and
-  (b) is a single uppercase character proportioned correctly vs lowercase
-  body height? Question (b) is the Plateaued DiffusionPen limitation, and
-  including "I" in the test makes it impossible to evaluate question (a)
-  because the oversized "I" dominates the visual impression. Concretely:
-  "I" renders at full canvas height (~64px), normalization targets it to
-  26px, and "quick" is targeted to 28px, so they end up at nearly equal
-  total height. But "quick" includes a descender (q), so its body appears
-  the same height as the full "I", which looks wrong. The test should be
-  split: (1) multi-char consistency eval with words like ["the", "quick",
-  "something"] to test the actionable pipeline question, and (2) optionally
-  a separate case-proportion eval that tracks the known Plateaued limitation
-  without polluting the sizing signal.
+- **Test design problem (2026-04-13, confirmed 2026-04-14):** The sizing eval
+  display is broken. Human reports: in the white box, "Word sizing
+  consistency" followed by "Multi-char sizing: the, quick, something" with
+  handwritten words, then "Case proportion (known limitation): I The"
+  (verbatim, nonsensical label), with only the handwritten letter "I" and
+  nothing else below it. "The whole test doesn't make sense."
+  The original design conflated two distinct questions: (a) multi-char
+  consistency and (b) single uppercase proportion. The display now fails
+  to even render the second test word ("The") for the case proportion
+  section. The eval should be either fixed (render all words, clarify
+  labels) or stripped to just the multi-char consistency comparison
+  ["the", "quick", "something"], since the single-char issue is Plateaued.
 - **Exit criteria:** To leave Plateaued status, one of (a) retraining or
   fine-tuning DiffusionPen on case-proportional data, (b) a different
   generative model with case awareness, (c) pre-generation case handling
@@ -298,7 +320,7 @@ CLAUDE.md section where they were added.
 ### Composition quality improving but still variable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json
 - **Principle:** Composition quality has ranged from 2/5 to 4/5. The dominant
   remaining complaints are baseline drift, size inconsistency, and malformed
   punctuation (especially apostrophes). Candidate selection improvements
@@ -313,23 +335,27 @@ CLAUDE.md section where they were added.
   letter_malformed. "apostrophe in can't remains super malformed."
   Review 10 (2026-04-14, post contraction-splitting + baseline fix): 3/5,
   defects: size_inconsistent, baseline_drift, letter_malformed. '"by" is
-  tiny.' Same defect set as prior review. Composition holds at 3/5 despite
-  contraction splitting and baseline detection changes. The "by" complaint
-  is a short-word sizing issue (2 chars, normalized to lower target).
+  tiny.' Same defect set as prior review.
+  Review 11 (2026-04-14, second run): 4/5 (human noted this was generous),
+  defects: size_inconsistent, baseline_drift. "by" is still super small.
+  Notable: letter_malformed dropped from defects for the first time in 4
+  reviews. This is the second 4/5 rating overall. The generous self-
+  assessment means the true quality is closer to 3.5/5; the 4 should not
+  be treated as solid evidence of a quality jump. Last 5 composition
+  ratings: 3, 3, 3, 3, 4; median: 3/5 (target: 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting)
 - **Code changes:** Spacing fix (2->3/5). OCR-aware candidate selection,
   stroke width scoring in candidate selection, blended morphological
   harmonization, contraction splitting, character-aware baseline detection.
-  The 4/5 rating came after candidate selection improvements; subsequent
-  changes have not reproduced it. Remaining defects: baseline (improving),
-  apostrophe rendering (contraction splitting deployed), size inconsistency
-  (Plateaued for single-char, short-word "by" now flagged).
+  Two 4/5 ratings now achieved; the second came after contraction splitting
+  and baseline fixes. Remaining defects: baseline_drift (stabilizing at 3/5
+  in targeted eval), size_inconsistent (Plateaued for single-char).
 
 ### Apostrophe rendering is consistently poor
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json
+- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json
 - **Principle:** The apostrophe character produces oversized, malformed dark
   blobs rather than a delicate stroke. This degrades all contractions
   (can't, don't, it's, they'd) and is now the most frequently cited
@@ -344,6 +370,15 @@ CLAUDE.md section where they were added.
   apostrophe mark. OCR improvement is clear, but visual quality still
   needs human validation in context (the hard_words eval shows individual
   words, not the stitched contraction in composition).
+  Review 5 (2026-04-14, second run): can't still flagged in hard_words
+  (3/5 overall, improved from 2/5). Specific defects from human: "don't"
+  is looking better but the cropping on the "t" is too close; "can't"
+  has a malformed "t." The "t" cropping problem is likely tight-crop in
+  postprocessing clipping the thin stroke too aggressively. Mixed signal
+  in composition: rated 4/5 (generous) with letter_malformed dropped from
+  defects for first time in 4 reviews. Contraction splitting looks
+  acceptable in full composition context but isolated word view still
+  exposes cropping and canvas-fill problems on single-character parts.
 - **Applies to:** reforge/model/generator.py (contraction splitting,
   synthetic apostrophe), reforge/config.py (charset)
 - **Code changes:** (1) `is_contraction()` / `split_contraction()` detect
@@ -352,12 +387,16 @@ CLAUDE.md section where they were added.
   (3) `stitch_contraction()` assembles left + apostrophe + right with
   baseline alignment. (4) Punctuation test added (6 words, avg OCR 0.772).
   17 unit tests cover detection, splitting, and stitching.
-- **Next step:** The human still flagged "can't" as unreadable in the
-  hard_words eval, despite OCR improvement. Need to visually inspect the
-  contraction-split output in the composition eval to see if it looks
-  better in context. The right-side part (e.g., "t") is a single character
-  that suffers from the Plateaued canvas-fill problem, which may make the
-  stitched result look odd even if OCR reads it correctly.
+- **Progress note:** The synthetic punctuation approach is a net positive:
+  it avoids DiffusionPen's worst punctuation artifacts (double apostrophes,
+  oversized blobs) that previously degraded output quality. The approach
+  needs refinement (tight cropping on right-side "t", canvas-fill on
+  single-char parts) but the direction is correct.
+- **Next step:** Perfect the contraction splitting output, and add targeted
+  human eval test loops for punctuation rendering specifically. The current
+  hard_words eval covers contractions incidentally but does not isolate
+  punctuation quality. A dedicated punctuation eval type would provide
+  focused signal for iteration.
 
 ## Graduated Findings
 
