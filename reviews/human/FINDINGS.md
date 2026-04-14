@@ -376,9 +376,13 @@ CLAUDE.md section where they were added.
   size_inconsistent dropped from defects. Only ink_weight_uneven remains.
   CV: height_outlier_score 0.923, baseline_alignment 0.854, ocr_min 0.0.
   Confirms prior 2/5 was generation variance; composition holds at 3/5.
-  The dominant complaint is now synthetic punctuation quality in context,
-  not baseline, sizing, or letter formation.
-  Last 5 composition ratings: 4, 4, 2, 3; median: 3.5/5 (target: 4/5).
+  Review 15 (2026-04-14, post 3x mark scaling): 4/5, defects:
+  size_inconsistent, letter_malformed. Punctuation marks clearly visible
+  in composition ("exactly," "Thursday;" "noon." "three?" "breakfast."
+  all readable). CV: height_outlier_score 0.923, baseline_alignment 0.757,
+  ocr_min 0.167. Fourth 4/5 rating. The mark scaling fix resolved the
+  "punctuation nearly completely broken" complaint from the prior review.
+  Last 5 composition ratings: 4, 2, 3, 4; median: 3.5/5 (target: 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
@@ -466,6 +470,13 @@ CLAUDE.md section where they were added.
   to the surrounding text at composition scale. The marks are derived from
   the generated word's body_height (x-height), which is correct for
   isolated words but may be too small when the composition upscales.
+  Third punctuation eval (2026-04-14, post 3x mark scaling): 2/5. Only
+  "it's" and "she'd" flagged unreadable (contraction path, not trailing
+  marks). The trailing marks (comma, period, question, semicolon) are
+  now clearly visible. Composition: 4/5 with visible punctuation
+  throughout ("exactly," "Thursday;" "noon." "three?" "breakfast." all
+  have clear marks). The remaining punctuation problem is isolated to
+  the contraction path (single-character right-side parts).
 - **Applies to:** reforge/model/generator.py (strip_trailing_punctuation,
   _generate_punctuated_word, make_synthetic_mark)
 - **Code changes:** (1) make_synthetic_mark() renders 5 mark types using
