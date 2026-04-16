@@ -1,56 +1,54 @@
-## Spec -- 2026-04-14 -- Research: approaches from handwriting synthesis literature
+## Spec -- 2026-04-16 -- Stabilize composition at 4/5, close stale findings
 
-**Goal:** Survey handwriting synthesis literature for techniques that can improve reforge's wrapper layer, then prototype the most promising ones. The project has hit wrapper-layer ceilings on several fronts (invisible punctuation, stitching baseline mismatch, candidate scoring that disagrees with humans). This turn steps back from incremental tuning to find better algorithms from the research literature, prototype the top candidates, and produce a written assessment of what is worth integrating.
+**Goal:** The composition median hit 4/5 (target met). This turn consolidates: stabilize the median by addressing the remaining composition defects (size_inconsistent, "I" ink loss), close or promote stale findings, un-suspend the stitch eval, and fix the codereview WARN (duplicate output history entry). No new features; this is a hardening turn.
 
 ### Acceptance Criteria
 
-#### A. Research document
+#### A. "I" ink loss investigation
 
-- [x] A1. `docs/research_survey.md` exists and covers at least: (a) Graves 2013 sequence generation and its relevance to synthetic stroke generation, (b) Bezier curve approaches to programmatic glyph synthesis, (c) ink-profile or cross-correlation methods for baseline alignment in stitching, (d) learned perceptual metrics (HWD, LPIPS, VGG-based features) for candidate scoring, (e) post-DiffusionPen models (DiffBrush, One-DM, WriteViT) and whether any are worth evaluating as replacements. Each section states what the approach is, which reforge problem it addresses, and a concrete recommendation (integrate / prototype / skip / requires model swap).
-- [x] A2. The document includes a summary table mapping each open problem to the recommended wrapper-layer fix, with citations. Problems covered: trailing punctuation invisible, chunk stitching baseline mismatch, candidate selection disagreement, stroke weight inconsistency.
+- [ ] A1. Investigate why "I" loses ink (reported as recurring in 2-3 composition reviews). Generate "I" at quality preset, inspect the postprocessed output, and identify which defense layer (if any) removes ink. Document the root cause: is it body-zone noise removal blanking the thin vertical stroke, isolated-cluster filter discarding it, or a font-normalization artifact?
+- [ ] A2. If the root cause is a postprocessing layer stripping ink, implement a targeted fix (e.g., skip body-zone blanking for single-character words, or lower the ink threshold for narrow strokes). If the root cause is generation-level (DiffusionPen produces faint "I"), document it as a base-model limitation. Either way, `make test-quick` and `make test-regression` pass.
 
-#### B. Synthetic punctuation prototype (Bezier curves)
+#### B. Short-word sizing ("by" is tiny)
 
-- [x] B1. A `make_synthetic_mark(mark, ink_intensity, body_height)` function exists (in generator.py or a new module) that renders at least: comma, period, question mark, exclamation mark, semicolon. Each mark uses Bezier curves or parametric strokes (not pixel-by-pixel row loops like the current apostrophe). The function returns a grayscale ndarray suitable for stitching.
-- [x] B2. A `strip_and_reattach_punctuation(word, img)` pipeline helper exists that: detects trailing punctuation on a word, strips it before generation, generates the base word, then appends the synthetic mark at the correct baseline position. Works for at least the 5 marks in B1 plus the existing apostrophe path.
-- [x] B3. `make test-quick` passes. Unit tests verify each mark type produces non-empty output with ink pixels, correct baseline positioning (comma/semicolon below baseline, period at baseline, exclamation/question extending above), and dimensions proportional to body_height.
-- [x] B4. `make test-regression` passes on all 3 seeds. Primary gates hold.
-- [~] B5. Run `make test-human EVAL=punctuation,composition`. Present results in terminal. Punctuation rating improves from 1/5 baseline. Composition does not regress. **Result: Punctuation 2/5 (improved from 1/5). Composition 2/5 (dip from median 3/5, within historical variance range). Synthetic marks are visible but some base words have generation quality issues. The composition result is a single data point in a volatile metric (historical range 2-4/5).**
+- [ ] B1. Generate the composition text at quality preset. Measure the ink height of "by", "it", "a", "on", "so" after font normalization. Compare to the median ink height of 4+ char words on the same line. Report the ratio.
+- [ ] B2. If short words (2-3 lowercase chars, not single uppercase) are consistently < 80% of median ink height, adjust `normalize_font_size` or `equalize_body_zones` to bring them closer. The fix must not regress single-uppercase sizing (Plateaued) or trigger the height_outlier gate. `make test-quick` and `make test-regression` pass.
 
-#### C. Stitching alignment prototype (ink-profile cross-correlation)
+#### C. Stitch eval un-suspension
 
-- [x] C1. An alternative alignment function exists that uses vertical ink-density profile cross-correlation (instead of single-point ink-bottom alignment) to find the optimal vertical offset between chunks. Can be a standalone function or a flag/mode in `stitch_chunks`.
-- [x] C2. A/B comparison: generate "understanding" with both alignment methods (current ink-bottom vs. profile cross-correlation), produce a visual comparison via `create_comparison_image`. Save to `experiments/output/`.
-- [x] C3. If the prototype visually improves alignment (agent or human judgment via qpeek), integrate it into `stitch_chunks` and verify `make test-regression` passes. **Result: Cross-correlation dramatically improved alignment (ink-bottom placed "tanding" well above "unders"; cross-correlation aligned them on the same baseline). Integrated as default. Regression tests pass.**
+- [ ] C1. Re-enable the stitch eval in `human_eval.py` (remove the suspension flag/skip). Generate "understanding" with the current cross-correlation alignment and present the stitch comparison via the eval.
+- [ ] C2. Run `make test-human EVAL=stitch`. If the human rates the stitching >= 3/5 (up from the broken-eval era), update FINDINGS.md to reflect the cross-correlation fix. If it is still broken, document why and re-suspend.
 
-#### D. Candidate scoring analysis
+#### D. Findings housekeeping
 
-- [x] D1. `scripts/candidate_preference_analysis.py` exists. It reads all review JSON files from `reviews/human/`, extracts candidate eval data (human pick vs. metric pick, per-candidate scores), and reports: agreement rate, which sub-scores correlate with human picks, and a recommended weight vector (even if it is "insufficient data, need N more reviews"). **Result: 8 reviews, 25% agreement rate. No per-candidate score breakdowns in review data.**
-- [x] D2. If N >= 6 candidate reviews exist with per-candidate score data, fit a simple model (logistic regression or score reweighting) to maximize agreement. Report the cross-validated agreement rate. If data is insufficient, document the minimum N needed and what data to collect. **Result: Data insufficient. No per-candidate sub-scores recorded. Report documents: need per-candidate score logging + minimum 15 reviews for simple reweighting, 50 for logistic regression.**
+- [ ] D1. If the stitch eval passes (C2 >= 3/5), update the "Chunk stitching produces visible height mismatch" finding to Resolved with the cross-correlation fix as the resolution.
+- [ ] D2. If baseline alignment holds at 4/5 in the composition eval this turn, promote "Baseline alignment fragile across generation runs" to Acceptable with rationale (4 code changes, 3 consecutive reviews at 3-4/5, cross-correlation stitching contributing).
+- [ ] D3. Update the FINDINGS.md status summary table to reflect any status changes from D1-D2.
 
-#### E. Integration gates
+#### E. Codereview WARN fix
 
-- [x] E1. `make test-quick` passes after all changes. (283 passed)
-- [x] E2. `make test-regression` passes on all 3 seeds. (285 passed)
-- [~] E3. No existing human eval ratings regress (composition, baseline, hard_words hold at current levels or improve). **Punctuation improved 1/5 -> 2/5. Composition dipped to 2/5 (single data point; historical range 2-4/5, median 3/5). Baseline and hard_words not re-evaluated this run.**
+- [ ] E1. Remove the duplicate OUTPUT_HISTORY.md entry (keep only the most recent per the one-entry-per-push convention). Commit.
+
+#### F. Integration gates
+
+- [ ] F1. `make test-quick` passes.
+- [ ] F2. `make test-regression` passes on all 3 seeds.
+- [ ] F3. Run `make test-human EVAL=composition`. Composition holds at >= 3/5 (no regression). Present rating and defects in terminal.
+- [ ] F4. Last 5 composition ratings still have median >= 4/5 after this turn's eval.
 
 ### Context
 
-**Prior turn (2026-04-14):** X-height normalization, punctuation polish, eval fixes (14/14 criteria met). Body-zone equalization fixed "gray too big" (baseline improved 3/5 to 4/5). Contraction tight-crop padding increased. New punctuation eval type revealed trailing punctuation is invisible (1/5). Stitch eval suspended. Composition last 5: 3, 3, 3, 4, 4 (median 3/5, target 4/5).
+**Prior turn (2026-04-14):** Research survey, Bezier synthetic punctuation, cross-correlation stitch alignment, candidate scoring analysis. 12/14 criteria met. Trailing punctuation went from invisible (1/5) to visible in composition. Cross-correlation alignment dramatically fixed the "tanding above unders" problem. Mark sizing increased 3x for composition visibility. Composition median reached 4/5 (last 5: 2, 3, 4, 4, 4).
 
-**Research findings driving this spec:**
-- Graves 2013 (arxiv:1308.0850) demonstrated stroke-level sequence generation with mixture density networks. Relevant not as a replacement model but as evidence that programmatic stroke generation works for characters the base model cannot render. The same paper noted IAM's punctuation limitation (most punctuation collapsed to a generic non-letter label), which persists into DiffusionPen.
-- Bezier curve approaches (Pictographic Character Reconstruction, arxiv:2511.00076) frame glyph synthesis as program synthesis over cubic Bezier splines. For geometrically simple marks (dots, short curves, tapered strokes), Bezier templates parameterized by ink weight and height produce smoother output than pixel loops.
-- VATr++ (Pippi et al., 2024) documented that IAM "punctuation marks lose their scale and spatial context" when treated as standalone entries, explaining why DiffusionPen ignores trailing punctuation.
-- HWD (Handwriting Distance, BMVC 2023) uses VGG16 features trained on handwriting for style comparison. Its backbone could be repurposed for per-sample candidate scoring.
-- DiffBrush (ICCV 2025) generates full text lines, eliminating the word-level stitching problem entirely. It is the most direct successor to DiffusionPen but would require a model swap (out of scope for this turn, but worth assessing).
-- Ink-profile cross-correlation for stitching alignment uses the full vertical ink distribution rather than single-point baseline detection, which should be more robust to the chunk-to-chunk variance that breaks current alignment.
+**Composition defects in recent 4/5 reviews:** size_inconsistent (every review), letter_malformed (intermittent), ink_weight_uneven (intermittent). The size_inconsistent defect is driven by "by" and other 2-3 char lowercase words appearing too small, and "I" appearing ink-depleted. These are the two most actionable remaining issues.
 
-**Scope limits:** This turn produces a research document, prototypes, and an analysis. It does not swap the base model, retrain anything, or attempt to fix the Plateaued sizing issue. Prototypes that improve quality get integrated; those that don't get documented as negative results.
+**Stitch eval status:** Suspended since 2026-04-14 after 4 consecutive "broken" reviews where vertical misalignment between chunks made overlap comparison meaningless. Cross-correlation alignment was integrated after suspension. The eval has not been run with the new alignment.
 
-**zat.env practices:** Work in small committable increments. Prototype in isolation before integrating. If two consecutive attempts at a prototype fail, document the negative result and move on. GPU tests aggressively.
+**Findings status:** 4 Active, 2 In Progress, 1 Resolved, 1 Acceptable, 1 Plateaued. The two In Progress findings (baseline alignment, apostrophe rendering) and the chunk stitching Active finding are candidates for status changes based on this turn's evaluations.
+
+**zat.env practices:** Work in small committable increments. Run GPU tests aggressively. Run `~/src/qwen-2.5-localreview/gpu-release` before GPU work to free the warm server's VRAM. If two consecutive fix attempts fail, document the negative result and move on.
 
 ---
-*Prior spec (2026-04-14): X-height normalization, punctuation polish, eval fixes (14/14 criteria met).*
+*Prior spec (2026-04-14): Research: approaches from handwriting synthesis literature (12/14 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-14","title":"Research: approaches from handwriting synthesis literature","criteria_total":14,"criteria_met":12} -->
+<!-- SPEC_META: {"date":"2026-04-16","title":"Stabilize composition at 4/5, close stale findings","criteria_total":13,"criteria_met":0} -->
