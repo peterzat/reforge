@@ -13,10 +13,10 @@ See [README](../README.md) for current output and project overview.
 
 | Field | Value |
 |-------|-------|
-| Git state | `ca86055 (uncommitted changes)` |
-| Commit message | Composition median 4/5 target met, update FINDINGS |
+| Git state | `bb5230e` |
+| Commit message | Update demo quality baseline for synthetic punctuation changes |
 | Style input | `styles/hw-sample.png` |
-| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
+| Metrics | overall=0.730, composition_score=0.450, stroke_weight_consistency=0.820, word_height_ratio=0.830, ocr_accuracy=0.880, style_fidelity=0.400, ink_contrast=1.000, background_cleanliness=0.990 |
 
 ---
 
