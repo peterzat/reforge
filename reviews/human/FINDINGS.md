@@ -382,7 +382,13 @@ CLAUDE.md section where they were added.
   all readable). CV: height_outlier_score 0.923, baseline_alignment 0.757,
   ocr_min 0.167. Fourth 4/5 rating. The mark scaling fix resolved the
   "punctuation nearly completely broken" complaint from the prior review.
-  Last 5 composition ratings: 4, 2, 3, 4; median: 3.5/5 (target: 4/5).
+  Review 16 (2026-04-16, clean eval on committed code): 4/5, defects:
+  size_inconsistent. Human: '"by" is slightly bigger but still too small.
+  The initial "I" is missing a lot of ink, hard to read (second or third
+  time I have seen this so I do not think it is just a generation fluke).'
+  Fifth 4/5 rating. The "I" ink-loss issue is new as an explicit finding;
+  may be related to single-char canvas-fill + aggressive postprocessing.
+  Last 5 composition ratings: 2, 3, 4, 4, 4; median: **4/5 (target met)**.
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
