@@ -7,7 +7,7 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 4 |
+| Active | 5 |
 | In Progress | 2 |
 | Resolved | 1 |
 | Acceptable | 1 |
@@ -491,6 +491,31 @@ CLAUDE.md section where they were added.
   then attaches synthetic mark. (4) generate_word() routes punctuated
   words through the new path. Marks are now visible; word quality around
   marks needs further work.
+
+### Single-character "I" loses ink, appears half-missing
+
+- **Status:** Active
+- **Reviews:** 2026-04-14_212810.json, 2026-04-16_011718.json
+- **Principle:** The uppercase letter "I" in composition output appears with
+  significant ink missing, making it hard to read. The human reported this as
+  recurring (2-3 observations) and explicitly stated it is not a generation
+  fluke. This is distinct from the Plateaued sizing issue (that is about "I"
+  being too tall relative to lowercase; this is about "I" having too little
+  visible ink).
+- **Evidence:** Review 15 (2026-04-14): composition 4/5, no explicit note but
+  "I" visible in output. Review 16 (2026-04-16): composition 4/5, human:
+  "The initial 'I' is missing a lot of ink, hard to read (second or third
+  time I've seen this so I don't think it's just a generation fluke)."
+- **Likely root cause (not yet confirmed):** "I" is a single-character word
+  that fills the 64x256 canvas with a thin vertical stroke surrounded by
+  near-white background. The postprocessing defense layers (body-zone noise
+  removal, isolated-cluster filter, word-level gray cleanup) may be stripping
+  faint ink pixels from the thin stroke. Alternatively, font normalization
+  may be scaling the image down aggressively, causing the thin stroke to
+  lose pixels during interpolation.
+- **Applies to:** reforge/model/generator.py (postprocess_word), reforge/
+  quality/font_scale.py (normalize_font_size)
+- **Code changes:** None yet. Spec 2026-04-16 A1-A2 targets this.
 
 ## Graduated Findings
 
