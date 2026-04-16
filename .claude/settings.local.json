@@ -62,7 +62,11 @@
       "WebFetch(domain:medium.com)",
       "WebFetch(domain:www.sciencedirect.com)",
       "WebFetch(domain:research.gold.ac.uk)",
-      "WebFetch(domain:luc.devroye.org)"
+      "WebFetch(domain:luc.devroye.org)",
+      "Bash(ps:*)",
+      "Read(//home/peter/src/qwen-2.5-localreview/**)",
+      "Bash(~/src/qwen-2.5-localreview/gpu-release:*)",
+      "Bash(kill 897414)"
     ]
   }
 }

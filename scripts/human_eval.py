@@ -6,7 +6,7 @@ and persists review data.
 
 Evaluation types:
     candidate   -- Best-of-N candidate selection calibration (B1)
-    stitch      -- Chunk stitching overlap comparison (B2, SUSPENDED)
+    stitch      -- Chunk stitching overlap comparison (B2)
     sizing      -- Short vs long word size consistency (B3)
     baseline    -- Baseline alignment with descenders (B4)
     spacing     -- Word spacing and jitter comparison (B5)
@@ -310,16 +310,10 @@ def _normalize_chunks_to_same_height(chunk_images: list[np.ndarray]) -> list[np.
 def generate_stitch_eval(models, output_dir):
     """B2: Generate a long word with different STITCH_OVERLAP_PX values.
 
-    SUSPENDED (2026-04-14): Called broken 3 consecutive reviews because
-    chunk baseline mismatch makes overlap comparison meaningless. The
-    eval generates and displays results, but the persistent visual
-    misalignment is a stitch_chunks baseline-alignment issue, not an
-    eval bug. Unblocked when stitch_chunks baseline alignment improves.
-
     stitch_chunks() handles x-height normalization and baseline alignment
-    internally. We record chunk heights for the label but do not
-    pre-normalize, which was found to interfere with the internal
-    baseline alignment (review 2026-04-14: "unders way below tanding").
+    internally (cross-correlation alignment since 2026-04-14). We record
+    chunk heights for the label but do not pre-normalize, which was found
+    to interfere with the internal baseline alignment.
     """
     from reforge.evaluate.compare import create_comparison_image
     from reforge.model.generator import (
@@ -714,13 +708,10 @@ def build_html_page(eval_metadata, eval_types, output_dir):
                  "label": "Agree with quality score pick?"},
             ]
         elif et == "stitch":
-            step["title"] = "Chunk Stitching (SUSPENDED)"
+            step["title"] = "Chunk Stitching"
             step["description"] = (
                 f'Which overlap produces the least visible seam for '
-                f'"{meta["word"]}" ({" + ".join(meta["chunks"])})?  '
-                f'Note: this eval is suspended due to persistent chunk '
-                f'baseline misalignment. Rating is still collected but '
-                f'does not drive iteration.'
+                f'"{meta["word"]}" ({" + ".join(meta["chunks"])})?'
             )
             step["input_type"] = "pick"
             step["options"] = [f"{o}px" for o in meta["overlaps"]]

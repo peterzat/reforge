@@ -7,9 +7,9 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 5 |
-| In Progress | 2 |
-| Resolved | 1 |
+| Active | 3 |
+| In Progress | 3 |
+| Resolved | 2 |
 | Acceptable | 1 |
 | Plateaued | 1 |
 | Graduated | 0 |
@@ -90,54 +90,26 @@ CLAUDE.md section where they were added.
 
 ### Chunk stitching produces visible height mismatch, not seam artifacts
 
-- **Status:** Active
-- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_143735.json
-- **Principle:** The stitching problem is not visible seams at the overlap boundary.
-  The problem is that chunks render at different heights, making them look like two
-  separate words ("under" "standing") rather than one. Varying STITCH_OVERLAP_PX
-  makes no visible difference because the overlap blending works fine; the height
-  normalization before stitching does not.
-- **Evidence:** Review 1: Human could not pick a preferred overlap ("They all look
-  the same, and they're all terrible"). Described the issue as height mismatch.
-  Review 2 (2026-04-04): composition improved to 3/5 after x-height normalization.
-  Review 3 (2026-04-09): 4px preferred, but "standing is way higher than unders,
-  it looks like superscript." Height mismatch persists despite x-height fix.
-  Review 4 (2026-04-13): picked 4px, but called the test "flawed" because
-  "tanding" is significantly higher than "under," making overlap comparison
-  meaningless.
-  Review 5 (2026-04-14): picked 4px. "this test is broken, the 'unders'
-  is way below 'tanding' making it hard to see the seam." Pre-normalization
-  of chunk heights (added for spec D1) made the baseline alignment worse
-  by interfering with stitch_chunks' internal x-height normalization.
-  Pre-normalization reverted; stitch_chunks handles normalization internally.
-  The underlying issue is that stitch_chunks' baseline alignment is fragile
-  when chunks have very different vertical ink distributions.
-  Review 6 (2026-04-14, second run): picked 4px. Human reiterated the test
-  is still broken: "the vertical misalignment makes it difficult to pick
-  the right overlap." The eval has been called broken in 3 consecutive
-  reviews. Until the baseline mismatch between chunks is fixed, the
-  overlap comparison is not producing useful signal.
-  Review 7 (2026-04-14, post x-height equalization): picked 4px.
-  "still has severely vertical misalignment: 'tanding' is way above 'unders'."
-  Stitch eval now marked SUSPENDED in human_eval.py per spec D2.
-- **Test design note:** The stitch eval is designed to compare overlap widths, but
-  when chunk baseline positions differ dramatically, the overlap is
-  irrelevant. The problem is baseline alignment between chunks, not height.
-  Human has flagged this test as broken 4 times running. The eval is now
-  **suspended** (2026-04-14) with a note in the docstring and HTML title.
-  Ratings are still collected but do not drive iteration.
+- **Status:** Resolved
+- **Reviews:** 2026-04-03_021330.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_020920.json
+- **Principle:** The stitching problem was not visible seams at the overlap boundary.
+  The problem was that chunks rendered at different heights, making them look like
+  two separate words ("under" "standing") rather than one. The root cause was
+  single-point ink-bottom baseline alignment, which placed chunks at different
+  vertical positions when their ink distributions differed.
+- **Evidence:** Reviews 1-7 (2026-04-03 through 2026-04-14): human called the eval
+  "broken" in 4 consecutive reviews due to severe vertical misalignment between
+  "under" and "standing". Eval was suspended 2026-04-14.
+  Review 8 (2026-04-16, post cross-correlation alignment): human confirmed chunks
+  are "now correctly on the same baseline, much easier to use this eval!" Picked
+  4px overlap. No complaints about vertical misalignment.
 - **Applies to:** reforge/model/generator.py (stitch_chunks baseline alignment)
-- **Code changes:** (1) Replaced bounding-box height normalization with ink-height
-  alignment. (2) Added horizontal tight-crop. (3) X-height normalization.
-  (4) Pre-normalization of chunk heights before stitch (attempted, reverted:
-  interfered with internal baseline alignment, making "unders" sit below
-  "tanding"). (5) Ink-profile cross-correlation alignment (2026-04-14):
-  replaced single-point ink-bottom alignment with vertical ink-density
-  profile cross-correlation. A/B comparison on "understanding" showed
-  dramatic improvement: ink-bottom placed "tanding" well above "unders";
-  cross-correlation aligned both chunks on the same baseline. Integrated
-  as the new default in stitch_chunks. Awaiting human review in
-  composition context (stitch eval is suspended).
+- **Code changes:** (1-4) Various height normalization approaches, all insufficient.
+  (5) Ink-profile cross-correlation alignment (2026-04-14): replaced single-point
+  ink-bottom alignment with vertical ink-density profile cross-correlation. This
+  was the fix. Eval un-suspended 2026-04-16 after human confirmed resolution.
+- **Resolution:** Cross-correlation stitch alignment confirmed by human review
+  2026-04-16_020920. Eval un-suspended.
 
 ### Quality score disagrees with human candidate preference
 
@@ -349,7 +321,7 @@ CLAUDE.md section where they were added.
 ### Composition quality improving but still variable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_021400.json
 - **Principle:** Composition quality has ranged from 2/5 to 4/5. The dominant
   remaining complaints are baseline drift, size inconsistency, and malformed
   punctuation (especially apostrophes). Candidate selection improvements
@@ -403,15 +375,23 @@ CLAUDE.md section where they were added.
   Fifth 4/5 rating. The "I" ink-loss issue is new as an explicit finding;
   may be related to single-char canvas-fill + aggressive postprocessing.
   Last 5 composition ratings: 2, 3, 4, 4, 4; median: **4/5 (target met)**.
+  Review 17 (2026-04-16, post "I" ink reinforcement): 3/5, defects:
+  spacing_loose, baseline_drift, letter_malformed. spacing_loose reappeared
+  (was Resolved). CV: height_outlier_score 1.0, baseline_alignment 0.784,
+  ocr_min 0.0. The 3/5 is within generation variance range (composition has
+  bounced between 2-4/5 without code changes). Last 5: 2, 3, 4, 4, 3;
+  median: **3/5** (target regressed from 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
 - **Code changes:** Spacing fix (2->3/5). OCR-aware candidate selection,
   stroke width scoring in candidate selection, blended morphological
   harmonization, contraction splitting, character-aware baseline detection,
-  Bezier synthetic punctuation, cross-correlation stitch alignment.
-  Three 4/5 ratings achieved. Remaining defects: baseline_drift, size_inconsistent
-  (Plateaued for single-char), ink_weight_uneven (intermittent).
+  Bezier synthetic punctuation, cross-correlation stitch alignment,
+  single-char ink reinforcement (2026-04-16).
+  Remaining defects: baseline_drift, size_inconsistent
+  (Plateaued for single-char), spacing_loose (intermittent), letter_malformed
+  (intermittent).
 
 ### Apostrophe rendering is consistently poor
 
@@ -508,7 +488,7 @@ CLAUDE.md section where they were added.
 
 ### Single-character "I" loses ink, appears half-missing
 
-- **Status:** Active
+- **Status:** In Progress
 - **Reviews:** 2026-04-14_212810.json, 2026-04-16_011718.json
 - **Principle:** The uppercase letter "I" in composition output appears with
   significant ink missing, making it hard to read. The human reported this as
@@ -520,16 +500,18 @@ CLAUDE.md section where they were added.
   "I" visible in output. Review 16 (2026-04-16): composition 4/5, human:
   "The initial 'I' is missing a lot of ink, hard to read (second or third
   time I've seen this so I don't think it's just a generation fluke)."
-- **Likely root cause (not yet confirmed):** "I" is a single-character word
-  that fills the 64x256 canvas with a thin vertical stroke surrounded by
-  near-white background. The postprocessing defense layers (body-zone noise
-  removal, isolated-cluster filter, word-level gray cleanup) may be stripping
-  faint ink pixels from the thin stroke. Alternatively, font normalization
-  may be scaling the image down aggressively, causing the thin stroke to
-  lose pixels during interpolation.
-- **Applies to:** reforge/model/generator.py (postprocess_word), reforge/
-  quality/font_scale.py (normalize_font_size)
-- **Code changes:** None yet. Spec 2026-04-16 A1-A2 targets this.
+- **Root cause (confirmed 2026-04-16):** Not the defense layers (body-zone,
+  cluster filter, gray cleanup remove 0-4 ink pixels total). The cause is
+  font normalization: "I" fills the 64px canvas, and normalize_font_size
+  scales it to 26px (SHORT_WORD_HEIGHT_TARGET), a 0.41x factor. INTER_AREA
+  interpolation averages the thin 2-3px vertical stroke into 1px of gray,
+  washing out ink. Strong ink pixels drop from 500-1000 to 80-166.
+- **Applies to:** reforge/quality/font_scale.py (normalize_font_size)
+- **Code changes:** (1) Added _reinforce_thin_strokes() in font_scale.py:
+  after aggressive downscaling (scale < 0.6) of single-char words, faint
+  ink pixels (80-200) are darkened by 35% to compensate for INTER_AREA
+  averaging. Strong ink pixels increase by 50-90% after reinforcement.
+  Awaiting human confirmation in composition eval.
 
 ## Graduated Findings
 

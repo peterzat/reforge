@@ -1,19 +1,19 @@
-## Review -- 2026-04-14 (commit: 1fc02ad)
+## Review -- 2026-04-14 (commit: cfb3bba)
 
-**Summary:** Refresh review of uncommitted changes implementing spec 2026-04-13 (punctuation defense and eval test fixes). Focus set: 7 code files (+497/-60 lines). Three features: (1) contraction splitting in `generator.py` (bypasses DiffusionPen for apostrophes via synthetic glyph + stitching, 4 new functions + `_generate_contraction` helper, ~170 new lines), (2) character-aware baseline detection in `layout.py` (descender letter set raises body threshold from 35% to 25%), (3) eval redesigns in `human_eval.py` (sizing: multi-char primary + Plateaued secondary, stitch: height-normalized chunks with annotations). New test file `test_contraction.py` (17 tests) and expanded `test_baseline.py` (5 descender tests) and `test_hard_words.py` (punctuation OCR test). Quick tests: 231/231 pass. Security: no issues (9 files scanned).
+**Summary:** Light refresh review of 2 unpushed commits plus uncommitted changes. Focus: `docs/OUTPUT_HISTORY.md` (metric correction for top entry), `docs/output-history/20260416-012853.png` (new archive image). Already-reviewed: `.claude/settings.local.json` (4 new permissions), `docs/best-output.png` (updated image), `reforge/data/hard_words.json` (1 new OCR candidate). No code files modified. Security scan skipped (light review).
 
 **External reviewers:**
-None configured.
+Skipped (light review).
 
 ### Findings
 
-[NOTE] reforge/model/generator.py:822 -- Unused import: `compute_ink_height` is imported alongside `compute_x_height` in `_generate_contraction`, but only `compute_x_height` is used (line 867). Dead import.
-  Evidence: `from reforge.quality.ink_metrics import compute_ink_height, compute_x_height` -- no reference to `compute_ink_height` anywhere else in the function.
-  Suggested fix: Remove `compute_ink_height` from the import.
+[NOTE] .claude/settings.local.json:69 -- Hardcoded PID in permission entry
+  Evidence: `Bash(kill 897414)` grants permission to kill a specific PID that is almost certainly no longer running. This is a stale artifact from a debugging session.
+  Suggested fix: Remove the `Bash(kill 897414)` entry. The broader `Bash(ps:*)` + manual kill is sufficient.
 
-[NOTE] tests/quick/test_baseline.py:74-82 -- `test_fences_baseline_with_word` docstring claims to test "f has a tail" via the new descender-aware code path, but "fences" contains no letters in `DESCENDER_LETTERS` (g, j, p, q, y), so the default (non-descender) path runs. The test passes correctly (the default scanner handles the synthetic image), but it does not exercise the B1 character-aware feature for f-tailed words. The other 3 descender tests (gray, jumping, quickly) do exercise the new code path. Not a correctness issue; the spec (B2) requires 4 descender test words, and 3 of 4 test the new feature while 1 tests the existing behavior. The docstring is misleading about which code path is exercised.
-  Evidence: `DESCENDER_LETTERS = set("gjpqy")` -- 'f' is not included.
-  Suggested fix: Either add 'f' to DESCENDER_LETTERS if f-tail detection is desired, or update the docstring to clarify this tests the default path behavior on an f-tail word.
+[NOTE] docs/output-history/20260414-220530.png -- Orphaned untracked image
+  Evidence: The duplicate OUTPUT_HISTORY.md entry for 20260414-220530 was removed in commit 73525c6, but the corresponding image file remains on disk as an untracked file. It is not referenced by any committed file.
+  Suggested fix: Delete the file (`rm docs/output-history/20260414-220530.png`).
 
 ### Fixes Applied
 
@@ -24,6 +24,6 @@ None.
 None.
 
 ---
-*Prior review (2026-04-13, commit 525e903): Full review of 3 unpushed commits implementing convergence discipline, multi-seed baseline migration, primary-metric gating, and documentation updates. No issues found.*
+*Prior review (2026-04-14, commit ca86055): Light review. 1 WARN (duplicate output history entry, since resolved in commit 73525c6), 1 NOTE (hardcoded PID, carried forward).*
 
-<!-- REVIEW_META: {"date":"2026-04-14","commit":"1fc02ad","reviewed_up_to":"1fc02ad95d6bdd818b795f089a26fd01f128c7ef","base":"origin/main","tier":"refresh","block":0,"warn":0,"note":2} -->
+<!-- REVIEW_META: {"date":"2026-04-14","commit":"cfb3bba","reviewed_up_to":"cfb3bbaa88c201a0f6652fbab85644e7ff3c696c","base":"origin/main","tier":"light","block":0,"warn":0,"note":2} -->

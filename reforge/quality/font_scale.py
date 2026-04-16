@@ -49,7 +49,34 @@ def normalize_font_size(img: np.ndarray, word: str) -> np.ndarray:
     new_h = max(1, int(img.shape[0] * scale))
     new_w = max(1, int(img.shape[1] * scale))
     interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
-    return cv2.resize(img, (new_w, new_h), interpolation=interp)
+    result = cv2.resize(img, (new_w, new_h), interpolation=interp)
+
+    # Single-char words with aggressive downscaling lose ink: INTER_AREA
+    # averages a 2-3px stroke into 1px of gray. Reinforce by darkening
+    # faint pixels that were created by the averaging.
+    if word_len == 1 and scale < 0.6:
+        result = _reinforce_thin_strokes(result)
+
+    return result
+
+
+def _reinforce_thin_strokes(img: np.ndarray) -> np.ndarray:
+    """Darken faint ink pixels created by INTER_AREA averaging.
+
+    When a thin stroke (2-3px) is scaled down by 0.4-0.6x, INTER_AREA
+    produces gray (120-200) pixels instead of preserving the dark ink.
+    This re-darkens those faint pixels so the stroke remains legible.
+    """
+    # Find pixels that have some ink signal but are washed out
+    faint_ink = (img >= 80) & (img < 200)
+    if not np.any(faint_ink):
+        return img
+    result = img.copy()
+    # Pull faint ink darker: map [80, 200] toward [40, 140]
+    # This preserves the gradient (anti-aliasing) while making ink visible
+    result_f = result.astype(np.float32)
+    result_f[faint_ink] = result_f[faint_ink] * 0.65
+    return np.clip(result_f, 0, 255).astype(np.uint8)
 
 
 def normalize_font_sizes(
