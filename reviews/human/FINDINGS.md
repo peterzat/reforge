@@ -16,9 +16,23 @@ includes the reviews that support it and any code changes it motivated.
 
 ## How this file works
 
-After each `make test-human` review, the coding agent analyzes unprocessed review
-JSON files and drafts updates to this document. The human confirms changes before
-they are committed.
+After each `make test-human` review, the coding agent processes unprocessed review
+JSON files in two steps:
+
+1. **Triage each human note.** Every freeform note, defect flag, and verbal comment
+   from the review is a signal. Classify each one:
+   - **(a) Evidence for an existing finding** -- append to that finding's Evidence
+     section with the review timestamp.
+   - **(b) New standalone finding** -- create a new entry. A note qualifies as a new
+     finding when it describes a distinct quality problem not covered by any existing
+     finding. "I is missing ink" is not "I is too tall" (Plateaued sizing). When in
+     doubt, create the finding; it can be merged later.
+   - **(c) Not actionable** -- generation variance, one-off observation, or already
+     addressed. No update needed, but note the classification in the commit message
+     so the decision is reviewable.
+
+2. **Draft updates** to this document. The human confirms changes before they are
+   committed.
 
 ### Finding statuses
 
