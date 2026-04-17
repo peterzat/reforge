@@ -218,7 +218,7 @@ CLAUDE.md section where they were added.
 ### Baseline alignment fragile across generation runs
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_021645.json, 2026-04-10_023103.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json
+- **Reviews:** 2026-04-03_021330.json, 2026-04-09_220812.json, 2026-04-10_021645.json, 2026-04-10_023103.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json, 2026-04-17_141320.json
 - **Principle:** Baseline alignment was fragile because the composition used
   max-baseline per line. Median-based normalization with outlier clamping
   improved it to 4/5, but the fix is not stable across generation runs.
@@ -252,6 +252,20 @@ CLAUDE.md section where they were added.
   "gray too big" problem. CV baseline_alignment: 1.0. Three code changes
   now contributing: median baseline, character-aware detection, and
   body-zone equalization. Rating trajectory: 2/5 -> 3/5 -> 3/5 -> 4/5.
+  Review 9 (2026-04-17_141320): composition 2/5 with baseline_drift in
+  defects. CV baseline_alignment 0.701 -- first drop below the recent
+  0.78-0.85 stable range since the cross-correlation stitch fix.
+  **New failure mode:** per-word descender clipping. Human on `by`:
+  "`by` is blurry and the bottom of the `b` and the descender in get
+  `y` is significantly clipped (only the two peaks of the `y` are
+  visible)." This is distinct from cross-line drift -- it is the
+  per-word bounding box underestimating the vertical extent so the
+  bottom of rounded letters and full descenders get chopped off in
+  either crop or composite paste. Candidate causes: over-tight
+  postprocess crop on short words, aggressive body-zone equalization
+  shrinking the canvas below descender reach, or a regression from
+  the `_reinforce_thin_strokes()` change darkening ink that then
+  shifts the per-word crop bounds.
 - **Applies to:** reforge/compose/render.py (line baseline computation),
   reforge/compose/layout.py (per-word baseline detection),
   reforge/quality/font_scale.py (body-zone equalization)
@@ -321,7 +335,7 @@ CLAUDE.md section where they were added.
 ### Composition quality improving but still variable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_021400.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_021400.json, 2026-04-17_141320.json
 - **Principle:** Composition quality has ranged from 2/5 to 4/5. The dominant
   remaining complaints are baseline drift, size inconsistency, and malformed
   punctuation (especially apostrophes). Candidate selection improvements
@@ -381,6 +395,25 @@ CLAUDE.md section where they were added.
   ocr_min 0.0. The 3/5 is within generation variance range (composition has
   bounced between 2-4/5 without code changes). Last 5: 2, 3, 4, 4, 3;
   median: **3/5** (target regressed from 4/5).
+  Review 18 (2026-04-17_141320, post spec 2026-04-17 turn -- punctuation
+  CV metric, candidate log, contraction width experiment, reinforcement
+  kept): 2/5, defects: size_inconsistent, baseline_drift, letter_malformed.
+  Three specific regressions called out by human:
+  (a) `can't` reads as "cantt" (duplicate-letter artifact around the
+      synthetic apostrophe -- see Apostrophe rendering finding);
+  (b) `by` is clipped -- "b" bottom missing, "y" descenders clipped so
+      only the two peaks are visible (see Baseline alignment fragile
+      finding);
+  (c) punctuation is "very bad" -- apostrophe tiny, commas and periods
+      in the middle of words not at the bottom, semicolon tiny (see
+      Trailing punctuation finding).
+  CV: height_outlier_score 0.964 (passes 0.90 gate), baseline_alignment
+  0.701 (below recent 0.78-0.85 stable range), ocr_min 0.0, `ocr_accuracy`
+  0.903, `punctuation_visibility` 0.5 (new diagnostic from spec 2026-04-17
+  B). The review JSON reports `gates_passed: true`, but that reflects a
+  narrower gate set (gray_boxes, ink_contrast, background_cleanliness);
+  **ocr_min = 0.0 fails the CLAUDE.md primary gate** of `ocr_min >= 0.30`.
+  Last 5: 3, 4, 4, 3, 2; median: **3/5** (target still regressed from 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
@@ -396,7 +429,7 @@ CLAUDE.md section where they were added.
 ### Apostrophe rendering is consistently poor
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json
+- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json, 2026-04-17_141320.json
 - **Principle:** The apostrophe character produces oversized, malformed dark
   blobs rather than a delicate stroke. This degrades all contractions
   (can't, don't, it's, they'd) and is now the most frequently cited
@@ -456,11 +489,27 @@ CLAUDE.md section where they were added.
   move would be P2 (fully synthetic suffix) from the previous spec's
   out-of-scope list; this finding remains In Progress pending that
   evaluation.
+- **Review 6 (2026-04-17_141320):** composition 2/5, punctuation 2/5.
+  `can't` and `it's` flagged unreadable. **New failure mode** observed:
+  duplicate-letter artifact around the synthetic apostrophe -- `can't`
+  reads as "cantt" and `it's` reads as "itss". This is distinct from the
+  prior single-char canvas-fill complaint; the split/stitch path appears
+  to be injecting or duplicating content adjacent to the apostrophe
+  attachment point. Reinforces the spec 2026-04-17 C conclusion that
+  wrapper-level right-side width tuning is exhausted; P2 (fully synthetic
+  suffix) is now the obvious next wrapper-layer move.
+- **Plateau consideration (2026-04-17):** 6+ reviews, 4+ code changes.
+  Rating did move 1/5 -> 2/5 after Bezier marks landed, so the strict
+  plateau rule (no >=1 point movement across 3+ reviews and 3+ code
+  changes) is not yet satisfied. But the punctuation-eval rating has
+  held at 2/5 across the last three code changes, and the wrapper layer
+  is running out of obvious levers. If P2 does not move the rating,
+  promote to Plateaued next review.
 
 ### Trailing punctuation is invisible in generated output
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-14_154117.json, 2026-04-14_170508.json
+- **Reviews:** 2026-04-14_154117.json, 2026-04-14_170508.json, 2026-04-17_141320.json
 - **Principle:** DiffusionPen renders trailing punctuation marks (commas,
   periods, question marks, exclamation marks, semicolons) as invisible or
   imperceptible in the output. The model simply does not produce visible
@@ -502,6 +551,32 @@ CLAUDE.md section where they were added.
   then attaches synthetic mark. (4) generate_word() routes punctuated
   words through the new path. Marks are now visible; word quality around
   marks needs further work.
+- **Review 4 (2026-04-17_141320):** punctuation 2/5 (flat). Flagged
+  unreadable: `really?`, `great!`, `wait;`, plus the contraction-path
+  words (`can't`, `it's`). CV `punctuation_visibility` = 0.5 (half the
+  expected marks not visible). **Two new failure modes** after the
+  2026-04-17 turn:
+  (a) **Placement regression** -- human: "commas and periods are in the
+      middle of words, not at the bottom." Prior 3x-scaling run placed
+      marks at the baseline; something in the interim changed the
+      attach point or the composition upscale is shifting the marks'
+      vertical offset.
+  (b) **Size regression** -- apostrophe described as "tiny" and semicolon
+      "tiny." After the 3x scaling fix, marks read as "clearly visible";
+      this review reads as a regression back toward invisibility. May
+      interact with the `_reinforce_thin_strokes()` change (added in
+      the same turn as this eval), which darkens faint ink on aggressive
+      downscales and could affect mark sizing heuristics derived from
+      the generated word's body_height.
+- **Regression consideration (2026-04-17):** The trailing-mark problem
+  looked Resolved after the 3x-scaling run (clear marks in the test
+  output). The reappearance of "tiny" + mid-word placement means the
+  fix has decayed or been disturbed. Candidate for a dedicated spec
+  item: (1) verify `make_synthetic_mark` attach point math still
+  targets the baseline, (2) audit mark-size derivation from
+  `body_height` post-reinforcement, (3) consider recording a mark
+  placement diagnostic (vertical offset from median baseline) alongside
+  `punctuation_visibility`.
 
 ### Single-character "I" loses ink, appears half-missing
 
