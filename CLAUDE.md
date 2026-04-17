@@ -75,6 +75,17 @@ When all primary gate targets hold on all 3 seeds AND the median of the
 last 5 human composition ratings is >= 4/5, the project is "done" at the
 methodology level. Further work is optional polish or target-raising.
 
+### Deferred proposals register
+
+`docs/BACKLOG.md` is the durable register of considered proposals that were
+deferred, scoped out, or rejected. **Read it before drafting a new `SPEC.md`
+or setting an Out-of-scope section.** The `/spec` skill truncates the prior
+SPEC.md body to a one-line summary on turn close, so anything still worth
+tracking must be carried forward via BACKLOG.md — not via SPEC.md itself or
+ephemeral plan files. When a turn finishes: move any shipped entries out,
+update revisit criteria on anything still deferred, and add any new
+deferrals from the turn's plan.
+
 ## Commands
 
 All commands assume an activated venv. Always use `.venv/bin/python` (or activate first).
