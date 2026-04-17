@@ -531,9 +531,21 @@ def generate_ink_weight_eval(models, output_dir):
 
 
 def generate_composition_eval(models, output_dir):
-    """B7: Full two-paragraph composition with CV metrics."""
+    """B7: Full two-paragraph composition with CV metrics.
+
+    Generation is scoped-deterministic: seeds torch and numpy per run, disables
+    cudnn.benchmark for the eval path only (restored on exit), and runs three
+    seeds (matching the test_quality_regression set). The seed whose
+    overall_quality_score is the median of the three is promoted to
+    composition_full.png for human display; all three are archived under
+    images/archive/ so historical runs can be diffed visually.
+    """
+    import shutil
+
+    import numpy as np
+    import torch
+
     from reforge.config import PRESET_QUALITY
-    from reforge.evaluate.visual import overall_quality_score
     from reforge.pipeline import run
 
     # Use the same text as demo.sh so known issues (e.g. "noon" -> "no") surface
@@ -543,18 +555,59 @@ def generate_composition_eval(models, output_dir):
         "We grabbed two, maybe three? Katherine laughed and said something "
         "wonderful about mornings being too beautiful for ordinary breakfast."
     )
-    out_path = os.path.join(output_dir, "composition_full.png")
     preset = PRESET_QUALITY
-    result = run(
-        style_path=STYLE_PATH,
-        text=text,
-        output_path=out_path,
-        num_steps=preset["steps"],
-        guidance_scale=preset["guidance_scale"],
-        num_candidates=preset["candidates"],
-        device=models["device"],
-        verbose=False,
-    )
+    seeds = [42, 137, 2718]
+
+    # Scope CUDA determinism to the eval path: pipeline.py sets
+    # cudnn.benchmark=True for speed in production, but benchmark-mode CUDA
+    # picks algorithms based on current GPU state, which leaks non-determinism
+    # into sampling. We snapshot and restore so the pipeline reverts after.
+    saved_benchmark = torch.backends.cudnn.benchmark
+    saved_deterministic = torch.backends.cudnn.deterministic
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    archive_dir = os.path.join(output_dir, "archive")
+    os.makedirs(archive_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+    try:
+        per_seed = []
+        for seed in seeds:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            seed_path = os.path.join(output_dir, f"composition_full_seed{seed}.png")
+            result = run(
+                style_path=STYLE_PATH,
+                text=text,
+                output_path=seed_path,
+                num_steps=preset["steps"],
+                guidance_scale=preset["guidance_scale"],
+                num_candidates=preset["candidates"],
+                device=models["device"],
+                verbose=False,
+            )
+            archive_path = os.path.join(
+                archive_dir, f"{timestamp}_seed{seed}_composition.png"
+            )
+            shutil.copy(seed_path, archive_path)
+            per_seed.append({
+                "seed": seed,
+                "image_path": seed_path,
+                "archive_path": archive_path,
+                "cv_metrics": result["quality_scores"],
+            })
+    finally:
+        torch.backends.cudnn.benchmark = saved_benchmark
+        torch.backends.cudnn.deterministic = saved_deterministic
+
+    sorted_by_overall = sorted(per_seed, key=lambda e: e["cv_metrics"].get("overall", 0.0))
+    median_entry = sorted_by_overall[len(sorted_by_overall) // 2]
+
+    out_path = os.path.join(output_dir, "composition_full.png")
+    shutil.copy(median_entry["image_path"], out_path)
+
+    per_seed_cv = {str(entry["seed"]): entry["cv_metrics"] for entry in per_seed}
 
     return {
         "type": "composition",
@@ -562,7 +615,9 @@ def generate_composition_eval(models, output_dir):
         "preset_params": preset,
         "text": text,
         "comparison_image": out_path,
-        "cv_metrics": result["quality_scores"],
+        "cv_metrics": median_entry["cv_metrics"],
+        "per_seed_cv": per_seed_cv,
+        "selected_seed": median_entry["seed"],
     }
 
 
@@ -860,8 +915,13 @@ def save_review(responses, eval_metadata, eval_types):
 
     # Get CV metrics from composition eval if present
     cv_metrics = {}
+    per_seed_cv = None
+    selected_seed = None
     if "composition" in eval_metadata:
-        cv_metrics = eval_metadata["composition"].get("cv_metrics", {})
+        comp = eval_metadata["composition"]
+        cv_metrics = comp.get("cv_metrics", {})
+        per_seed_cv = comp.get("per_seed_cv")
+        selected_seed = comp.get("selected_seed")
 
     review = {
         "version": 1,
@@ -871,6 +931,10 @@ def save_review(responses, eval_metadata, eval_types):
         "evaluations": responses,
         "cv_metrics": cv_metrics,
     }
+    if per_seed_cv is not None:
+        review["per_seed_cv"] = per_seed_cv
+    if selected_seed is not None:
+        review["selected_seed"] = selected_seed
 
     os.makedirs(REVIEW_DIR, exist_ok=True)
     with open(path, "w") as f:
