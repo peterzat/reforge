@@ -63,4 +63,40 @@
 ---
 *Prior spec (2026-04-14): Research: approaches from handwriting synthesis literature (12/14 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-16","title":"Stabilize composition at 4/5, close stale findings","criteria_total":13,"criteria_met":11} -->
+### Proposal (2026-04-17)
+
+**What happened.** The stabilization turn (SPEC 2026-04-16) completed 12/14 criteria. The "I" ink-loss root cause was found and fixed (`_reinforce_thin_strokes()` in font_scale.py: INTER_AREA downscale from 64px to 26px was washing out the thin vertical stroke; faint pixels now darkened 35% at scale < 0.6). The stitch eval was un-suspended and validated: human rated 4px overlap best, confirmed "under and standing on the same baseline" — cross-correlation alignment Resolved the chunk stitching finding. Short-word "by" was investigated: normalizes to 93% of median ink height (above threshold); perceived smallness is an ascender/descender proportion of the letters themselves, not a wrapper bug. FINDINGS.md housekeeping ran (Active 5->2, In Progress 2->5, Resolved 1->2; "I" ink loss promoted from Active to In Progress). Codereview left two small NOTEs unaddressed: stale `kill 897414` permission and an inaccurate comment in font_scale.py (says "map [80,200] toward [40,140]" but math gives [52,130]).
+
+**Composition median regressed 4/5 -> 3/5** in the post-change eval. CV metrics on that eval: height_outlier 1.0 (gate held), baseline_alignment 0.784 (below 0.826-1.0 range of recent clean runs), ocr_min 0.0. Defects: spacing_loose (previously Resolved), baseline_drift, letter_malformed. D2 (promote baseline_alignment) and F4 (hold median at 4/5) abandoned as measured outcomes.
+
+**Questions and directions.**
+
+1. *Variance vs. distribution shift.* The prior 4/5 median was established in a single eval after the mark-sizing fix. Composition has swung 2/5–4/5 across multiple reviews without code changes, so a single 3/5 sample is consistent with the long-run distribution. But the ink-reinforcement change is the only code change that touches per-pixel output this turn (stitch un-suspension is eval-only). Worth running N>=5 composition seeds on current HEAD and on HEAD^ (reverting just `_reinforce_thin_strokes()`) to measure whether the distributions differ. If they don't, reinforcement is inert — call it stability work and move on. If they do, inspect direction.
+
+2. *Is N=5 the right rolling window?* The target gate is "median of last 5 >= 4/5," but with per-sample variance of ~1 point, a single 3 can flip the gate. Consider widening to last 7 or last 10, or reporting median + confidence interval. This is a gate-design question, not a quality question.
+
+3. *Baseline alignment regression (0.784).* This is below recent clean runs (0.826–1.0) and coincides with baseline_drift reappearing as a defect. Also re-appearing: spacing_loose (Resolved 2026-04-03) and letter_malformed (absent 2 prior reviews). Three defects reappearing in one eval suggests either generation variance or a subtle interaction with reinforcement (e.g., strengthening some strokes shifts per-word body-zone detection, which feeds baseline).
+
+4. *In-Progress backlog.* Five findings are In Progress: hard_words (can't, impossible, book still flagged), baseline_alignment, apostrophe (contraction single-char right-side still 2/5), trailing_punctuation (marks Resolved in composition; contraction path remains), "I" ink reinforcement (awaiting confirmation). Three of the five share a root cause (single-character canvas-fill), which is the Plateaued sizing problem reached from different angles. Consider whether to merge or explicitly defer them as a group.
+
+5. *Codereview housekeeping.* Two trivial NOTEs outstanding from 2026-04-16; roll into the next turn regardless of direction.
+
+6. *Punctuation is still insufficient.* Trailing marks are visible in composition (4/5), but the punctuation eval last ran at 2/5 and two of the three In-Progress findings touch punctuation (apostrophe, trailing_punctuation). The contraction path is the dominant remaining defect: single-character right-side parts ("'t", "'s", "'d") fill the canvas, producing gray-box and malformed-letter artifacts. The apostrophe + trailing marks themselves are programmatic Bezier (`make_synthetic_mark`, `make_synthetic_apostrophe` in generator.py) and can be tuned independently. Candidate experiments, each falsifiable:
+
+   - **P1. Right-side canvas-width experiment.** Hypothesis: the right-side single char fills the canvas for the same reason single-char words fail (Plateaued sizing). Generate the right-side with a forced narrower canvas (e.g., 96px or 128px instead of 256px), or pad the right-side input text with a stripped prefix to reach 3+ chars. Measure OCR accuracy and human rating on the 6-word contraction eval vs current baseline. Accept if either metric improves without regressing trailing-punctuation eval.
+   - **P2. Fully synthetic contraction suffix.** Hypothesis: for the small closed set of common English contraction suffixes ("'t", "'s", "'d", "'ll", "'re", "'ve", "'m"), the right-side char can be rendered synthetically (Bezier or font-based) with stroke properties matched to the generated left-side part's ink. Trade style fidelity for readability. Compare against P1 on OCR + human rating.
+   - **P3. Mark proportionality sweep.** Current constants: `stroke_w = 0.12 * body_height`, `dot_radius = 0.16 * body_height` (generator.py:173-174), already 3x the original. Run A/B across 0.75x / 1x (current) / 1.25x / 1.5x. Report OCR and human rating per step on the punctuation eval. Accept the point with the best human rating that doesn't regress composition. This is a pure tuning experiment; a flat response disconfirms the hypothesis that mark size is still a bottleneck.
+   - **P4. Mark vertical placement audit.** Commas and semicolons must hang below baseline; periods sit on it; question/exclamation marks span x-height and above. Current placement uses `body_height` and a descender region, but baseline detection per-punctuated-word may be off. Measure mark-center-y offset from composition-line baseline across 10 generated words per mark type; flag marks off by more than 15% of body_height. Fix is wrapper-layer (adjust offset in each `_make_*` function).
+   - **P5. Invisible-mark CV metric.** Add a `check_punctuation_visibility(img, word_text) -> float` to `evaluate/visual.py`: for each trailing punctuation char in the intended text, measure ink coverage in the tail-column region where that mark should render (e.g., last 8% of word width). Returns fraction of expected marks that produce non-trivial ink. Wire into `overall_quality_score` as a diagnostic (not gating). Gives a regression signal without waiting for a human eval.
+
+   Out of scope for this direction: retraining DiffusionPen for punctuation glyphs; changing the charset; introducing a separate OCR-based punctuation verification pass (considered and deferred — OCR confuses punctuation with letters on 64x256 crops).
+
+7. *Unblock candidate-score tuning.* The `quality_score_disagrees` finding has sat Active across 8 reviews at 25% agreement, blocked on data. Log per-candidate sub-scores + the selected index to a JSONL during best-of-N selection (generator.py), and extend the candidate eval in `make test-human` to record the human-picked index. After ~15 reviews, the log supports simple reweighting experiments on QUALITY_WEIGHTS. The experiment for this turn is just "add the logging and verify it accumulates." Tuning waits for N>=15.
+
+**Out of scope (do not chase):**
+
+- *Plateaued sizing* (single-char "I" too tall relative to lowercase). 7 reviews, 4 wrapper-layer attempts, no movement past 2/5. Requires retraining or architectural change.
+- *Contraction readability as a sizing problem.* Same root cause as Plateaued sizing. The P1/P2 experiments above reframe it as punctuation, which is a different angle; treat it as punctuation work, not sizing work.
+- *QUALITY_WEIGHTS reweighting before N>=15 candidate-score samples.* Blocked on data from direction 7.
+
+<!-- SPEC_META: {"date":"2026-04-16","title":"Stabilize composition at 4/5, close stale findings","criteria_total":14,"criteria_met":12} -->

@@ -7,8 +7,8 @@ includes the reviews that support it and any code changes it motivated.
 
 | Status | Count |
 |--------|-------|
-| Active | 3 |
-| In Progress | 3 |
+| Active | 2 |
+| In Progress | 5 |
 | Resolved | 2 |
 | Acceptable | 1 |
 | Plateaued | 1 |
