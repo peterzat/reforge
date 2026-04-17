@@ -66,14 +66,21 @@ def _reinforce_thin_strokes(img: np.ndarray) -> np.ndarray:
     When a thin stroke (2-3px) is scaled down by 0.4-0.6x, INTER_AREA
     produces gray (120-200) pixels instead of preserving the dark ink.
     This re-darkens those faint pixels so the stroke remains legible.
+
+    Set ``REFORGE_DISABLE_REINFORCEMENT=1`` to short-circuit this path
+    (used by the spec 2026-04-17 A variance check to compare HEAD against
+    a no-op baseline).
     """
+    import os
+    if os.environ.get("REFORGE_DISABLE_REINFORCEMENT", "") == "1":
+        return img
     # Find pixels that have some ink signal but are washed out
     faint_ink = (img >= 80) & (img < 200)
     if not np.any(faint_ink):
         return img
     result = img.copy()
-    # Pull faint ink darker: map [80, 200] toward [40, 140]
-    # This preserves the gradient (anti-aliasing) while making ink visible
+    # Pull faint ink darker: 0.65x scales [80, 200] toward [52, 130].
+    # Preserves the gradient (anti-aliasing) while making ink visible.
     result_f = result.astype(np.float32)
     result_f[faint_ink] = result_f[faint_ink] * 0.65
     return np.clip(result_f, 0, 255).astype(np.uint8)

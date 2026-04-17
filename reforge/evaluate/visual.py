@@ -262,6 +262,68 @@ def _xheight_ratio(img: np.ndarray) -> float:
     return above_baseline / ink_h
 
 
+_TRAILING_PUNCTUATION = set(".,!?;:")
+
+
+def check_punctuation_visibility(
+    composite_img: np.ndarray,
+    intended_text: list[str],
+    word_positions: list[dict],
+) -> float:
+    """Measure ink coverage in expected trailing-punctuation regions.
+
+    For each word in ``intended_text`` that ends in ``. , ! ? ; :``, inspect
+    the last ~10% of its bounding box (min 6px wide) for ink. For descending
+    marks (``,`` ``;``) the region is extended below the bbox by 30% of the
+    word's height to catch the descender.
+
+    A mark is "visible" if the region contains >=5 ink pixels (value < 128).
+    Returns the fraction of expected marks that are visible, in [0.0, 1.0].
+    Returns 1.0 when no trailing punctuation is expected.
+    """
+    if composite_img.size == 0 or not intended_text or not word_positions:
+        return 1.0
+
+    h_img, w_img = composite_img.shape[:2]
+    expected = 0
+    visible = 0
+
+    for word, pos in zip(intended_text, word_positions):
+        if not word:
+            continue
+        last_char = word[-1]
+        if last_char not in _TRAILING_PUNCTUATION:
+            continue
+        expected += 1
+
+        x = int(pos.get("x", 0))
+        y = int(pos.get("y", 0))
+        w = int(pos.get("width", 0))
+        h = int(pos.get("height", 0))
+        if w <= 0 or h <= 0:
+            continue
+
+        tail_w = max(6, int(round(w * 0.10)))
+        x0 = max(0, x + w - tail_w)
+        x1 = min(w_img, x + w)
+        y0 = max(0, y)
+        y1 = min(h_img, y + h)
+        if last_char in (",", ";"):
+            extra = max(4, int(round(h * 0.30)))
+            y1 = min(h_img, y + h + extra)
+
+        if x0 >= x1 or y0 >= y1:
+            continue
+
+        region = composite_img[y0:y1, x0:x1]
+        if int(np.sum(region < 128)) >= 5:
+            visible += 1
+
+    if expected == 0:
+        return 1.0
+    return visible / expected
+
+
 def check_slant_consistency(word_imgs: list[np.ndarray]) -> float:
     """Compute slant angle consistency across generated words (C4).
 
@@ -563,6 +625,10 @@ def overall_quality_score(
         scores["baseline_alignment"] = check_baseline_alignment(img, word_positions)
         scores["composition_score"] = check_composition_score(img, word_positions)
         scores["layout_regularity"] = check_layout_regularity(word_positions)  # D4: observation-only
+        if words is not None:
+            scores["punctuation_visibility"] = check_punctuation_visibility(
+                img, words, word_positions
+            )
 
     # OCR accuracy: dominant factor when available
     if word_imgs is not None and words is not None:

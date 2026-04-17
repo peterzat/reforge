@@ -235,24 +235,43 @@ def _generate_words(words, models, num_steps=20, guidance_scale=3.0):
 
 def generate_candidate_eval(models, output_dir):
     """B1: Generate 5 candidates for a word, record quality_score ranking."""
+    import datetime
+
+    import torch
+
     from reforge.config import PRESET_QUALITY
     from reforge.evaluate.compare import create_comparison_image
-    from reforge.quality.score import quality_score
+    from reforge.model.generator import _log_candidate_scores
+    from reforge.quality.score import quality_score_breakdown
 
     word = "garden"
     steps = PRESET_QUALITY["steps"]
     guidance = PRESET_QUALITY["guidance_scale"]
 
+    # Deterministic seed so the candidate log can be joined to the review.
+    seed = 137
+    torch.manual_seed(seed)
+
+    timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+
     candidates = []
+    log_rows = []
     for i in range(5):
         img = _generate_single_word(word, models, num_steps=steps, guidance_scale=guidance)
-        score = quality_score(img)
+        score, sub_scores = quality_score_breakdown(img)
         label = chr(65 + i)  # A, B, C, D, E
         candidates.append({"label": label, "image": img, "quality_score": round(score, 4)})
+        row_sub = {k: round(float(v), 4) for k, v in sub_scores.items()}
+        log_rows.append({"index": i, "sub_scores": row_sub, "total": round(float(score), 4)})
 
     # Which candidate does quality_score pick?
     best_idx = max(range(len(candidates)), key=lambda i: candidates[i]["quality_score"])
     quality_pick = candidates[best_idx]["label"]
+
+    # Append to the candidate log whenever logging is enabled; this is the
+    # join-side record that the review wizard's human pick can be matched to.
+    if os.environ.get("REFORGE_LOG_CANDIDATES", "") == "1":
+        _log_candidate_scores(word, log_rows, best_idx, timestamp=timestamp)
 
     # Build comparison image
     comparison = create_comparison_image(
@@ -266,6 +285,8 @@ def generate_candidate_eval(models, output_dir):
     return {
         "type": "candidate",
         "word": word,
+        "seed": seed,
+        "log_timestamp": timestamp,
         "comparison_image": comp_path,
         "candidates": [{"label": c["label"], "quality_score": c["quality_score"]} for c in candidates],
         "quality_score_pick": quality_pick,

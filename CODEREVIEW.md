@@ -1,29 +1,40 @@
-## Review -- 2026-04-17 (commit: d6afb40)
+## Review -- 2026-04-17 (commit: 3a710b3 + uncommitted)
 
-**Summary:** Light review of 4 uncommitted doc-only changes. In-scope (non-metadata): `reviews/human/FINDINGS.md` (status summary table count update: Active 3->2, In Progress 3->5). Out-of-scope but inspected: `SPEC.md` (adds "Proposal (2026-04-17)" section between prior-spec summary and SPEC_META, per spec skill convention), `CODEREVIEW.md`/`SECURITY.md` (own prior-review metadata). No code or config files modified. Security scan skipped (light review).
+**Summary:** Full review of spec 2026-04-17 implementation: `quality_score_breakdown` extraction (score.py), candidate-score JSONL logging gated on `REFORGE_LOG_CANDIDATES` (generator.py, Makefile, human_eval.py), `_reinforce_thin_strokes` variance-check env-var guard (font_scale.py), `check_punctuation_visibility` CV metric + wiring (visual.py, test_evaluate.py), `CONTRACTION_RIGHT_SIDE_WIDTH` config hook for 1-2 char right-side parts (config.py, generator.py), E1 housekeeping (stale `kill 897414` permission removed), two new experiment drivers (`experiments/reinforce_variance.py`, `experiments/contraction_right_side.py`), FINDINGS.md updates reflecting A decision (keep reinforcement, promoted to Resolved) and C decision (reject 128px narrow right side). 287 quick tests pass.
 
 **External reviewers:**
-Skipped (light review).
+`[qwen] Qwen/Qwen2.5-Coder-14B-Instruct-AWQ -- 7367 in / 5 out -- 28s` -- no findings.
 
 ### Findings
 
-Verified FINDINGS.md counts by enumerating `**Status:**` lines: Active=2, In Progress=5, Resolved=2, Acceptable=1, Plateaued=1. Updated counts are correct.
+No BLOCK or WARN findings.
 
-Verified SPEC.md Proposal factual claims: font_scale.py:75 comment "[80, 200] toward [40, 140]" mismatch with 0.65x math confirmed; generator.py:173-174 `stroke_w = 0.12 * body_height` / `dot_radius = 0.16 * body_height` citation confirmed.
-
-SPEC.md Proposal section is placed correctly per spec skill convention (after `---` separator, before `<!-- SPEC_META -->` footer). SPEC_META date intentionally unchanged (Proposal is planning material, not a new formal spec).
-
-No issues found.
+Verified correctness of the implementation against the spec:
+- `CONTRACTION_RIGHT_SIDE_WIDTH`: function-level `from reforge.config import ...` inside `_generate_contraction` correctly re-reads the module attribute on each call, so `experiments/contraction_right_side.py`'s pattern of mutating `config.CONTRACTION_RIGHT_SIDE_WIDTH` between runs behaves as intended. Override is rounded up to a multiple of `WIDTH_MULTIPLE` (16) and clamped to `[64, MAX_CANVAS_WIDTH=320]`, preserving the UNet convolutional-width constraint. Scope gate (`is_right_side and len(text) <= 2`) matches the spec.
+- `_log_candidate_scores`: `torch.initial_seed()` returns the last value passed to `torch.manual_seed()` even after DDIM advances the RNG (verified interactively); seed field is correct for the `generate_candidate_eval` fixture. Output path (`experiments/output/candidate_scores.jsonl`) is in the gitignored `experiments/output/` tree. Write failures are swallowed so logging cannot break generation.
+- `_candidate_logging_enabled`: empty string (the Makefile's non-candidate branch yields `REFORGE_LOG_CANDIDATES=` with empty value) is correctly treated as disabled. Verified via `REFORGE_LOG_CANDIDATES= python -c ...`.
+- Makefile `$(if $(EVAL),$(if $(findstring candidate,$(EVAL)),1,),1)`: verified expansion for EVAL values {empty, candidate, stitch, candidate,stitch}. Sets the env var when the candidate eval will actually run.
+- `check_punctuation_visibility`: returns 1.0 for `expected == 0` (matches docstring); tail-region geometry (10% width, min 6px; +30% descender extension for `,`/`;`) matches the spec; only gated into `overall_quality_score` when both `word_positions` and `words` are provided, so existing callers (`archive-output.sh`, `test_quality_thresholds.py`) remain correct.
+- `_reinforce_thin_strokes` env-var short-circuit: only consulted on the short-word path (`word_len == 1 and scale < 0.6`), so the runtime impact when `REFORGE_DISABLE_REINFORCEMENT` is unset is one environment lookup per single-char word. Acceptable.
+- `quality_score_breakdown` / `quality_score`: all existing callers (`_generate_contraction._gen_part`, `_generate_punctuated_word`, module-level imports in generator.py) continue to use the float-returning wrapper. The tuple-returning function is only used by `_generate_chunk` (for logging) and `generate_candidate_eval` (for logging).
+- FINDINGS.md status counts match the counts table (Active=2, In Progress=4, Resolved=3, Acceptable=1, Plateaued=1; verified by grep).
+- SPEC.md `criteria_met=15 / criteria_total=18` matches the checkbox counts; three deferred items (D3, F3, F4) are correctly left unchecked with "Deferred..." notes.
+- `.claude/settings.local.json`: change is exactly the E1 removal; no other entries touched.
+- 287 quick tests pass (including four new `TestPunctuationVisibility` cases).
+- Security scan (9 files): 0 issues.
 
 ### Fixes Applied
 
-None.
+None. No BLOCK or WARN findings.
 
 ### Accepted Risks
 
 None.
 
----
-*Prior review (2026-04-16, commit d6afb40): Refresh review of 1 unpushed commit with code changes in font_scale.py (new `_reinforce_thin_strokes()`) and human_eval.py (stitch eval un-suspended). 1 WARN auto-fixed (FINDINGS.md status counts), 2 NOTEs carried forward (stale `kill 897414` permission; inaccurate comment at font_scale.py:75). External reviewers: openai o3 ($0.093), qwen Qwen2.5-Coder-14B. Security scan: no issues (4 files). 283 quick tests passed.*
+Informational observation (not auto-fixed):
+- Candidate logging is wired into the main `_generate_chunk` best-of-N loop only. `_generate_contraction._gen_part` and `_generate_punctuated_word` also perform best-of-N selection but do not emit log rows. Spec D1 reads "the best-of-N selection path" (singular) and `make test-human EVAL=candidate` uses the non-contraction fixture "garden", so the documented join target works. If future candidate-log analysis includes contractions or trailing-punctuation words, those two paths will need matching log calls.
 
-<!-- REVIEW_META: {"date":"2026-04-17","commit":"d6afb40","reviewed_up_to":"d6afb40f34cfd819597db5a646673e47e54696d1","base":"origin/main","tier":"light","block":0,"warn":0,"note":0} -->
+---
+*Prior review (2026-04-17, commit a88a600): Light doc-only review of SPEC.md promotion to formal spec with 18 acceptance criteria. 0 findings, verified factual spec claims against the repository.*
+
+<!-- REVIEW_META: {"date":"2026-04-17","commit":"3a710b3","reviewed_up_to":"3a710b3e1ab3ff55e53c400332d5c242ae088fc5","base":"origin/main","tier":"full","block":0,"warn":0,"note":0} -->

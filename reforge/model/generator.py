@@ -918,6 +918,7 @@ def generate_word(
     # OCR function: needed for candidate scoring (num_candidates > 1)
     # and post-selection rejection loop.
     ocr_fn = _get_ocr_fn() if num_candidates > 1 else None
+    log_candidates = _candidate_logging_enabled()
 
     def _generate_chunk(chunk_text: str) -> tuple[np.ndarray, float]:
         """Generate a word chunk with best-of-N selection.
@@ -925,11 +926,14 @@ def generate_word(
         Returns (image, ocr_accuracy). ocr_accuracy is -1.0 when OCR
         scoring was not performed (num_candidates == 1).
         """
+        from reforge.quality.score import quality_score_breakdown
+
         canvas_width = compute_canvas_width(len(chunk_text))
         text_ctx = tokenizer(chunk_text, return_tensors="pt", padding="max_length", max_length=16)
 
         candidates = []
-        for _ in range(num_candidates):
+        candidate_log_rows = []
+        for cand_idx in range(num_candidates):
             img = ddim_sample(
                 unet, vae, text_ctx, style_features,
                 uncond_context=uncond_context,
@@ -940,7 +944,7 @@ def generate_word(
             )
             img = postprocess_word(img)
             img = pad_clipped_descender(img)
-            img_score = quality_score(
+            img_score, sub_scores = quality_score_breakdown(
                 img,
                 reference_stroke_width=reference_stroke_width,
                 word_len=len(chunk_text) if num_candidates > 1 else 0,
@@ -956,7 +960,19 @@ def generate_word(
                     chunk_text, img_score, ocr_acc, combined,
                 )
             else:
-                candidates.append((img, img_score, -1.0, img_score))
+                ocr_acc = -1.0
+                combined = img_score
+                candidates.append((img, img_score, ocr_acc, combined))
+
+            if log_candidates:
+                row_sub = {k: round(float(v), 4) for k, v in sub_scores.items()}
+                row_sub["ocr_accuracy"] = round(float(ocr_acc), 4)
+                row_sub["combined"] = round(float(combined), 4)
+                candidate_log_rows.append({
+                    "index": cand_idx,
+                    "sub_scores": row_sub,
+                    "total": round(float(img_score), 4),
+                })
 
         # Select best candidate by combined score
         best_combined = max(c[3] for c in candidates)
@@ -975,6 +991,9 @@ def generate_word(
                     "selected %s: quality=%.3f ocr=%.3f combined=%.3f (style tiebreak)",
                     chunk_text, winner[1], winner[2], winner[3],
                 )
+                if log_candidates and candidate_log_rows:
+                    sel_idx = candidates.index(winner)
+                    _log_candidate_scores(chunk_text, candidate_log_rows, sel_idx)
                 return winner[0], winner[2]
 
         winner = max(candidates, key=lambda c: c[3])
@@ -982,6 +1001,9 @@ def generate_word(
             "selected %s: quality=%.3f ocr=%.3f combined=%.3f",
             chunk_text, winner[1], winner[2], winner[3],
         )
+        if log_candidates and candidate_log_rows:
+            sel_idx = candidates.index(winner)
+            _log_candidate_scores(chunk_text, candidate_log_rows, sel_idx)
         return winner[0], winner[2]
 
     if len(chunks) == 1:
@@ -1042,6 +1064,51 @@ def _get_ocr_fn():
         return None
 
 
+def _candidate_logging_enabled() -> bool:
+    """True when REFORGE_LOG_CANDIDATES=1 is set in the environment."""
+    import os
+    return os.environ.get("REFORGE_LOG_CANDIDATES", "") == "1"
+
+
+def _log_candidate_scores(
+    word: str,
+    candidate_rows: list[dict],
+    selected_index: int,
+    timestamp: str | None = None,
+) -> None:
+    """Append one JSONL row per best-of-N selection to the candidate log.
+
+    ``candidate_rows`` is a list of {"index", "sub_scores", "total"} dicts
+    describing every candidate evaluated. ``timestamp`` may be supplied by
+    callers that want the log to share a timestamp with another record
+    (e.g., the human-review JSON join key); defaults to ``now``. Writes are
+    gated on ``REFORGE_LOG_CANDIDATES=1``; callers must check
+    ``_candidate_logging_enabled()`` first.
+    """
+    import datetime
+    import json
+    import os
+
+    log_path = os.path.join("experiments", "output", "candidate_scores.jsonl")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    try:
+        seed = int(torch.initial_seed())
+    except Exception:
+        seed = -1
+    record = {
+        "word": word,
+        "seed": seed,
+        "timestamp": timestamp or datetime.datetime.now().isoformat(timespec="seconds"),
+        "candidates": candidate_rows,
+        "selected_index": selected_index,
+    }
+    try:
+        with open(log_path, "a") as f:
+            f.write(json.dumps(record) + "\n")
+    except OSError:
+        pass  # Non-critical; logging never blocks generation
+
+
 def _record_hard_word_candidate(word: str, best_acc: float) -> None:
     """Record a word that exhausted OCR retries as a hard word candidate."""
     try:
@@ -1083,8 +1150,20 @@ def _generate_contraction(
 
     ocr_fn = _get_ocr_fn() if num_candidates > 1 else None
 
-    def _gen_part(text):
+    from reforge.config import CONTRACTION_RIGHT_SIDE_WIDTH
+
+    def _gen_part(text, is_right_side=False):
         canvas_width = compute_canvas_width(len(text))
+        if (
+            is_right_side
+            and CONTRACTION_RIGHT_SIDE_WIDTH is not None
+            and len(text) <= 2
+        ):
+            override = CONTRACTION_RIGHT_SIDE_WIDTH
+            # UNet requires width a multiple of WIDTH_MULTIPLE; round up.
+            override = ((override + WIDTH_MULTIPLE - 1) // WIDTH_MULTIPLE) * WIDTH_MULTIPLE
+            override = max(WIDTH_MULTIPLE * 4, min(override, MAX_CANVAS_WIDTH))
+            canvas_width = override
         text_ctx = tokenizer(text, return_tensors="pt", padding="max_length", max_length=16)
         best_img = None
         best_score = -999
@@ -1116,7 +1195,7 @@ def _generate_contraction(
         return best_img
 
     left_img = _gen_part(left_text)
-    right_img = _gen_part(right_text)
+    right_img = _gen_part(right_text, is_right_side=True)
 
     # Derive apostrophe properties from the generated left part
     ink_pixels = left_img[left_img < 180]

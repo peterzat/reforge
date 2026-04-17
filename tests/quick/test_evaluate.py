@@ -220,6 +220,73 @@ class TestStyleSimilarity:
 
 
 @pytest.mark.quick
+class TestPunctuationVisibility:
+    def _bbox(self, x, y, w, h, line=0):
+        return {"x": x, "y": y, "width": w, "height": h, "line": line}
+
+    def test_all_marks_present(self):
+        """Ink drawn in each trailing-punctuation region scores ~1.0."""
+        from reforge.evaluate.visual import check_punctuation_visibility
+
+        page = np.full((80, 400), 255, dtype=np.uint8)
+        positions = [
+            self._bbox(10, 20, 60, 40),    # hello,
+            self._bbox(80, 20, 60, 40),    # world.
+            self._bbox(150, 20, 60, 40),   # yes!
+        ]
+        words = ["hello,", "world.", "yes!"]
+        # Draw ink blobs in the last 10% of each bbox (and descender region for comma)
+        for word, pos in zip(words, positions):
+            x, y, w, h = pos["x"], pos["y"], pos["width"], pos["height"]
+            tail_x0 = x + w - max(6, int(round(w * 0.10)))
+            if word.endswith(","):
+                page[y + h - 4:y + h + 8, tail_x0:x + w] = 30  # tail + descender
+            else:
+                page[y + h - 8:y + h, tail_x0:x + w] = 30
+        score = check_punctuation_visibility(page, words, positions)
+        assert score > 0.9
+
+    def test_all_marks_absent(self):
+        """Blank tail regions score ~0.0 when punctuation expected."""
+        from reforge.evaluate.visual import check_punctuation_visibility
+
+        page = np.full((80, 400), 255, dtype=np.uint8)
+        positions = [
+            self._bbox(10, 20, 60, 40),
+            self._bbox(80, 20, 60, 40),
+            self._bbox(150, 20, 60, 40),
+        ]
+        words = ["hello,", "world.", "yes!"]
+        # Draw ink only in the first half of each word (no punctuation)
+        for pos in positions:
+            x, y, w, h = pos["x"], pos["y"], pos["width"], pos["height"]
+            page[y + 8:y + h - 4, x + 2:x + w // 2] = 30
+        score = check_punctuation_visibility(page, words, positions)
+        assert score < 0.1
+
+    def test_no_expected_marks(self):
+        """No trailing punctuation => 1.0 (no violations)."""
+        from reforge.evaluate.visual import check_punctuation_visibility
+
+        page = np.full((80, 400), 255, dtype=np.uint8)
+        positions = [self._bbox(10, 20, 60, 40), self._bbox(80, 20, 60, 40)]
+        words = ["hello", "world"]
+        assert check_punctuation_visibility(page, words, positions) == 1.0
+
+    def test_wired_into_overall_quality(self):
+        """punctuation_visibility appears when words + word_positions provided."""
+        from reforge.evaluate.visual import overall_quality_score
+
+        page = np.full((80, 400), 255, dtype=np.uint8)
+        page[30:55, 20:70] = 40
+        positions = [{"x": 20, "y": 20, "width": 50, "height": 40, "line": 0}]
+        result = overall_quality_score(
+            page, word_imgs=[page[20:60, 20:70]], word_positions=positions, words=["hi."],
+        )
+        assert "punctuation_visibility" in result
+
+
+@pytest.mark.quick
 class TestPresets:
     def test_presets_have_required_keys(self):
         """Each preset has steps, guidance_scale, candidates."""

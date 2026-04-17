@@ -24,6 +24,14 @@ DEFAULT_CANVAS_WIDTH = 256
 MAX_CANVAS_WIDTH = 320
 WIDTH_MULTIPLE = 16
 
+# Spec 2026-04-17 C: override canvas width for the 1-2 char right side of a
+# contraction (e.g. "t" in "can't", "s" in "it's"). None means "use
+# compute_canvas_width like any other short word". Set to an int (multiple of
+# 16) to generate the right part on a narrower canvas; narrower canvases give
+# DiffusionPen less room to hallucinate surrounding letters around a tiny
+# suffix. Must be >= 64 and <= MAX_CANVAS_WIDTH.
+CONTRACTION_RIGHT_SIDE_WIDTH: int | None = None
+
 # DDIM sampling
 DEFAULT_DDIM_STEPS = 50
 DEFAULT_GUIDANCE_SCALE = 3.0

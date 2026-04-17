@@ -8,8 +8,8 @@ includes the reviews that support it and any code changes it motivated.
 | Status | Count |
 |--------|-------|
 | Active | 2 |
-| In Progress | 5 |
-| Resolved | 2 |
+| In Progress | 4 |
+| Resolved | 3 |
 | Acceptable | 1 |
 | Plateaued | 1 |
 | Graduated | 0 |
@@ -439,6 +439,23 @@ CLAUDE.md section where they were added.
   mark system. Contractions ("it's", "she'd") still flagged unreadable
   in second punctuation eval (2/5): the single-character right-side parts
   remain the bottleneck, not the apostrophe mark itself.
+- **Spec 2026-04-17 C right-side canvas width experiment:** Added
+  `CONTRACTION_RIGHT_SIDE_WIDTH` config hook (default `None`, matching
+  current behavior) and ran the composition eval on seeds {42, 137, 2718}
+  at the default width vs 128px for 1-2 char right parts. Contraction OCR
+  mean improved only +5.67% (default 0.476 -> narrow 0.503), well below
+  the +10% accept gate, and two primary CV metrics regressed beyond the
+  5% tolerance: `baseline_alignment` default 0.765 -> narrow 0.691,
+  `ocr_min` default 0.229 -> narrow 0.206. Decision: reject the narrower
+  width; the default (`None`) stays. The narrower canvas does not
+  meaningfully reduce DiffusionPen's hallucination of surrounding
+  letters around tiny suffixes at this contraction set, and it disturbs
+  the baseline alignment of the stitched output (likely because a
+  smaller canvas shifts the right part's baseline during stitching).
+  Per spec C3, stopping at one narrower candidate. Next wrapper-layer
+  move would be P2 (fully synthetic suffix) from the previous spec's
+  out-of-scope list; this finding remains In Progress pending that
+  evaluation.
 
 ### Trailing punctuation is invisible in generated output
 
@@ -488,7 +505,7 @@ CLAUDE.md section where they were added.
 
 ### Single-character "I" loses ink, appears half-missing
 
-- **Status:** In Progress
+- **Status:** Resolved
 - **Reviews:** 2026-04-14_212810.json, 2026-04-16_011718.json
 - **Principle:** The uppercase letter "I" in composition output appears with
   significant ink missing, making it hard to read. The human reported this as
@@ -510,8 +527,14 @@ CLAUDE.md section where they were added.
 - **Code changes:** (1) Added _reinforce_thin_strokes() in font_scale.py:
   after aggressive downscaling (scale < 0.6) of single-char words, faint
   ink pixels (80-200) are darkened by 35% to compensate for INTER_AREA
-  averaging. Strong ink pixels increase by 50-90% after reinforcement.
-  Awaiting human confirmation in composition eval.
+  averaging.
+- **Spec 2026-04-17 A variance check:** Ran the composition eval on five
+  seeds (42, 137, 2718, 7, 2025) with reinforcement ON and OFF. Mean
+  strong-ink pixels (< 80) in the "I" bbox: 368.8 ON vs 289 OFF (+27.6%,
+  clears the ≥25% gate). No CV regression across the primary set
+  (`height_outlier_score` identical, `baseline_alignment` +0.43%, `ocr_min`
+  +16%); `punctuation_visibility` also +6.25%. Decision: keep
+  `_reinforce_thin_strokes()` as written. Promoted to Resolved.
 
 ## Graduated Findings
 

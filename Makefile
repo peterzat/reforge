@@ -52,6 +52,7 @@ test-tuning:
 
 test-human:
 	@mkdir -p reviews/human/images
+	REFORGE_LOG_CANDIDATES=$(if $(EVAL),$(if $(findstring candidate,$(EVAL)),1,),1) \
 	.venv/bin/python scripts/human_eval.py $(if $(EVAL),--eval $(EVAL))
 
 setup-hooks:

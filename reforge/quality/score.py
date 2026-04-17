@@ -127,6 +127,36 @@ def _stroke_width_score(img: np.ndarray, reference_width: float) -> float:
     return max(0.0, 1.0 - deviation / 0.5)
 
 
+def quality_score_breakdown(
+    img: np.ndarray,
+    reference_stroke_width: float = 0.0,
+    word_len: int = 0,
+) -> tuple[float, dict]:
+    """Compute weighted quality score and its per-component breakdown.
+
+    Same scoring rules as ``quality_score`` but also returns the raw
+    sub-scores (``background``, ``ink_density``, ``edge_sharpness``,
+    ``height_consistency``, ``contrast``, and optionally ``stroke_width``)
+    so callers can log or inspect selection decisions.
+    """
+    sub_scores = {
+        "background": _background_score(img),
+        "ink_density": _ink_density_score(img),
+        "edge_sharpness": _edge_sharpness_score(img),
+        "height_consistency": _height_consistency_score(img, word_len=word_len),
+        "contrast": _contrast_score(img),
+    }
+    total = sum(sub_scores[k] * QUALITY_WEIGHTS[k] for k in sub_scores)
+
+    if reference_stroke_width > 0:
+        sw_score = _stroke_width_score(img, reference_stroke_width)
+        sub_scores["stroke_width"] = sw_score
+        # Blend: 80% image quality + 20% stroke width match
+        total = total * 0.80 + sw_score * 0.20
+
+    return total, sub_scores
+
+
 def quality_score(
     img: np.ndarray,
     reference_stroke_width: float = 0.0,
@@ -142,18 +172,5 @@ def quality_score(
 
     Returns a score in [0, 1] where higher is better.
     """
-    scores = {
-        "background": _background_score(img),
-        "ink_density": _ink_density_score(img),
-        "edge_sharpness": _edge_sharpness_score(img),
-        "height_consistency": _height_consistency_score(img, word_len=word_len),
-        "contrast": _contrast_score(img),
-    }
-    total = sum(scores[k] * QUALITY_WEIGHTS[k] for k in scores)
-
-    if reference_stroke_width > 0:
-        sw_score = _stroke_width_score(img, reference_stroke_width)
-        # Blend: 80% image quality + 20% stroke width match
-        total = total * 0.80 + sw_score * 0.20
-
+    total, _ = quality_score_breakdown(img, reference_stroke_width, word_len)
     return total

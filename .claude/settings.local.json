@@ -65,8 +65,7 @@
       "WebFetch(domain:luc.devroye.org)",
       "Bash(ps:*)",
       "Read(//home/peter/src/qwen-2.5-localreview/**)",
-      "Bash(~/src/qwen-2.5-localreview/gpu-release:*)",
-      "Bash(kill 897414)"
+      "Bash(~/src/qwen-2.5-localreview/gpu-release:*)"
     ]
   }
 }
