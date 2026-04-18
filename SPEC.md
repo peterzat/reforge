@@ -1,71 +1,39 @@
-## Spec -- 2026-04-17 -- Contraction right-side, punctuation CV metric, variance check
+## Spec -- 2026-04-18 -- Adopt zat.env BACKLOG.md mechanism
 
-**Goal:** The dominant remaining composition defect is the contraction right-side (single-character "'t", "'s", "'d"), which shares a root cause with Plateaued single-char sizing but is addressable as a punctuation-path problem rather than a sizing-path one. Intervene there (P1 experiment). Add a CV metric for trailing-punctuation visibility so regressions are caught automatically instead of waiting for human eval. Validate that the prior turn's `_reinforce_thin_strokes()` change was a net positive by comparing distributions across seeds. Close the two trivial codereview NOTEs and unblock candidate-score tuning by starting the data log (tuning itself waits for N>=15 samples).
+**Goal:** Migrate reforge from its custom `docs/BACKLOG.md` + CLAUDE.md pointer convention to the upstream zat.env BACKLOG.md mechanism once the upstream `/spec` skill changes land. The upstream version reads `BACKLOG.md` from the project root automatically (no per-project CLAUDE.md pointer needed), adds a `/spec backlog <description>` append command with pressure-tested entries, and runs a turn-close sweep that classifies entries as keep/revisit-candidate/recommend-delete. Reforge's 12 existing entries already conform to the upstream format; the migration is mechanically trivial.
 
 ### Acceptance Criteria
 
-#### A. Reinforcement variance check
-
-- [x] A1. Generate the composition eval text on seed set {42, 137, 2718} plus two additional seeds (pick any deterministic values; record them in results) on current HEAD. Record per-seed: `height_outlier_score`, `baseline_alignment`, `ocr_min`, and the strong-ink-pixel count (pixels with value < 80) in the leading single-character "I" region of the output.
-- [x] A2. Repeat A1 on a branch (or with a guard) where `_reinforce_thin_strokes()` is replaced with an early return (no-op). Report both distributions side by side (mean, min, max per metric).
-- [x] A3. Decide: keep, tune, or revert `_reinforce_thin_strokes()`. Keep if strong-ink-pixel count on "I" is >=25% higher with reinforcement AND no CV metric regresses >=5% across the seed set. Revert if both conditions fail. Tune (adjust the 0.65x scalar and/or the `< 0.6` scale gate) if one condition passes and the other fails. Document the decision in the "Single-character 'I' loses ink" finding (promote to Resolved / Acceptable / Plateaued accordingly).
-
-#### B. Punctuation visibility CV metric
-
-- [x] B1. Add `check_punctuation_visibility(composite_img, intended_text, word_positions) -> float` to `reforge/evaluate/visual.py`. For each trailing punctuation character in `intended_text`, measure ink coverage in the expected tail region of the corresponding word (e.g., last ~10% of the word's bounding box, height-extended below the baseline for comma/semicolon). Return the fraction of expected marks producing non-trivial ink (>=5 ink pixels with value < 128). Range [0.0, 1.0].
-- [x] B2. Wire the metric into `overall_quality_score` as a diagnostic field under a distinct key (e.g., `punctuation_visibility`). It prints in `make test-regression` output but does not gate the regression pass/fail decision (CLAUDE.md: primary gates are `height_outlier_score` and `ocr_min`; this is an added diagnostic, not a new gate).
-- [x] B3. `tests/quick/` covers the function with two fixtures: one where all expected marks are present (score close to 1.0) and one where all expected marks are absent (score close to 0.0). `make test-quick` passes.
-
-#### C. Contraction right-side experiment (P1)
-
-- [x] C1. In the contraction-handling path of `reforge/model/generator.py`, add a configurable right-side canvas width (e.g., `CONTRACTION_RIGHT_SIDE_WIDTH` in `reforge/config.py`, defaulting to the current value). The configured width applies only to 1-2 char right-side parts (e.g., "t", "s", "d", "ll", "re", "ve", "m"). The UNet is fully convolutional in width (multiple of 16) per CLAUDE.md; verify the narrower width does not violate that constraint.
-- [x] C2. Generate the punctuation eval at the current width and at one narrower candidate (e.g., 128px), across seeds {42, 137, 2718}. Record OCR accuracy per contraction word and the composition CV metrics (`height_outlier_score`, `baseline_alignment`, `ocr_min`, plus `punctuation_visibility` from B).
-- [x] C3. Accept the narrower width as the new default only if it improves the multi-seed mean OCR accuracy on contractions by >=10% AND does not regress `punctuation_visibility` or any primary CV gate. Otherwise, leave the default unchanged and document the flat or negative response in the "Apostrophe rendering" finding. Do not run more than two width candidates this turn; if the first narrower candidate is a clear regression, stop.
-
-#### D. Candidate-score logging
-
-- [x] D1. In the best-of-N selection path in `reforge/model/generator.py`, emit one JSONL line per generated word to `experiments/output/candidate_scores.jsonl` (create the file on first write). Fields: `word`, `seed`, `timestamp`, `candidates` (list of `{index, sub_scores: {...all individual score components...}, total}`), `selected_index`. Append-only; no rotation logic.
-- [x] D2. Logging is gated on env var `REFORGE_LOG_CANDIDATES=1` and off by default. `make test-regression` runtime is unchanged (within 1s of current baseline). `make test-human EVAL=candidate` sets the env var when invoked.
-- [ ] D3. The candidate eval records the human-picked candidate index into a field (in the review JSON or the same JSONL) that can be joined against the logged word+seed+timestamp. Verify by running one `make test-human EVAL=candidate` review and confirming the join key is populated. **Deferred to a separate review session (staged out of this autonomous turn).**
-
-#### E. Codereview housekeeping (carried from 2026-04-16 NOTEs)
-
-- [x] E1. Remove the stale `Bash(kill 897414)` permission from `.claude/settings.local.json` (line 69 in that file as of commit d6afb40). `grep "897414" .claude/` returns nothing afterward.
-- [x] E2. Fix the comment/math mismatch at `reforge/quality/font_scale.py:75`. The comment claims "map [80, 200] toward [40, 140]" but `* 0.65` produces [52, 130]. Either correct the comment to match the math or adjust the scalar to match the comment. Prefer correcting the comment unless the [40, 140] range is intentional and testable.
-
-#### F. Integration gates
-
-- [x] F1. `make test-quick` passes.
-- [x] F2. `make test-regression` passes on all 3 seeds (`height_outlier_score >= 0.90`, `ocr_min >= 0.30`).
-- [x] F3. `make test-human EVAL=composition,punctuation` runs. Composition rating >= 3/5 (no regression from current 3/5). Punctuation rating improves by >=1 point over the most recent prior punctuation review, OR documentation explaining why the proposed intervention did not move the rating. **Review 2026-04-18_154757 ran (composition 2/5, punctuation 2/5). Regression was caused by Turn 2b/2c overlay approach and reverted in commit 0a5c1cf. Escape clause met: FINDINGS.md and docs/BACKLOG.md document the failure mechanism (overlay stacking on top of DP's stray apostrophe ink), the revert, and option E as next-best candidate.**
-- [x] F4. Last-5 composition rating median advances back to >= 4/5. Aspirational: generation variance may prevent this even when the code is correct. If not reached, FINDINGS.md records the distance and the next-best candidate intervention. **Median held at 3/5 (last 5: 4, 4, 3, 2, 2). Escape clause met: FINDINGS.md records the 3/5 median and review 19 evidence; docs/BACKLOG.md names option E (full-word DP, no overlay) as the promoted primary candidate for next turn with rationale.**
+- [x] 1. `BACKLOG.md` exists at the reforge project root.
+- [x] 2. `docs/BACKLOG.md` does not exist.
+- [x] 3. `CLAUDE.md` no longer contains the "Deferred proposals register" subsection (or any equivalent pointer directing agents to read BACKLOG.md).
+- [x] 4. `grep -rn "docs/BACKLOG" /home/peter/src/reforge --exclude-dir=.git --exclude=SPEC.md` returns zero matches. (SPEC.md itself describes the migration and legitimately references the prior path.)
+- [ ] 5. Running `/spec` in evolve mode on an active spec produces a Step 5 output line that mentions `BACKLOG.md` and its entry count (verifies the upstream skill's Step 1 auto-read and Step 5 surfacing are both active, without any CLAUDE.md pointer being required).
+- [ ] 6. Running `/spec backlog <short test description>` appends an entry to BACKLOG.md containing all five fields (short-name heading in kebab-case, One-line description, Why deferred, Revisit criteria, Origin). The entry count in BACKLOG.md increases by exactly one.
+- [x] 7. `make test-quick` passes.
 
 ### Context
 
-**Prior turn (2026-04-16, spec "Stabilize composition at 4/5, close stale findings", 12/14 criteria met):** Found and fixed the "I" ink-loss root cause in font normalization via `_reinforce_thin_strokes()` (font_scale.py). Un-suspended and Resolved the stitch eval (cross-correlation alignment confirmed). Investigated "by" short-word sizing (93% of median ink height, no action needed; the perceived smallness is a DiffusionPen letter-proportion characteristic). FINDINGS.md housekeeping. Two small codereview NOTEs left unaddressed (carried into E above). Composition median regressed 4/5 -> 3/5 in the post-change eval; within the long-run 2/5-4/5 variance range, but A tests whether reinforcement is inert or a mild regression.
+Adopted from plan `~/.claude/plans/soft-shimmying-parnas.md`. Read that plan for the full upstream-proposal assessment, including the "what I'd question upstream" commentary that informed this spec.
 
-**Why punctuation now:** Three of the five In Progress findings share a single-char canvas-fill root cause (apostrophe right-side, trailing punctuation on contractions, "I" ink loss). "I" is addressed in A. The contraction right-side is the remaining high-leverage wrapper-layer intervention before the single-char problem is Plateaued end-to-end. P1 (narrower right-side canvas) is a falsifiable experiment with a clear accept/reject criterion (C3).
+**Precondition — do not start this spec until this holds:** the upstream zat.env `/spec` SKILL.md updates (Step 1 auto-read of `BACKLOG.md`, Step 3f append mode, Step 3c.5 turn-close sweep, Step 3.6 overlap scan, Step 5 surfacing line) must be installed locally at `~/.claude/skills/spec/SKILL.md` (which is a symlink to `~/src/zat.env/claude/skills/spec/SKILL.md`). Running the migration before the upstream changes are installed leaves `BACKLOG.md` orphaned: the file exists at the new path but no `/spec` mode reads it and criteria 5 and 6 fail.
 
-**Why a CV metric for punctuation (B) and not P3/P4:** Punctuation visibility has swung across reviews without reliable early warning. Adding a numeric diagnostic catches obvious regressions in `make test-regression` without waiting for human eval. P3 (mark proportionality sweep) and P4 (vertical placement audit) are deferred; they are pure tuning on top of a metric that doesn't yet exist, and P3 requires a human A/B eval per step which is too much for one turn without B already in place.
-
-**Why candidate logging (D) now:** The `quality_score_disagrees` finding has been Active across 8+ reviews with ~25% human-metric agreement, blocked on data. This turn delivers only the log infrastructure; tuning waits for N>=15 samples.
+**Migration mechanics (carried from the plan):**
+- `git mv docs/BACKLOG.md BACKLOG.md` preserves content. Reforge's current 12 entries already use the upstream `### <short name>` + five-field format (as of commit `0a5c1cf`). No content rewrites required.
+- Retain reforge's existing `## ...` thematic subheads ("Rejected by user, unlikely to revisit", "Cantt-specific proposals deferred from turn 2026-04-17 (Plan B if F/K fail)", "Scoped out for dedicated work later") by default — the upstream format spec does not forbid them, and they aid readability for ~12+ entries. Flatten only if the upstream spec explicitly rejects them.
+- The CLAUDE.md pointer to remove was introduced in commit `accc455` (roughly 11 lines). Locate via `grep -n "Deferred proposals register" CLAUDE.md`.
 
 **Out of scope:**
-- **P2 (fully synthetic contraction suffix).** Larger design change. Gated on C's outcome; revisit next turn if C is a flat response.
-- **P3 (mark proportionality sweep), P4 (mark vertical placement audit).** Tuning / diagnostic work that should follow B, not precede it.
-- **Gate-window widening (last-5 -> last-7/-10).** Methodology tweak only. Defer until the data shows the current window is measuring the wrong thing.
-- **`QUALITY_WEIGHTS` reweighting.** Blocked on the candidate log from D.
-- **Plateaued single-char sizing.** Requires retraining or architecture change per CLAUDE.md; the contraction-path angle in C does not reopen the Plateaued finding, it works around it.
+- Editing or contributing to zat.env's `/spec` SKILL.md. That is a separate workstream on the zat.env repo; feedback for its finalization is in the plan file's "What I'd question for upstream" section and must be carried across to the zat.env session manually, not via this spec.
+- Changing BACKLOG.md entry format, adding new fields, or reorganizing existing entries beyond preserving the `##` thematic subheads.
+- Addressing D3 from the prior 2026-04-17 spec (candidate eval human-pick join key). Remains unaddressed; if it isn't picked up directly in a follow-up turn, it should be captured as a BACKLOG.md entry.
 
 **zat.env practices carried in:**
-- Work in small committable increments. Suggested order: E (housekeeping, cheapest) -> B (CV metric) -> D (logging) -> A (variance check) -> C (experiment, largest) -> F (gates). Commit after each group.
-- Before GPU work, run `~/src/qwen-2.5-localreview/gpu-release` to free the warm server's VRAM.
-- Run GPU tests aggressively; `make test-regression` (~14s) is the inner-loop gate after generation/quality code changes.
-- When a new change causes previously passing tests to fail, revert the change rather than modify the tests.
-- If two consecutive fix attempts fail on C, stop, document the negative result in FINDINGS, and do not escalate to P2 in the same turn.
+- Small committable increments. Suggested commit order: (1) `git mv docs/BACKLOG.md BACKLOG.md`, (2) edit CLAUDE.md to remove the pointer, (3) verify grep + tests. One commit is also acceptable given the small scope.
 - Do not push to the remote unless explicitly asked.
+- If criteria 5 or 6 fail, the zat.env install has drifted from the proposal — do not modify reforge to compensate; instead, verify the upstream skill state and defer this turn until the upstream state matches the precondition.
 
 ---
-*Prior spec (2026-04-16): Stabilize composition at 4/5 and close stale findings (12/14 criteria met).*
+*Prior spec (2026-04-17): Contraction right-side, punctuation CV metric, variance check (17/18 criteria met; D3 unmet, carried forward).*
 
-<!-- SPEC_META: {"date":"2026-04-17","title":"Contraction right-side, punctuation CV metric, variance check","criteria_total":18,"criteria_met":17} -->
+<!-- SPEC_META: {"date":"2026-04-18","title":"Adopt zat.env BACKLOG.md mechanism","criteria_total":7,"criteria_met":5} -->

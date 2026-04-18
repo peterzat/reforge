@@ -423,7 +423,7 @@ CLAUDE.md section where they were added.
   overlay approach stacked marks on top of DP's stray body-zone
   apostrophe ink on 2 of 3 seeds (seed 2718 happened to come out clean).
   Documented in detail in the Apostrophe-rendering finding above and in
-  `docs/BACKLOG.md`. Code reverted to pre-Turn-2b state; the primary-gate
+  `BACKLOG.md`. Code reverted to pre-Turn-2b state; the primary-gate
   regression was specifically caused by the overlay commits (fe12a7b,
   7d55f9c), not by a model or data change. Last 5: 4, 4, 3, 2, 2;
   median: **3/5** (target still regressed from 4/5).
@@ -522,7 +522,7 @@ CLAUDE.md section where they were added.
   Turn 2026-04-18 tried a different structure: remove `is_contraction`
   dispatch, let DP generate full contractions, overlay a clean apostrophe
   post-hoc (plan F). Full docs and failure mechanism in
-  `docs/BACKLOG.md` under "Cantt-specific proposals — status update
+  `BACKLOG.md` under "Cantt-specific proposals — status update
   2026-04-18". Short version: on seeds 42 and 137 the overlay added its
   mark *on top of* DP's body-zone apostrophe-shaped ink, producing
   "can'''t" visibly stacked. Seed 2718 happened to produce a clean
@@ -615,7 +615,7 @@ CLAUDE.md section where they were added.
   post-normalization ~18-30px) rendered Caveat marks visibly thin —
   human notes cite *"small `;` and `!`"*. Caveat's natural stroke at a
   given cap-height is thinner than the old Bezier's filled-blob marks.
-  **Fix approach captured in `docs/BACKLOG.md`** under "Caveat glyphs
+  **Fix approach captured in `BACKLOG.md`** under "Caveat glyphs
   too thin in composition (Turn 2d follow-up)": add a morphological
   dilate in `reforge/model/font_glyph.py::render_trailing_mark` targeting
   the Bezier-equivalent `body_height * 0.12` stroke width. Verify with a
