@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20260418-173035
+
+![output](output-history/20260418-173035.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `0a5c1cf (uncommitted changes)` |
+| Commit message | Revert Turn 2b + 2c: full-word + overlay approach regressed composition |
+| Style input | `styles/hw-sample.png` |
+| Metrics | overall=0.790, composition_score=0.323, stroke_weight_consistency=0.913, word_height_ratio=1.000, ocr_accuracy=0.887, style_fidelity=0.352, ink_contrast=1.000, background_cleanliness=1.000 |
+
+---
+
 ## 20260416-012853
 
 ![output](output-history/20260416-012853.png)
