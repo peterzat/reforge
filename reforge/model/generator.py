@@ -346,6 +346,53 @@ def make_synthetic_apostrophe(ink_intensity: int, body_height: int) -> np.ndarra
     return img
 
 
+def _render_trailing_mark_or_fallback(
+    mark: str,
+    ink_intensity: int,
+    body_height: int,
+) -> np.ndarray:
+    """Render a trailing punctuation mark via the OFL font when configured,
+    falling back to the synthetic Bezier renderer when unconfigured or on
+    rasterization error.
+
+    Plan Turn 2d: uses ``PUNCTUATION_GLYPH_FALLBACK_FONT`` from config.py.
+    None disables. Missing font file logs a warning and falls back to
+    Bezier so the pipeline never hard-fails on a missing asset.
+    """
+    import logging
+    import os
+
+    from reforge.config import PUNCTUATION_GLYPH_FALLBACK_FONT
+
+    log = logging.getLogger("reforge.generator")
+
+    if PUNCTUATION_GLYPH_FALLBACK_FONT is None:
+        return make_synthetic_mark(mark, ink_intensity, body_height)
+
+    font_path = PUNCTUATION_GLYPH_FALLBACK_FONT
+    if not os.path.isabs(font_path):
+        repo_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        font_path = os.path.join(repo_root, font_path)
+    if not os.path.exists(font_path):
+        log.warning(
+            "PUNCTUATION_GLYPH_FALLBACK_FONT=%r not found; falling back to Bezier mark",
+            PUNCTUATION_GLYPH_FALLBACK_FONT,
+        )
+        return make_synthetic_mark(mark, ink_intensity, body_height)
+
+    try:
+        from reforge.model.font_glyph import render_trailing_mark
+        return render_trailing_mark(mark, body_height, ink_intensity, font_path)
+    except (OSError, ValueError) as e:
+        log.warning(
+            "font glyph rasterization failed for %r: %s; falling back to Bezier mark",
+            mark, e,
+        )
+        return make_synthetic_mark(mark, ink_intensity, body_height)
+
+
 def _overlay_apostrophe(
     word_img: np.ndarray,
     word: str,
@@ -1614,7 +1661,7 @@ def _generate_punctuated_word(
     ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
     body_h = compute_x_height(best_img)
 
-    mark_img = make_synthetic_mark(mark, ink_intensity, body_h)
+    mark_img = _render_trailing_mark_or_fallback(mark, ink_intensity, body_h)
     result = _attach_mark_to_word(best_img, mark_img)
 
     log.debug(

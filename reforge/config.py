@@ -43,6 +43,14 @@ CONTRACTION_RIGHT_SIDE_WIDTH: int | None = None
 # clearly poor output, not on borderline cases.
 CONTRACTION_OCR_FLOOR: float = 0.5
 
+# Plan soft-shimmying-parnas Turn 2d: OFL handwriting font used to render
+# trailing punctuation marks (comma, period, semicolon, exclamation,
+# question). Replaces the Bezier make_synthetic_mark path for trailing
+# marks only — contraction right-sides still use DP (user-rejected case 3).
+# None disables the font path and reverts to the synthetic Bezier renderer.
+# Path is resolved relative to the project root.
+PUNCTUATION_GLYPH_FALLBACK_FONT: str | None = "fonts/Caveat-VariableFont_wght.ttf"
+
 # DDIM sampling
 DEFAULT_DDIM_STEPS = 50
 DEFAULT_GUIDANCE_SCALE = 3.0
