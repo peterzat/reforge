@@ -134,3 +134,72 @@ class TestOverlayApostrophe:
         result = _overlay_apostrophe(img, "it's")
         assert result.shape == img.shape
         assert result.dtype == np.uint8
+
+
+@pytest.mark.quick
+class TestOverlayWithFallback:
+    """The OCR safety valve: if the overlay regresses OCR below
+    CONTRACTION_OCR_FLOOR, fall back to the pre-Turn-2b split path
+    (_generate_contraction). Mocked OCR + mocked fallback keep this
+    in the quick tier without loading TrOCR or DP models."""
+
+    def _fresh_image(self) -> np.ndarray:
+        img = np.full((80, 200), 255, dtype=np.uint8)
+        img[30:60, 10:190] = 50  # solid letter-ish body
+        return img
+
+    def test_overlay_path_kept_when_ocr_above_floor(self, monkeypatch):
+        from reforge.model import generator
+
+        img = self._fresh_image()
+        fallback_called = {"count": 0}
+
+        monkeypatch.setattr(generator, "_get_ocr_fn", lambda: (lambda _img, _word: 0.85))
+        monkeypatch.setattr(
+            generator, "_generate_contraction",
+            lambda *a, **kw: (fallback_called.update(count=fallback_called["count"] + 1) or img),
+        )
+
+        out = generator._apply_contraction_overlay_with_fallback(
+            img, "can't",
+            unet=None, vae=None, tokenizer=None, style_features=None,
+        )
+        assert fallback_called["count"] == 0, "OCR above floor should not trigger fallback"
+        # Overlay should have drawn something
+        assert not np.array_equal(out, img)
+
+    def test_fallback_fires_when_ocr_below_floor(self, monkeypatch):
+        from reforge.model import generator
+
+        img = self._fresh_image()
+        sentinel = np.full((80, 200), 42, dtype=np.uint8)
+
+        monkeypatch.setattr(generator, "_get_ocr_fn", lambda: (lambda _img, _word: 0.20))
+        called_with = {}
+        def _fake_gen(left_text, right_text, full_word, *a, **kw):
+            called_with["parts"] = (left_text, right_text, full_word)
+            return sentinel
+        monkeypatch.setattr(generator, "_generate_contraction", _fake_gen)
+
+        out = generator._apply_contraction_overlay_with_fallback(
+            img, "can't",
+            unet=None, vae=None, tokenizer=None, style_features=None,
+        )
+        assert called_with.get("parts") == ("can", "t", "can't"), (
+            "fallback should be called with the split parts of 'can't'"
+        )
+        assert np.array_equal(out, sentinel), "below-floor OCR should return fallback output"
+
+    def test_no_ocr_fn_returns_overlay_unchecked(self, monkeypatch):
+        from reforge.model import generator
+
+        img = self._fresh_image()
+        monkeypatch.setattr(generator, "_get_ocr_fn", lambda: None)
+
+        out = generator._apply_contraction_overlay_with_fallback(
+            img, "can't",
+            unet=None, vae=None, tokenizer=None, style_features=None,
+        )
+        # With no OCR available, we just return the overlay without a safety check.
+        # Overlay still runs (produces non-equal output).
+        assert not np.array_equal(out, img)

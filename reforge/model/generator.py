@@ -463,6 +463,68 @@ def _overlay_apostrophe(
     return img
 
 
+def _apply_contraction_overlay_with_fallback(
+    word_img: np.ndarray,
+    word: str,
+    unet,
+    vae,
+    tokenizer,
+    style_features,
+    *,
+    uncond_context=None,
+    num_steps: int = DEFAULT_DDIM_STEPS,
+    guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
+    num_candidates: int = DEFAULT_NUM_CANDIDATES,
+    device: str = "cuda",
+    style_reference_imgs=None,
+    reference_stroke_width: float = 0.0,
+) -> np.ndarray:
+    """Apply _overlay_apostrophe and OCR-check the result; fall back to the
+    split + synthetic-apostrophe path from Turn-2b-pre-overlay if OCR drops
+    below CONTRACTION_OCR_FLOOR.
+
+    Without this, the full-word + overlay structure can regress on
+    contractions where DP's whole-word generation happens to be worse than
+    its split-path equivalent. The fallback preserves the old behavior on
+    those words while the overlay handles the common case.
+    """
+    import logging
+
+    from reforge.config import CONTRACTION_OCR_FLOOR
+
+    log = logging.getLogger("reforge.generator")
+
+    overlaid = _overlay_apostrophe(word_img, word)
+
+    ocr_fn = _get_ocr_fn()
+    if ocr_fn is None:
+        # No OCR available (e.g. lightweight test environment): return the
+        # overlay unchecked. The normal OCR rejection loop in generate_word
+        # has already done its best.
+        return overlaid
+
+    overlaid_acc = ocr_fn(overlaid, word)
+    if overlaid_acc >= CONTRACTION_OCR_FLOOR:
+        return overlaid
+
+    log.info(
+        "contraction overlay OCR %.3f < floor %.3f for %r; falling back to split path",
+        overlaid_acc, CONTRACTION_OCR_FLOOR, word,
+    )
+    left_text, right_text = split_contraction(word)
+    return _generate_contraction(
+        left_text, right_text, word,
+        unet, vae, tokenizer, style_features,
+        uncond_context=uncond_context,
+        num_steps=num_steps,
+        guidance_scale=guidance_scale,
+        num_candidates=num_candidates,
+        device=device,
+        style_reference_imgs=style_reference_imgs,
+        reference_stroke_width=reference_stroke_width,
+    )
+
+
 def stitch_contraction(
     left_img: np.ndarray,
     apostrophe_img: np.ndarray,
@@ -1149,14 +1211,34 @@ def generate_word(
                 _record_hard_word_candidate(word, best_acc)
 
         if is_contraction(word):
-            best = _overlay_apostrophe(best, word)
+            best = _apply_contraction_overlay_with_fallback(
+                best, word,
+                unet, vae, tokenizer, style_features,
+                uncond_context=uncond_context,
+                num_steps=num_steps,
+                guidance_scale=guidance_scale,
+                num_candidates=num_candidates,
+                device=device,
+                style_reference_imgs=style_reference_imgs,
+                reference_stroke_width=reference_stroke_width,
+            )
         return best
 
     # Multi-chunk: generate each, normalize heights, baseline-align, stitch
     chunk_images = [_generate_chunk(chunk)[0] for chunk in chunks]
     stitched = stitch_chunks(chunk_images)
     if is_contraction(word):
-        stitched = _overlay_apostrophe(stitched, word)
+        stitched = _apply_contraction_overlay_with_fallback(
+            stitched, word,
+            unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
+            num_steps=num_steps,
+            guidance_scale=guidance_scale,
+            num_candidates=num_candidates,
+            device=device,
+            style_reference_imgs=style_reference_imgs,
+            reference_stroke_width=reference_stroke_width,
+        )
     return stitched
 
 
@@ -1512,8 +1594,20 @@ def _generate_punctuated_word(
     # overlay a clean apostrophe on the generated base before attaching
     # the trailing mark. Without this, the contraction-path-bypass bug
     # that the overlay fixes would re-emerge inside punctuated contractions.
+    # The safety-valve helper falls back to the split path if the overlay
+    # regresses OCR below CONTRACTION_OCR_FLOOR.
     if is_contraction(base_word):
-        best_img = _overlay_apostrophe(best_img, base_word)
+        best_img = _apply_contraction_overlay_with_fallback(
+            best_img, base_word,
+            unet, vae, tokenizer, style_features,
+            uncond_context=uncond_context,
+            num_steps=num_steps,
+            guidance_scale=guidance_scale,
+            num_candidates=num_candidates,
+            device=device,
+            style_reference_imgs=style_reference_imgs,
+            reference_stroke_width=reference_stroke_width,
+        )
 
     # Derive mark properties and attach
     ink_pixels = best_img[best_img < 180]

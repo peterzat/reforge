@@ -32,6 +32,17 @@ WIDTH_MULTIPLE = 16
 # suffix. Must be >= 64 and <= MAX_CANVAS_WIDTH.
 CONTRACTION_RIGHT_SIDE_WIDTH: int | None = None
 
+# Plan soft-shimmying-parnas Turn 2c: OCR safety valve for the full-word +
+# apostrophe overlay path. After the overlay lands, the contraction's OCR
+# accuracy is measured; if it falls below this floor, the generator falls
+# back to the split + synthetic-apostrophe path from before Turn 2b. Keeps
+# the new structural fix from regressing readability on contractions where
+# DP's whole-word generation is genuinely worse than its split output.
+# Value chosen to sit between "obviously unreadable" (< 0.3) and the
+# regression-test primary gate (ocr_min >= 0.30) so it activates only on
+# clearly poor output, not on borderline cases.
+CONTRACTION_OCR_FLOOR: float = 0.5
+
 # DDIM sampling
 DEFAULT_DDIM_STEPS = 50
 DEFAULT_GUIDANCE_SCALE = 3.0
