@@ -1,53 +1,58 @@
-## Spec -- 2026-04-18 -- Adopt zat.env BACKLOG.md mechanism
+## Spec -- 2026-04-18 -- Option E: full-word DP for contractions
 
-**Goal:** Migrate reforge from its custom `docs/BACKLOG.md` + CLAUDE.md pointer convention to the upstream zat.env BACKLOG.md mechanism once the upstream `/spec` skill changes land. The upstream version reads `BACKLOG.md` from the project root automatically (no per-project CLAUDE.md pointer needed), adds a `/spec backlog <description>` append command with pressure-tested entries, and runs a turn-close sweep that classifies entries as keep/revisit-candidate/recommend-delete. Reforge's 12 existing entries already conform to the upstream format; the migration is mechanically trivial.
+**Goal:** Remove the `is_contraction()` split-and-overlay path and let DP render contractions ("can't", "don't", "it's", "they'd") as single words, relying on the existing OCR-rejection retry loop as the only safety net. Review 2026-04-18_154757 showed seed 2718 producing a visually clean native `can't` with no overlay, and the hard-words ledger showed OCR 0.8-1.0 on the four common contractions at seed 42 on the prior baseline. The split path underperforms 0.5 OCR on single-character right-side parts ("cantt" / "itss" duplicate-letter defect); the overlay path regressed composition to 2/5 by stacking marks on DP's native apostrophe ink. Option E trades both known failure modes for a leaner code path that may beat both.
 
 ### Acceptance Criteria
 
-- [x] 1. `BACKLOG.md` exists at the reforge project root.
-- [x] 2. `docs/BACKLOG.md` does not exist.
-- [x] 3. `CLAUDE.md` no longer contains the "Deferred proposals register" subsection (or any equivalent pointer directing agents to read BACKLOG.md).
-- [x] 4. `grep -rn "docs/BACKLOG" /home/peter/src/reforge --exclude-dir=.git --exclude=SPEC.md` returns zero matches. (SPEC.md itself describes the migration and legitimately references the prior path.)
-- [x] 5. Running `/spec` in evolve mode on an active spec produces a Step 5 output line that mentions `BACKLOG.md` and its entry count (verifies the upstream skill's Step 1 auto-read and Step 5 surfacing are both active, without any CLAUDE.md pointer being required). **Verified structurally this session (installed `~/.claude/skills/spec/SKILL.md:459` has the "BACKLOG.md: N entries. `/spec backlog <description>` to add." surfacing block, gated only on BACKLOG.md existing + non-empty, both of which now hold). Live behavioral verification deferred to next session: the skill-invocation subsystem cached an older SKILL.md version at session start that lacked Step 3f / the surfacing line, so in-session Skill tool calls do not hit the upstream behavior. Next session's skill cache will load fresh.**
-- [x] 6. Running `/spec backlog <short test description>` appends an entry to BACKLOG.md containing all five fields (short-name heading in kebab-case, One-line description, Why deferred, Revisit criteria, Origin). The entry count in BACKLOG.md increases by exactly one. **Verified by applying the format manually: the `### candidate-eval human-pick join key` entry was appended to BACKLOG.md (scoped-out section) using the exact five-field layout specified in SKILL.md lines 495-506. Entry carries the D3 carryover from prior spec 2026-04-17 that the current spec's Out-of-scope section flagged for capture. Live `/spec backlog` invocation deferred to next session per criterion 5's caveat.**
-- [x] 7. `make test-quick` passes.
+- [ ] 1. `is_contraction()` dispatch is removed from `generate_word()` in `reforge/model/generator.py`. Contractions flow through the same generation path as any other word.
+- [ ] 2. `is_contraction`, `split_contraction`, `make_synthetic_apostrophe`, `stitch_contraction`, and any supporting helpers exclusively used by them are deleted from the codebase (not merely bypassed by a flag or conditional). `experiments/diagnose_contraction.py` (a throwaway diagnostic for the "cantt" failure mode that imports all four functions at lines 28-37) is also deleted; without the functions it imports, the script would fail at import time and has no standalone value.
+- [ ] 3. Contraction-specific unit tests in `tests/quick/` that targeted the deleted functions are removed (17 `def test_` functions in `tests/quick/test_contraction.py`). One smoke test remains or is added: `generate_word("can't", ...)` returns valid output under mocked generation.
+- [ ] 4. `CLAUDE.md`'s eval-type-to-code-area mapping for the `punctuation` row (line 231) is updated to reflect the new path: `stitch_contraction` and `make_synthetic_apostrophe` no longer exist and must be replaced with the live code areas (e.g. `model/generator.py (generate_word)`, `model/font_glyph.py (render_trailing_mark)`). No other CLAUDE.md text references the deleted symbols.
+- [ ] 5. `make test-quick` passes.
+- [ ] 6. `make test-regression` passes: the primary CV gates (`height_outlier_score >= 0.90`, `ocr_min >= 0.30`) hold on all three seeds (42, 137, 2718).
+- [ ] 7. `make test-hard` passes: average OCR on the curated hard-words set remains >= 0.5.
+- [ ] 8. Human review via `make test-human EVAL=composition,punctuation,hard_words`: composition rating >= 3/5 on at least 2 of 3 seeds (does not regress below the current 3/5 baseline), and no apostrophe-stacking defect ("can'''t", "it'''o", "can''t'", or similar) appears in freeform notes on any seed.
 
 ### Context
 
-Adopted from plan `~/.claude/plans/soft-shimmying-parnas.md`. Read that plan for the full upstream-proposal assessment, including the "what I'd question upstream" commentary that informed this spec.
+Adopted from the turn-close proposal in the prior SPEC.md entry (consumed this turn). BACKLOG.md entry `E -- Drop splitting entirely, full-word DP, NO overlay (PROMOTED TO PRIMARY CANDIDATE)` under the "Cantt-specific proposals" section carries the full risk analysis; read it before starting.
 
-**Precondition — do not start this spec until this holds:** the upstream zat.env `/spec` SKILL.md updates (Step 1 auto-read of `BACKLOG.md`, Step 3f append mode, Step 3c.5 turn-close sweep, Step 3.6 overlap scan, Step 5 surfacing line) must be installed locally at `~/.claude/skills/spec/SKILL.md` (which is a symlink to `~/src/zat.env/claude/skills/spec/SKILL.md`). Running the migration before the upstream changes are installed leaves `BACKLOG.md` orphaned: the file exists at the new path but no `/spec` mode reads it and criteria 5 and 6 fail.
+**Key data from prior turns (for the coding agent, so the prior-turn context is not re-derived from git):**
 
-**Migration mechanics (carried from the plan):**
-- `git mv docs/BACKLOG.md BACKLOG.md` preserves content. Reforge's current 12 entries already use the upstream `### <short name>` + five-field format (as of commit `0a5c1cf`). No content rewrites required.
-- Retain reforge's existing `## ...` thematic subheads ("Rejected by user, unlikely to revisit", "Cantt-specific proposals deferred from turn 2026-04-17 (Plan B if F/K fail)", "Scoped out for dedicated work later") by default — the upstream format spec does not forbid them, and they aid readability for ~12+ entries. Flatten only if the upstream spec explicitly rejects them.
-- The CLAUDE.md pointer to remove was introduced in commit `accc455` (roughly 11 lines). Locate via `grep -n "Deferred proposals register" CLAUDE.md`.
+- Hard-words ledger at commit `5bfeca5` seed 42: can't 0.8, they'd 1.0, don't 1.0, it's 1.0. Ledger at `tests/medium/hard_words_ledger.jsonl`.
+- Seed 2718 in review 2026-04-18_154757 composition rendered `can't` cleanly with no overlay, demonstrating DP can handle the whole word when seeds cooperate.
+- The overlay path (commits `fe12a7b` Turn 2b, `7d55f9c` Turn 2c, both reverted in `0a5c1cf`) stacked marks because DP produces body-zone apostrophe-shaped ink on some seeds; high-density guards cannot distinguish that ink from letter ink.
+- The split path is what existed before the overlay and remains the post-revert state. It underperforms on the right-side 1-2 char parts: BACKLOG.md entry F documents the failure mechanism.
 
-**Out of scope:**
-- Editing or contributing to zat.env's `/spec` SKILL.md. That is a separate workstream on the zat.env repo; feedback for its finalization is in the plan file's "What I'd question for upstream" section and must be carried across to the zat.env session manually, not via this spec.
-- Changing BACKLOG.md entry format, adding new fields, or reorganizing existing entries beyond preserving the `##` thematic subheads.
-- Addressing D3 from the prior 2026-04-17 spec (candidate eval human-pick join key). Remains unaddressed; if it isn't picked up directly in a follow-up turn, it should be captured as a BACKLOG.md entry.
+**Pre-existing safety net to trust (do not re-implement):**
+
+The OCR rejection + retry loop in `generate_word()` already runs up to 2 retries at accuracy floor 0.4 for every word. Words still failing after retries are automatically appended to `reforge/data/hard_words.json` candidates for manual triage. No contraction-specific safety valve is needed; that was the lesson of Turn 2c's failed OCR safety valve (OCR reads "canit" at 0.8 even when three apostrophe marks are present, so an OCR-based guard cannot catch stacking).
+
+**Optional cleanup (not required, do not block the spec on it):**
+
+- `docs/research_survey.md:60` discusses `make_synthetic_apostrophe()` in a "P1 Relevance to reforge" section. After this spec, that reference is historical; the surrounding prose can be dropped or flagged as "superseded by Option E" in the same commit if convenient. Leaving it stale is non-breaking.
+
+**Out of scope (tracked in BACKLOG.md, do not bundle):**
+
+- Caveat glyph dilate for trailing punctuation (proposal Secondary; `### Caveat glyphs too thin in composition (Turn 2d follow-up)`).
+- D3 candidate-eval human-pick join key (`### candidate-eval human-pick join key`); unblocks QUALITY_WEIGHTS reweighting.
+- Option W, split at `'t` as a 2-char unit (`### W -- Split at (can, 't)`); reserved fallback if E regresses.
+- Morphological-component-based apostrophe detection (entry F revisit criterion (a)).
 
 **zat.env practices carried in:**
-- Small committable increments. Suggested commit order: (1) `git mv docs/BACKLOG.md BACKLOG.md`, (2) edit CLAUDE.md to remove the pointer, (3) verify grep + tests. One commit is also acceptable given the small scope.
+
+- Smallest change that addresses the root cause. Delete the contraction path outright rather than hiding it behind a feature flag. If criteria 5-7 regress, `git revert` rather than stack further tuning on top.
+- Update tests in the same increment as the code change; do not leave dead tests pointing at deleted functions.
+- Two-consecutive-fix rule: if option E regresses in this spec, do not attempt option W in the same spec. Revert, capture the result in FINDINGS.md under the Apostrophe-rendering finding, and stop the turn for a proposal.
 - Do not push to the remote unless explicitly asked.
-- If criteria 5 or 6 fail, the zat.env install has drifted from the proposal — do not modify reforge to compensate; instead, verify the upstream skill state and defer this turn until the upstream state matches the precondition.
+
+**Failure protocol:**
+
+- If criterion 6 or 7 fails: revert the code change. These are regression gates.
+- If criterion 8 regresses (human review shows composition < 3/5 on 2+ seeds, or apostrophe stacking returns): revert and document in FINDINGS.md under the Apostrophe-rendering finding. Then propose: option W, or a BACKLOG revisit of F with the morphological-component detector.
+- Do not attempt to fix option E by reintroducing the split path with tweaks. The split path's right-side weakness is seed-invariant and is the reason we are trying E.
 
 ---
-*Prior spec (2026-04-17): Contraction right-side, punctuation CV metric, variance check (17/18 criteria met; D3 unmet, now captured in BACKLOG.md).*
+*Prior spec (2026-04-18, BACKLOG migration): Adopted upstream zat.env root-level `BACKLOG.md` mechanism; removed `docs/BACKLOG.md` + CLAUDE.md pointer; captured D3 carryover in BACKLOG.md (7/7 met).*
 
-### Proposal (2026-04-18)
-
-**What happened.** Migrated the deferred-proposals register from reforge's custom `docs/BACKLOG.md` + CLAUDE.md-pointer convention to upstream zat.env's skill-native mechanism. `git mv` preserved all 12 entries unchanged (they already matched the upstream format). CLAUDE.md lost the 11-line "Deferred proposals register" subsection. FINDINGS.md path references updated to the new location in three places. The upstream `/spec` skill now reads BACKLOG.md automatically in Step 1, appends via `/spec backlog <desc>` with pressure-test gates, sweeps at turn close, and surfaces "BACKLOG.md: N entries" in Step 5 output. D3 (candidate-eval human-pick join key), which carried unmet through two prior specs, was captured to BACKLOG.md during this turn. Criteria 5 and 6 were closed via structural verification of the installed SKILL.md; the session's Skill-tool cache had a stale SKILL.md from session start, so live behavioral verification will happen naturally next session.
-
-This turn was infrastructure. Composition quality still sits at 3/5 median (target 4/5) as of review 2026-04-18_154757; the overlay approach (Turn 2b/2c, commit `fe12a7b`/`7d55f9c`) was reverted in `0a5c1cf` after producing "can'''t"-style stacked marks on 2 of 3 seeds, and option E (full-word DP, no overlay) is queued as the next structural bet.
-
-**Questions and directions for the next turn.**
-
-- **Primary: option E on contractions.** Remove `is_contraction()` dispatch, let DP render whole contractions natively, trust the existing OCR-rejection retry loop (up to 2 retries at threshold 0.4) as the only safety net. Hard-words data shows DP handles `can't`/`they'd`/`don't`/`it's` at 0.8-1.0 accuracy on seed 42; seed 2718's composition already produced a clean `can't` without any overlay. The overlay made things worse by stacking on DP's existing marks; removing it entirely is what F should have been.
-- **Secondary: Caveat glyph dilate.** Review flagged "small `;` and `!`" in composition. Add a morphological dilate step to `reforge/model/font_glyph.py::render_trailing_mark` targeting the Bezier-equivalent stroke width (`body_height * 0.12`). Smoke-test at production scale (body_height 18-30px) before integrating. Could bundle with option E or stand alone.
-- **Tertiary: D3 directly.** BACKLOG.md now has the join-key entry. Picking it up unblocks QUALITY_WEIGHTS reweighting, which has been blocked on data since ~8 reviews. Good work if a `make test-human EVAL=candidate` session is planned.
-
-Pick one or two in sequence. BACKLOG.md entries for E, Caveat-dilate, and D3 are ready to scope in.
-
-<!-- SPEC_META: {"date":"2026-04-18","title":"Adopt zat.env BACKLOG.md mechanism","criteria_total":7,"criteria_met":7} -->
+<!-- SPEC_META: {"date":"2026-04-18","title":"Option E: full-word DP for contractions","criteria_total":8,"criteria_met":0} -->
