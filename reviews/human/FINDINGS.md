@@ -335,7 +335,7 @@ CLAUDE.md section where they were added.
 ### Composition quality improving but still variable
 
 - **Status:** Active
-- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_021400.json, 2026-04-17_141320.json
+- **Reviews:** 2026-04-03_012736.json, 2026-04-03_021330.json, 2026-04-03_024039.json, 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-10_002757.json, 2026-04-13_213330.json, 2026-04-14_143735.json, 2026-04-16_021400.json, 2026-04-17_141320.json, 2026-04-18_154757.json
 - **Principle:** Composition quality has ranged from 2/5 to 4/5. The dominant
   remaining complaints are baseline drift, size inconsistency, and malformed
   punctuation (especially apostrophes). Candidate selection improvements
@@ -414,6 +414,19 @@ CLAUDE.md section where they were added.
   narrower gate set (gray_boxes, ink_contrast, background_cleanliness);
   **ocr_min = 0.0 fails the CLAUDE.md primary gate** of `ocr_min >= 0.30`.
   Last 5: 3, 4, 4, 3, 2; median: **3/5** (target still regressed from 4/5).
+  Review 19 (2026-04-18_154757, post attempted full-word + overlay path
+  on 3 seeds; now reverted): **2/5** with `defects=[]` in the flagged
+  set but notes calling out `can'''t` (three apostrophes) as the primary
+  complaint. Primary CV gates failed on every seed: seed 42 `ocr_min`
+  0.00, seed 137 `ocr_min` 0.00 / `height_outlier_score` 0.887, seed
+  2718 `ocr_min` 0.286 / `height_outlier_score` 0.846. Root cause: the
+  overlay approach stacked marks on top of DP's stray body-zone
+  apostrophe ink on 2 of 3 seeds (seed 2718 happened to come out clean).
+  Documented in detail in the Apostrophe-rendering finding above and in
+  `docs/BACKLOG.md`. Code reverted to pre-Turn-2b state; the primary-gate
+  regression was specifically caused by the overlay commits (fe12a7b,
+  7d55f9c), not by a model or data change. Last 5: 4, 4, 3, 2, 2;
+  median: **3/5** (target still regressed from 4/5).
 - **Applies to:** reforge/compose/layout.py (baseline), reforge/quality/font_scale.py
   (sizing), reforge/model/generator.py (candidate selection, contraction splitting,
   trailing punctuation)
@@ -429,7 +442,7 @@ CLAUDE.md section where they were added.
 ### Apostrophe rendering is consistently poor
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json, 2026-04-17_141320.json
+- **Reviews:** 2026-04-04_010317.json, 2026-04-09_220812.json, 2026-04-13_213330.json, 2026-04-14_041753.json, 2026-04-14_143735.json, 2026-04-17_141320.json, 2026-04-18_154757.json
 - **Principle:** The apostrophe character produces oversized, malformed dark
   blobs rather than a delicate stroke. This degrades all contractions
   (can't, don't, it's, they'd) and is now the most frequently cited
@@ -505,11 +518,28 @@ CLAUDE.md section where they were added.
   held at 2/5 across the last three code changes, and the wrapper layer
   is running out of obvious levers. If P2 does not move the rating,
   promote to Plateaued next review.
+- **Review 7 (2026-04-18_154757): overlay approach failed, reverted.**
+  Turn 2026-04-18 tried a different structure: remove `is_contraction`
+  dispatch, let DP generate full contractions, overlay a clean apostrophe
+  post-hoc (plan F). Full docs and failure mechanism in
+  `docs/BACKLOG.md` under "Cantt-specific proposals — status update
+  2026-04-18". Short version: on seeds 42 and 137 the overlay added its
+  mark *on top of* DP's body-zone apostrophe-shaped ink, producing
+  "can'''t" visibly stacked. Seed 2718 happened to produce a clean
+  single apostrophe (DP didn't stray). Safety valve (OCR < 0.5 ->
+  fall back to split) never fired because OCR reads "canit" at 0.8
+  even when three marks are present — OCR is insensitive to mark
+  stacking that humans readily see. Ratings: composition 2/5,
+  punctuation 2/5 (flagged `really?`; notes cite `reallly`, `it'''o`,
+  `can''t'`, small `;` and `!`). The overlay was reverted to the
+  pre-Turn-2b split path (commits fe12a7b, 7d55f9c). Findings stands
+  unchanged; next-turn candidate is option E (full-word DP, NO overlay)
+  rather than more overlay tuning — see BACKLOG for rationale.
 
 ### Trailing punctuation is invisible in generated output
 
 - **Status:** In Progress
-- **Reviews:** 2026-04-14_154117.json, 2026-04-14_170508.json, 2026-04-17_141320.json
+- **Reviews:** 2026-04-14_154117.json, 2026-04-14_170508.json, 2026-04-17_141320.json, 2026-04-18_154757.json
 - **Principle:** DiffusionPen renders trailing punctuation marks (commas,
   periods, question marks, exclamation marks, semicolons) as invisible or
   imperceptible in the output. The model simply does not produce visible
@@ -577,6 +607,19 @@ CLAUDE.md section where they were added.
   `body_height` post-reinforcement, (3) consider recording a mark
   placement diagnostic (vertical offset from median baseline) alongside
   `punctuation_visibility`.
+- **Review 5 (2026-04-18_154757): OFL font glyphs landed, still visually
+  thin.** Turn 2026-04-18 replaced `make_synthetic_mark` with Caveat
+  TTF rasterization for trailing `, . ; ! ?`. Smoke test with DP word +
+  Caveat glyph at body_height=80 passed human inspection (stroke weight
+  reasonable, baseline okay-ish). BUT production composition (body_height
+  post-normalization ~18-30px) rendered Caveat marks visibly thin —
+  human notes cite *"small `;` and `!`"*. Caveat's natural stroke at a
+  given cap-height is thinner than the old Bezier's filled-blob marks.
+  **Fix approach captured in `docs/BACKLOG.md`** under "Caveat glyphs
+  too thin in composition (Turn 2d follow-up)": add a morphological
+  dilate in `reforge/model/font_glyph.py::render_trailing_mark` targeting
+  the Bezier-equivalent `body_height * 0.12` stroke width. Verify with a
+  production-scale smoke test before integrating.
 
 ### Single-character "I" loses ink, appears half-missing
 
