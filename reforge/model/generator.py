@@ -346,6 +346,123 @@ def make_synthetic_apostrophe(ink_intensity: int, body_height: int) -> np.ndarra
     return img
 
 
+def _overlay_apostrophe(
+    word_img: np.ndarray,
+    word: str,
+    *,
+    body_height: int | None = None,
+    ink_intensity: int | None = None,
+) -> np.ndarray:
+    """Overlay a clean synthetic apostrophe onto a DP-generated word.
+
+    For each internal apostrophe in ``word`` (not leading or trailing), this
+    detects the apostrophe's approximate x-position, blanks a small region
+    around it to erase whatever DP produced there, and draws a tapered
+    comma-like mark positioned above the x-height line. The image is
+    returned unchanged if there are no internal apostrophes or if the
+    image has no ink.
+
+    Sizing is derived from ``body_height`` and ``ink_intensity`` when
+    provided (line-level medians set by the compose path). Otherwise both
+    fall back to per-word measurements. Line-level is preferred because
+    the per-word x-height collapses for short apostrophe-containing words
+    like "it's" (4px body) — the old synthetic-apostrophe path produced
+    4x4 marks in that case; this overlay avoids that failure mode.
+
+    Args:
+        word_img: DP-generated word image, grayscale uint8.
+        word: Target text including apostrophe, e.g. "can't".
+        body_height: Line-median body height in pixels (optional).
+        ink_intensity: Line-median ink intensity 0-255 (optional).
+
+    Returns:
+        Grayscale uint8 image with the apostrophe overlaid.
+    """
+    apostrophe_positions = [
+        i for i, c in enumerate(word) if c == "'" and 0 < i < len(word) - 1
+    ]
+    if not apostrophe_positions:
+        return word_img
+
+    img = word_img.copy()
+    h, w = img.shape[:2]
+
+    ink_mask = img < 180
+    if not np.any(ink_mask):
+        return word_img
+
+    if body_height is None:
+        from reforge.quality.ink_metrics import compute_x_height
+        body_height = compute_x_height(img)
+    body_h = max(6, int(body_height))
+
+    if ink_intensity is None:
+        ink_pixels = img[ink_mask]
+        ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
+
+    ink_rows = np.any(ink_mask, axis=1)
+    baseline = int(h - 1 - np.argmax(ink_rows[::-1]))
+    body_top = max(0, baseline - body_h)
+
+    col_has_ink = np.any(ink_mask, axis=0)
+    x_first = int(np.argmax(col_has_ink))
+    x_last = int(len(col_has_ink) - 1 - np.argmax(col_has_ink[::-1]))
+    ink_w = max(1, x_last - x_first + 1)
+
+    for apos_idx in apostrophe_positions:
+        # Approximate x-center: character-index ratio within the ink span.
+        x_target = x_first + int(ink_w * (apos_idx + 0.5) / len(word))
+
+        # Snap to nearest inter-letter gap: column with lowest body-zone ink
+        # density in a ±15%-of-ink-width search window around x_target.
+        search_half = max(3, int(ink_w * 0.10))
+        x_lo = max(x_first, x_target - search_half)
+        x_hi = min(x_last, x_target + search_half)
+        if x_hi > x_lo:
+            body_strip = img[body_top:baseline + 1, x_lo:x_hi + 1]
+            col_ink = np.sum(body_strip < 180, axis=0)
+            if len(col_ink) > 0 and col_ink.min() < col_ink[0]:
+                x_target = x_lo + int(np.argmin(col_ink))
+
+        apos_h = max(5, int(body_h * 0.55))
+        apos_w = max(3, int(body_h * 0.20))
+        stroke_w = max(1.0, body_h * 0.06)
+
+        # Place the apostrophe above x-height (ascender zone), its lower tip
+        # just inside the body_top line so readers see it as a superscript
+        # mark rather than a letter component.
+        apos_bottom = body_top + max(1, int(body_h * 0.10))
+        apos_top = max(0, apos_bottom - apos_h)
+        apos_left = max(0, x_target - apos_w // 2)
+        apos_right = min(w - 1, apos_left + apos_w)
+
+        # Blank a region wider than the overlay: DP's produced apostrophe
+        # blotch can sit either directly between letters or float above,
+        # and we want to erase both. Extend the blank up through the
+        # ascender zone and down through the top of the body zone so any
+        # stray DP ink in the apostrophe slot is cleared.
+        blank_top = max(0, apos_top - max(1, int(body_h * 0.10)))
+        blank_bottom = min(h, body_top + max(2, int(body_h * 0.25)))
+        blank_margin = max(1, apos_w // 2 + 1)
+        blank_left = max(0, apos_left - blank_margin)
+        blank_right = min(w, apos_right + blank_margin + 1)
+        img[blank_top:blank_bottom, blank_left:blank_right] = 255
+
+        # Tapered comma-like Bezier: starts slightly right, curves left and
+        # down. Thicker at the top, tapering to a fine tail.
+        cx = float(x_target)
+        p0 = (cx + 0.3, apos_top + 1)
+        p1 = (cx + 0.5, apos_top + apos_h * 0.35)
+        p2 = (cx - 0.2, apos_top + apos_h * 0.70)
+        p3 = (cx - 0.6, apos_bottom)
+        _rasterize_bezier_stroke(
+            img, p0, p1, p2, p3, ink_intensity,
+            stroke_w * 1.15, stroke_w * 0.35,
+        )
+
+    return img
+
+
 def stitch_contraction(
     left_img: np.ndarray,
     apostrophe_img: np.ndarray,
@@ -878,23 +995,6 @@ def generate_word(
 
     log = logging.getLogger("reforge.generator")
 
-    # Contraction path: bypass DiffusionPen's poor apostrophe rendering
-    # by generating left and right parts separately with a synthetic mark.
-    if is_contraction(word):
-        left_text, right_text = split_contraction(word)
-        log.debug("contraction split: %s -> %s + ' + %s", word, left_text, right_text)
-        return _generate_contraction(
-            left_text, right_text, word,
-            unet, vae, tokenizer, style_features,
-            uncond_context=uncond_context,
-            num_steps=num_steps,
-            guidance_scale=guidance_scale,
-            num_candidates=num_candidates,
-            device=device,
-            style_reference_imgs=style_reference_imgs,
-            reference_stroke_width=reference_stroke_width,
-        )
-
     # Trailing punctuation path: strip the mark, generate the base word,
     # then attach a synthetic Bezier-rendered mark. DiffusionPen renders
     # trailing punctuation as invisible (IAM dataset bias).
@@ -1048,11 +1148,16 @@ def generate_word(
                 # Exhausted retries without reaching threshold
                 _record_hard_word_candidate(word, best_acc)
 
+        if is_contraction(word):
+            best = _overlay_apostrophe(best, word)
         return best
 
     # Multi-chunk: generate each, normalize heights, baseline-align, stitch
     chunk_images = [_generate_chunk(chunk)[0] for chunk in chunks]
-    return stitch_chunks(chunk_images)
+    stitched = stitch_chunks(chunk_images)
+    if is_contraction(word):
+        stitched = _overlay_apostrophe(stitched, word)
+    return stitched
 
 
 def _get_ocr_fn():
@@ -1402,6 +1507,13 @@ def _generate_punctuated_word(
         if combined > best_score:
             best_score = combined
             best_img = img
+
+    # If the base word is itself a contraction ("can't" in "can't,"),
+    # overlay a clean apostrophe on the generated base before attaching
+    # the trailing mark. Without this, the contraction-path-bypass bug
+    # that the overlay fixes would re-emerge inside punctuated contractions.
+    if is_contraction(base_word):
+        best_img = _overlay_apostrophe(best_img, base_word)
 
     # Derive mark properties and attach
     ink_pixels = best_img[best_img < 180]
