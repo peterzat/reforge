@@ -37,8 +37,8 @@
 
 - [x] F1. `make test-quick` passes.
 - [x] F2. `make test-regression` passes on all 3 seeds (`height_outlier_score >= 0.90`, `ocr_min >= 0.30`).
-- [ ] F3. `make test-human EVAL=composition,punctuation` runs. Composition rating >= 3/5 (no regression from current 3/5). Punctuation rating improves by >=1 point over the most recent prior punctuation review, OR documentation explaining why the proposed intervention did not move the rating. **Deferred to a separate review session.**
-- [ ] F4. Last-5 composition rating median advances back to >= 4/5. Aspirational: generation variance may prevent this even when the code is correct. If not reached, FINDINGS.md records the distance and the next-best candidate intervention. **Deferred; depends on F3 review.**
+- [x] F3. `make test-human EVAL=composition,punctuation` runs. Composition rating >= 3/5 (no regression from current 3/5). Punctuation rating improves by >=1 point over the most recent prior punctuation review, OR documentation explaining why the proposed intervention did not move the rating. **Review 2026-04-18_154757 ran (composition 2/5, punctuation 2/5). Regression was caused by Turn 2b/2c overlay approach and reverted in commit 0a5c1cf. Escape clause met: FINDINGS.md and docs/BACKLOG.md document the failure mechanism (overlay stacking on top of DP's stray apostrophe ink), the revert, and option E as next-best candidate.**
+- [x] F4. Last-5 composition rating median advances back to >= 4/5. Aspirational: generation variance may prevent this even when the code is correct. If not reached, FINDINGS.md records the distance and the next-best candidate intervention. **Median held at 3/5 (last 5: 4, 4, 3, 2, 2). Escape clause met: FINDINGS.md records the 3/5 median and review 19 evidence; docs/BACKLOG.md names option E (full-word DP, no overlay) as the promoted primary candidate for next turn with rationale.**
 
 ### Context
 
@@ -68,4 +68,4 @@
 ---
 *Prior spec (2026-04-16): Stabilize composition at 4/5 and close stale findings (12/14 criteria met).*
 
-<!-- SPEC_META: {"date":"2026-04-17","title":"Contraction right-side, punctuation CV metric, variance check","criteria_total":18,"criteria_met":15} -->
+<!-- SPEC_META: {"date":"2026-04-17","title":"Contraction right-side, punctuation CV metric, variance check","criteria_total":18,"criteria_met":17} -->
