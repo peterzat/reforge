@@ -189,6 +189,12 @@ The pre-F cant/k/o/l/y Plan B alternatives follow; these are the alternatives he
 - **Revisit criteria:** candidate log has >=15 human-picked samples joined against logged candidate scores.
 - **Origin:** FINDINGS.md (Quality score disagrees with human candidate preference).
 
+### candidate-eval human-pick join key
+- Record the human-selected candidate index into the review JSON (or the candidate-scores JSONL keyed by word+seed+timestamp) so candidate-score logs can be joined against human preference for QUALITY_WEIGHTS tuning.
+- **Why deferred:** requires an interactive `make test-human EVAL=candidate` review to verify the join key populates correctly; out of scope for an autonomous turn. Deferred in spec 2026-04-17 (criterion D3) and carried through spec 2026-04-18 without being addressed.
+- **Revisit criteria:** a `make test-human EVAL=candidate` session is due OR the `quality_score_disagrees` finding's data gap is chosen as the primary target of a turn. The entry above (QUALITY_WEIGHTS reweighting) cannot unblock without this join-key landing first.
+- **Origin:** spec 2026-04-17 (criterion D3).
+
 ### Plateaued single-char sizing
 - Capital `I` fills the full canvas, making lowercase words look tiny by comparison. Four wrapper-layer interventions exhausted.
 - **Why deferred:** requires a design-level change (retraining, new model, or pre-generation case handling via architectural change). CLAUDE.md names this as out of scope.
