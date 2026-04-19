@@ -2,8 +2,9 @@
 
 Generates the demo.sh two-paragraph sentence at a deterministic seed, runs the
 pipeline up through the stage that feeds composition (normalize_font_size +
-equalize_body_zones), and prints per-word (idx, word, ink_h, x_h) plus the
-x_height_spread statistic used by spec 2026-04-19 (body-zone sizing).
+equalize_body_zones + harmonize_words -- the state that gets composed), and
+prints per-word (idx, word, ink_h, x_h) plus the x_height_spread statistic
+used by spec 2026-04-19 (body-zone sizing).
 
 x_height_spread = max(x_heights) / min(x_heights) across word tokens that are
 alphabetic and >= 2 chars. Contractions (words containing an apostrophe) and
@@ -67,6 +68,7 @@ def main() -> int:
     from reforge.preprocess.normalize import preprocess_words
     from reforge.preprocess.segment import segment_sentence_image
     from reforge.quality.font_scale import equalize_body_zones, normalize_font_size
+    from reforge.quality.harmonize import harmonize_words
     from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
     from reforge.validation import split_paragraphs, validate_charset
 
@@ -159,8 +161,9 @@ def main() -> int:
             generated[i] = equalized[eq_idx]
             eq_idx += 1
 
-    real_words = [w for w in flat_words if w is not None]
     real_images = [img for img in generated if img is not None]
+    real_images = harmonize_words(real_images)
+    real_words = [w for w in flat_words if w is not None]
 
     # --- Print report ---
     print(f"Seed: {args.seed}")
@@ -170,7 +173,7 @@ def main() -> int:
         f"candidates={preset['candidates']})"
     )
     print(f"Style: {STYLE_PATH.relative_to(ROOT)}")
-    print(f"Stage: post normalize_font_size + post equalize_body_zones")
+    print(f"Stage: post harmonize_words (composition-ready state)")
     print()
     print(f"{'idx':>3}  {'word':<20} {'ink_h':>6} {'x_h':>5}")
     rows: list[tuple[int, str, int, int]] = []
