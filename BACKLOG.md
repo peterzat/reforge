@@ -85,20 +85,7 @@ entry for the full history.
 - **Revisit criteria:** initial shape does not land in review (reads as letter, clips into descenders, or doesn't blend).
 - **Origin:** plan `soft-shimmying-parnas`, 2026-04-17.
 
-### S — Contraction right-side sizing (apostrophe+t thin ink)
-- Close the `'t` / `'s` / `'d` right-side chunk defect where the 2-char split output renders with visibly lighter ink weight and smaller glyph than the left-side neighbor letters. Demo `can't` in `docs/output-history/20260419-161539.png` shows it plainly. A durable fix must include regression tests that measure right-vs-left stroke width + x-height and gate on a tolerance, plus a human-review pass on `make test-human EVAL=composition` with freeform notes that do not cite apostrophe+right-chunk as too thin or too small.
-- **Why deferred:** out of scope for active spec 2026-04-19 (short-word baseline alignment). Tracked as Option W follow-up in FINDINGS.md Apostrophe-rendering Review 9.
-- **Revisit criteria:** next contraction-focused spec, OR `'t`/`'s`/`'d` thin-ink flagged in 2+ consecutive human reviews, OR project targets composition >= 4/5 and this is the loudest remaining defect.
-- **Origin:** spec 2026-04-19, review `2026-04-19_021632` (Option W landing).
-
 ## Scoped out for dedicated work later
-
-### Caveat glyphs too thin in composition (Turn 2d follow-up) (ACTIVE in spec 2026-04-19)
-- Review 2026-04-18_154757 punctuation eval flagged small ";" and "!". Caveat strokes survive the smoke test (single word at full canvas height) but look visually thin after composition's normalize_font_size + 2x upscale. The old Bezier marks (`make_synthetic_mark`) use `stroke_w = body_height * 0.12` + `dot_radius = body_height * 0.16` — denser than Caveat's natural weight at the same cap-height.
-- **Why deferred:** discovered alongside the overlay regression in the 2026-04-18 review; separate issue worth its own turn with a dedicated smoke test at production scale.
-- **Fix approach:** add a morphological dilate step to `render_trailing_mark` in `reforge/model/font_glyph.py`. Target stroke width = Bezier-equivalent (`body_height * 0.12`). Post-rasterization, measure the Caveat glyph's median stroke width; dilate by the difference. Verify with a new smoke-test script that renders Caveat marks at production body_height (18-30px), composites inline with DP words at the same scale, and qpeeks for approval before integrating.
-- **Revisit criteria:** next turn after the cantt problem is addressed.
-- **Origin:** review 2026-04-18_154757, turn `soft-shimmying-parnas`.
 
 ### Style-matching font-rendered trailing marks to the writer
 - Use StyleEncoder scoring to pick the best-matching OFL font from a candidate set, or post-render a style-nudge pass over the font glyph.
@@ -111,12 +98,6 @@ entry for the full history.
 - **Why deferred:** separate spec scope. May benefit incidentally from harmonization over mixed font + DP content once turn 2026-04-17 ships.
 - **Revisit criteria:** review after turn 2026-04-17 still cites the defect; then draft a dedicated spec.
 - **Origin:** FINDINGS.md (Baseline alignment fragile finding, review 9 = 2026-04-17_141320).
-
-### Widening the last-5 composition rating window
-- Change the "last 5 ratings median" quality target to last-7 or last-10.
-- **Why deferred:** methodology tweak, not load-bearing on current defects. Should only move if evidence shows the 5-window measures the wrong thing.
-- **Revisit criteria:** evidence that 5-window variance is masking real trajectory movement (e.g. 10-window median tells a different story).
-- **Origin:** prior spec 2026-04-17's "Out of scope" section.
 
 ### QUALITY_WEIGHTS reweighting
 - Retune the weights in `reforge/quality/score.py` to better match human candidate preference (reviews show ~25% human-metric agreement).

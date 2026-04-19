@@ -1,61 +1,69 @@
-## Spec -- 2026-04-19 -- Composition rating window: data-driven decision
+## Spec -- 2026-04-19 -- size_inconsistent composition defect (body-zone sizing)
 
-**Goal:** Resolve whether the persistent composition 3/5 median across the last 5 reviews reflects a true quality plateau or is the 5-window dragging on older sub-3 ratings (reviews 9-12 are all 3/5, but reviews 7-8 were 2/5). Compute the composition median at multiple window sizes on the existing review corpus, decide whether to widen the CLAUDE.md target window, and record the decision so the rating-window question doesn't keep re-surfacing as a live hypothesis.
+**Goal:** Close the persistent `size_inconsistent` composition defect by shrinking the cross-word x-height spread on the demo sentence, so words with large descenders (e.g. `by`) stop reading as tiny next to descenderless neighbors (e.g. `three`, `perfect`). This is a body-zone visual issue that survives ink-height normalization.
 
 ### Acceptance Criteria
 
-- [x] 1. A utility at `scripts/compute_rating_window.py` (or equivalent) reads every `reviews/human/*.json` file, extracts per-review composition ratings, and prints medians at window sizes {3, 5, 7, 10, all}. Output is plain stdout and deterministic (sorted by review timestamp). Re-runnable at any time.
-- [x] 2. The utility's current output is captured verbatim in a new `docs/rating_window_analysis.md` (or appended to `reviews/human/FINDINGS.md`), alongside the decision reached in criterion 3.
-- [x] 3. Based on the data from criterion 1, make a decision: (a) if median at last-10 is >= 0.5 higher than median at last-5, widen `CLAUDE.md`'s Human-preference target window to 10 and update the two references to "last 5" in `CLAUDE.md` (lines ~51 and ~75 at current HEAD); (b) otherwise, leave the window at 5 and mark the rating-window hypothesis as ruled out in FINDINGS. Either branch is valid; the criterion is met by executing one. **Branch (b) executed:** all window medians equal 3 (delta = 0, below 0.5 threshold). CLAUDE.md unchanged; FINDINGS.md has a new "Methodology notes" section recording the ruling.
-- [x] 4. If the decision is (a) (widen), the new target (last-10 median >= 4/5) must be plausible against current data: last-10 median is either already >= 4/5 or within 1 point. If the wider window still shows <= 3/5 median, fall through to (b) rather than setting an unreachable target. **Not activated** (branch b executed).
-- [x] 5. `make test-quick` passes. (302 passed, 5.20s.)
-- [x] 6. No code regression: `make test-regression` passes on seeds 42/137/2718. (304 passed, 16.36s.)
+- [ ] 1. A diagnostic utility at `scripts/measure_word_sizing.py` generates the demo.sh two-paragraph sentence on a single deterministic seed (42) and prints per-word (word, ink_height_px, x_height_px) in paste-friendly plain text to stdout. Re-runnable; no file writes required.
+- [ ] 2. Define `x_height_spread = max(x_heights) / min(x_heights)` across all alphabetic word tokens in the demo sentence (exclude contractions' right chunks and single-char tokens). Capture the pre-fix baseline value in a new `docs/sizing_diagnostic.md`, commit the baseline, then land a code change that reduces the spread by at least 15% OR reaches `<= 1.4` on the same seed. If the pre-fix baseline is already `<= 1.4`, escape to documenting that finding in `docs/sizing_diagnostic.md` and marking the criterion met -- the defect is not x-height-spread in that case and this spec ends without a generation change.
+- [ ] 3. `make test-regression` passes on seeds 42/137/2718 (`height_outlier_score >= 0.90`, `ocr_min >= 0.30`). The fix must not regress either primary gate.
+- [ ] 4. `make test-quick` passes.
+- [ ] 5. Human review: `make test-human EVAL=sizing,composition` is run once after the code change lands. The session's review JSON is saved. If the composition rating on the default seed is `< 3/5` OR the sizing A/B prefers the pre-fix variant, revert before commit. Otherwise, the criterion is met -- this is an execute-and-record criterion, not a lift gate.
+- [ ] 6. A1 lesson preserved: `HEIGHT_OUTLIER_THRESHOLD` (1.10) and `HEIGHT_UNDERSIZE_THRESHOLD` (0.88) in `reforge/config.py` remain unchanged. Any body-zone fix lands in `font_scale.py` (`normalize_font_size`, `equalize_body_zones`) or a new post-font-normalize pass -- NOT by retuning the pass-1 harmonize thresholds.
 
 ### Context
 
-**Prior-turn carryover:**
+**Defect evidence:**
 
-- Four specs shipped today (commit `1a6e03e` + uncommitted duplicate-letter work) moved baseline 3/5 → 4/5, punctuation None/5 → 3/5, hard_words 2/5 → 3/5. Composition held at 3/5 across Reviews 9, 10, 11, 12, 8 (chronological: `2026-04-18_213857`, `_233350`, `2026-04-19_021632`, `_154926`, `_173130`, `_181354`).
-- Human Review 12 and Review 8 both gave positive freeform notes ("punctuation is improved", "every word + punctuation improved over prior runs") while the composition number did not tick. This spec tests whether that mismatch is a window-lag artifact (older reviews 2/5 dragging the rolling median) versus a genuine quality ceiling.
-- The duplicate-letter spec's write-up is uncommitted in the tree (`SPEC.md`, `reforge/data/hard_words.json`, `tests/medium/test_duplicate_letter_hallucinations.py`, `reviews/human/FINDINGS.md`). Committing is NOT in this spec's scope; it's a hygiene step that should happen before or after independently.
+- Review `2026-04-14_143735`: `"by" is tiny`.
+- Review `2026-04-14_154117`: `"by" is still super small`.
+- Review `2026-04-14_212810`: `"by" is tiny, punctuation is completely invisible`.
+- Review `2026-04-16_011718`: `"by" is slightly bigger but still too small`.
+- Reviews `2026-04-18_213857` / `_154757` / `2026-04-19_021632` / `_154926` / `_173130` / `_181354`: composition defects include `size_inconsistent` in 5 of the last 5 (5/5 pattern = Plateau hypothesis ruled out in prior spec; this spec attacks the generation-side lever).
 
-**Project target references to update (if criterion 3 branch-a):**
+**Why the current pipeline can miss this:**
 
-- `CLAUDE.md` line ~51: "Current median across the last 5 is 3/5"
-- `CLAUDE.md` line ~75: "the last 5 human composition ratings is >= 4/5"
+- `reforge/quality/font_scale.py` normalize_font_size scales each word to a target ink-height (26px for 1-2 char words, 28px for 3+).
+- "by" has a large descender (`y`), so its total ink-height is body + descender. After normalize, body (x-height) is disproportionately small.
+- `equalize_body_zones` only scales DOWN words with oversized x-height (>105% of median). It does not scale UP undersized x-heights, so "by" stays small while "three" gets shrunk.
+- Primary gate `height_outlier_score` is measured on ink-height, not x-height, so the defect sits outside the CV gate.
 
-These are the two references the grep turned up; there may be more in `docs/`. The utility in criterion 1 is the source of truth on which windows to consider.
+**Relevant files:**
 
-**Evidence the hypothesis is worth testing:**
+- `reforge/quality/font_scale.py` -- `normalize_font_size`, `equalize_body_zones`, `_effective_x_height`.
+- `reforge/quality/harmonize.py` -- `harmonize_heights`, `harmonize_heights_pass2` (pass-1 is A1-locked, see criterion 6).
+- `reforge/quality/ink_metrics.py` -- `compute_x_height`, `compute_ink_height`.
+- `reforge/config.py` -- `HEIGHT_OUTLIER_THRESHOLD`, `HEIGHT_UNDERSIZE_THRESHOLD`, `SHORT_WORD_HEIGHT_TARGET=26`.
 
-The 6 most-recent reviews (chronological):
-- Review 7 `2026-04-18_233350`: 3/5
-- Review 6 `2026-04-19_021632`: 3/5 (Caveat dilate + baseline alignment landing)
-- Review 11 `2026-04-19_154926`: 3/5 (short-word baseline fix)
-- Review 12 `2026-04-19_173130`: 3/5 (contraction sizing + Caveat 1.15×)
-- Review 8 `2026-04-19_181354`: 3/5 (duplicate-letter gate expansion)
+**Design tension (not a constraint, but worth acknowledging):**
 
-Five consecutive 3/5 ratings in 24 hours, plus a 2/5 from Review 5 at `2026-04-18_213857` (Option E failure, reverted). The 5-window median is 3/5. A 10-window pulls in reviews going back to mid-April; whether those were 2/5 or 4/5 determines the picture.
+Scaling UP undersized x-heights inflates ascender/descender extents. Mitigation options:
 
-**Failure protocol:**
+- Cap scale-up at a small ratio (e.g. 1.3x) and skip if total ink height would exceed `1.10 * median` (would re-trigger `height_outlier_score`).
+- Or use x-height as the primary normalization signal in `normalize_font_size`, leaving total ink-heights variable.
 
-- Criterion 4 fails (widening would set an unreachable target): fall through to criterion 3 branch-b; document as "rating-window hypothesis ruled out, plateau is real" in FINDINGS.
-- Criterion 6 fails: revert. This spec shouldn't touch code paths under CV gates.
-- Do not bundle: no new generation/compose/quality code changes in this spec.
+Either is a valid implementation path; the criteria gate on the measurable outcome, not the approach.
 
 **Out of scope (tracked in BACKLOG.md, do not bundle):**
 
-- Review rubric update for `scripts/human_eval.py` (the proposal's direction #2 — separate methodology concern).
-- QUALITY_WEIGHTS reweighting (blocked).
-- New generation-side fixes for composition defects.
+- `"by" descender clipping` (peaks of `y` cut off at composition time) -- separate BACKLOG entry; layout/render issue, not sizing.
+- Alternate apostrophe shapes (proposal direction #4) -- separate turn.
+- Side-channel 0-10 granular eval (proposal direction #3) -- methodology, separate turn.
+
+**Failure protocol:**
+
+- Criterion 2 escape (baseline already <= 1.4): commit `docs/sizing_diagnostic.md` showing the finding, mark criteria 2/3/4/6 met, skip criterion 5 (no code change), close spec. Add a BACKLOG entry noting size_inconsistent is not x-height-spread and requires a different diagnostic.
+- Criterion 3 fails post-fix: revert the code change, keep the diagnostic script and `docs/sizing_diagnostic.md` (they are independently useful).
+- Criterion 5 fails (human eval shows regression): revert before commit.
 
 **zat.env practices carried in:**
 
-- Smallest change that addresses the hypothesis. A utility that reads existing JSON is enough; do not build an elaborate analysis framework.
-- Write the decision down (criterion 2) so the question doesn't resurface.
+- Smallest change that attacks the measurable defect. Don't refactor the harmonization pipeline.
+- Write a diagnostic before the fix so the fix has a measurable target, and so reviewers can verify the claim.
 - No push without explicit ask.
+- If two consecutive fix attempts at the body-zone layer fail, stop and escape to documenting why x-height-spread is not the right lever.
 
 ---
-*Prior spec (2026-04-19, Duplicate-letter hallucination class): SHIPPED 6/6 criteria (uncommitted). `mornings` / `something` / `really` added to curated hard_words; multi-seed test added. No generation-side code change needed — today's tree already generates these correctly. Hard_words eval 2/5 → 3/5.*
+*Prior spec (2026-04-19, Composition rating window): SHIPPED 6/6. All window medians = 3 on the 33-review corpus; CLAUDE.md target stays at last-5; FINDINGS.md gets a Methodology notes section recording the ruling.*
 
-<!-- SPEC_META: {"date":"2026-04-19","title":"Composition rating window: data-driven decision","criteria_total":6,"criteria_met":6} -->
+<!-- SPEC_META: {"date":"2026-04-19","title":"size_inconsistent composition defect (body-zone sizing)","criteria_total":6,"criteria_met":0} -->
