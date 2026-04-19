@@ -68,6 +68,19 @@ Graduated findings represent stable human-validated quality principles that shou
 inform all future development. They are marked `[GRADUATED]` with a date and the
 CLAUDE.md section where they were added.
 
+## Methodology notes
+
+### Rating-window hypothesis ruled out (2026-04-19)
+
+The composition 3/5 plateau is not an artifact of the rolling 5-review
+window. Medians at {3, 5, 7, 10, all} all equal 3 on the current corpus of
+33 rated reviews (`scripts/compute_rating_window.py`, spec 2026-04-19
+"Composition rating window: data-driven decision"). Widening the CLAUDE.md
+target window would not reveal a hidden lift; the plateau is genuine across
+every window we can measure. CLAUDE.md target stays at last-5; further lift
+must come from work that raises the composite impression, not from window
+tuning. Full analysis: `docs/rating_window_analysis.md`.
+
 ## Findings
 
 ### Word spacing is too loose

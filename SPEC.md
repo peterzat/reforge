@@ -4,12 +4,12 @@
 
 ### Acceptance Criteria
 
-- [ ] 1. A utility at `scripts/compute_rating_window.py` (or equivalent) reads every `reviews/human/*.json` file, extracts per-review composition ratings, and prints medians at window sizes {3, 5, 7, 10, all}. Output is plain stdout and deterministic (sorted by review timestamp). Re-runnable at any time.
-- [ ] 2. The utility's current output is captured verbatim in a new `docs/rating_window_analysis.md` (or appended to `reviews/human/FINDINGS.md`), alongside the decision reached in criterion 3.
-- [ ] 3. Based on the data from criterion 1, make a decision: (a) if median at last-10 is >= 0.5 higher than median at last-5, widen `CLAUDE.md`'s Human-preference target window to 10 and update the two references to "last 5" in `CLAUDE.md` (lines ~51 and ~75 at current HEAD); (b) otherwise, leave the window at 5 and mark the rating-window hypothesis as ruled out in FINDINGS. Either branch is valid; the criterion is met by executing one.
-- [ ] 4. If the decision is (a) (widen), the new target (last-10 median >= 4/5) must be plausible against current data: last-10 median is either already >= 4/5 or within 1 point. If the wider window still shows <= 3/5 median, fall through to (b) rather than setting an unreachable target.
-- [ ] 5. `make test-quick` passes.
-- [ ] 6. No code regression: `make test-regression` passes on seeds 42/137/2718. (This spec is predominantly docs/methodology; regression should be a no-op.)
+- [x] 1. A utility at `scripts/compute_rating_window.py` (or equivalent) reads every `reviews/human/*.json` file, extracts per-review composition ratings, and prints medians at window sizes {3, 5, 7, 10, all}. Output is plain stdout and deterministic (sorted by review timestamp). Re-runnable at any time.
+- [x] 2. The utility's current output is captured verbatim in a new `docs/rating_window_analysis.md` (or appended to `reviews/human/FINDINGS.md`), alongside the decision reached in criterion 3.
+- [x] 3. Based on the data from criterion 1, make a decision: (a) if median at last-10 is >= 0.5 higher than median at last-5, widen `CLAUDE.md`'s Human-preference target window to 10 and update the two references to "last 5" in `CLAUDE.md` (lines ~51 and ~75 at current HEAD); (b) otherwise, leave the window at 5 and mark the rating-window hypothesis as ruled out in FINDINGS. Either branch is valid; the criterion is met by executing one. **Branch (b) executed:** all window medians equal 3 (delta = 0, below 0.5 threshold). CLAUDE.md unchanged; FINDINGS.md has a new "Methodology notes" section recording the ruling.
+- [x] 4. If the decision is (a) (widen), the new target (last-10 median >= 4/5) must be plausible against current data: last-10 median is either already >= 4/5 or within 1 point. If the wider window still shows <= 3/5 median, fall through to (b) rather than setting an unreachable target. **Not activated** (branch b executed).
+- [x] 5. `make test-quick` passes. (302 passed, 5.20s.)
+- [x] 6. No code regression: `make test-regression` passes on seeds 42/137/2718. (304 passed, 16.36s.)
 
 ### Context
 
@@ -58,4 +58,4 @@ Five consecutive 3/5 ratings in 24 hours, plus a 2/5 from Review 5 at `2026-04-1
 ---
 *Prior spec (2026-04-19, Duplicate-letter hallucination class): SHIPPED 6/6 criteria (uncommitted). `mornings` / `something` / `really` added to curated hard_words; multi-seed test added. No generation-side code change needed — today's tree already generates these correctly. Hard_words eval 2/5 → 3/5.*
 
-<!-- SPEC_META: {"date":"2026-04-19","title":"Composition rating window: data-driven decision","criteria_total":6,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-19","title":"Composition rating window: data-driven decision","criteria_total":6,"criteria_met":6} -->
