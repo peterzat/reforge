@@ -1,5 +1,6 @@
 """Quick tests for baseline detection and alignment."""
 
+import cv2
 import numpy as np
 import pytest
 
@@ -114,6 +115,103 @@ class TestBaselineWithDescenders:
         # (without word, the scan may be fooled by descender ink)
         assert bl_no_word >= 0
         assert bl_with_word >= 0
+
+
+@pytest.mark.quick
+class TestBaselineOnRealisticWordShapes:
+    """Spec 2026-04-19 criterion 1: detect_baseline must return within 3px of
+    the true body-ink bottom for short non-descender words whose body density
+    peaks below BASELINE_DENSITY_DROP. Review 10 flagged `two` rendering "super
+    low" in composition; the root cause is line-median drift when a descender
+    neighbor's detected baseline lands on the descender tail rather than the
+    body baseline. Both failure modes are covered here."""
+
+    def _cv2_word(self, word: str, h: int = 64, w: int = 256):
+        """Render a word with cv2.putText (script font) at baseline y=50."""
+        img = np.full((h, w), 255, dtype=np.uint8)
+        cv2.putText(img, word, (10, 50), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 1.5, 30, 2, cv2.LINE_AA)
+        return img
+
+    def test_short_non_descender_matches_ink_bottom(self):
+        """two / an / he / can: body ink bottom is the baseline."""
+        from reforge.compose.layout import detect_baseline
+        for word in ("two", "an", "he", "can", "Hello"):
+            img = self._cv2_word(word)
+            ink_rows = np.any(img < 180, axis=1)
+            ink_bottom = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
+            bl = detect_baseline(img, word=word)
+            assert abs(bl - ink_bottom) <= 3, (
+                f"{word!r}: baseline={bl}, ink_bottom={ink_bottom}, "
+                f"delta={bl - ink_bottom}"
+            )
+
+    def test_descender_word_returns_body_baseline_not_tail(self):
+        """jump / by / py / gp: baseline detected at body bottom, not
+        descender bottom. Body peak density for cv2-rendered script text
+        is well below BASELINE_BODY_DENSITY (0.35), which is why the old
+        walkback failed and returned the descender bottom."""
+        from reforge.compose.layout import detect_baseline
+        for word in ("jump", "by", "py", "gp"):
+            img = self._cv2_word(word)
+            ink_rows = np.any(img < 180, axis=1)
+            ink_bottom = len(ink_rows) - 1 - int(np.argmax(ink_rows[::-1]))
+            bl = detect_baseline(img, word=word)
+            # Baseline should be well above the descender tail, close to
+            # where cv2 placed it (y=49).
+            assert abs(bl - 49) <= 3, (
+                f"{word!r}: baseline={bl} should be near true baseline 49; "
+                f"ink_bottom={ink_bottom} (descender tail)"
+            )
+            # And specifically should NOT land on the descender bottom.
+            assert bl < ink_bottom - 5, (
+                f"{word!r}: baseline={bl} looks like it landed on the "
+                f"descender bottom (ink_bottom={ink_bottom})"
+            )
+
+
+@pytest.mark.quick
+class TestComposedLineBaselineAlignment:
+    """Spec 2026-04-19 criterion 2: compose_words places every word's body
+    baseline on a shared row within 3 px across a line that mixes
+    non-descender and descender shapes."""
+
+    def _cv2_word(self, word: str, h: int = 64, w: int = 256):
+        img = np.full((h, w), 255, dtype=np.uint8)
+        cv2.putText(img, word, (10, 50), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 1.5, 30, 2, cv2.LINE_AA)
+        return img
+
+    def test_short_non_descender_aligns_with_descender_neighbors(self):
+        from reforge.compose.layout import detect_baseline
+        from reforge.compose.render import compose_words
+
+        words = ["two", "by", "morning", "he"]
+        imgs = [self._cv2_word(w) for w in words]
+
+        # Force all words onto one line with a generous page width.
+        composed, positions = compose_words(
+            imgs, words, page_width=2400, upscale_factor=1, return_positions=True,
+        )
+        composed_arr = np.array(composed)
+
+        # Per-line check: compute each word's absolute baseline in the
+        # composed canvas, group by line, assert deviation within line.
+        from collections import defaultdict
+        by_line: dict[int, list[tuple[str, int]]] = defaultdict(list)
+        for pos, word in zip(positions, words):
+            x, y, h, w_slice = pos["x"], pos["y"], pos["height"], pos["width"]
+            crop = composed_arr[y:y + h, x:x + w_slice]
+            bl_rel = detect_baseline(crop, word=word)
+            by_line[pos["line"]].append((word, y + bl_rel))
+
+        assert by_line, "no words positioned"
+        for line_num, entries in by_line.items():
+            bls = [bl for _, bl in entries]
+            median_bl = int(np.median(bls))
+            max_dev = max(abs(bl - median_bl) for bl in bls)
+            assert max_dev <= 3, (
+                f"line {line_num} baselines {dict(entries)} deviate up to "
+                f"{max_dev} px from median {median_bl}; expected <= 3 px"
+            )
 
 
 @pytest.mark.quick

@@ -118,14 +118,26 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
 
     mid = first_ink + ink_height // 2
 
-    # For descender words, use a higher body threshold so thin descender
+    # For descender words, use a lower body threshold so thin descender
     # strokes are not mistaken for body text.
     body_threshold = 0.25 if has_descender else BASELINE_BODY_DENSITY
+
+    # Drop threshold: use the tighter of (BASELINE_DENSITY_DROP, body_peak * 0.3).
+    # The absolute BASELINE_DENSITY_DROP (0.15) was calibrated against dense
+    # synthetic fixtures; for narrow words whose body density maxes out below
+    # 0.15, every row would register as a drop. Measuring body_peak across the
+    # scan range gives a per-word relative threshold so the body is never
+    # mistaken for a drop.
+    if last_ink - mid >= 2:
+        body_peak = float(np.max(row_density[mid:last_ink + 1]))
+        drop_threshold = min(body_peak * 0.3, BASELINE_DENSITY_DROP)
+    else:
+        drop_threshold = BASELINE_DENSITY_DROP
 
     # Scan down from midpoint looking for density drop
     baseline = last_ink
     for r in range(mid, last_ink + 1):
-        if row_density[r] < BASELINE_DENSITY_DROP:
+        if row_density[r] < drop_threshold:
             # Check if there are body rows below this
             has_body_below = False
             for rb in range(r + 1, last_ink + 1):
@@ -137,11 +149,20 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
                 # Check this isn't a spurious dip
                 dip_height = last_ink - r
                 if dip_height >= ink_height * BASELINE_MIN_DIP_RATIO:
-                    # Walk back to last body-density row
+                    # Walk back to last body-density row.
+                    found = False
                     for rb in range(r, mid - 1, -1):
                         if row_density[rb] >= BASELINE_BODY_DENSITY:
                             baseline = rb
+                            found = True
                             break
+                    if not found and has_descender:
+                        # Known descender word whose body never reaches
+                        # BASELINE_BODY_DENSITY (0.35): fall back to the
+                        # row just before the detected drop, which is
+                        # always body. Non-descender/unknown words keep
+                        # the conservative last_ink default.
+                        baseline = max(mid, r - 1)
                     break
 
     return baseline

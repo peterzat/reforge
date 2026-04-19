@@ -28,6 +28,11 @@ from PIL import Image, ImageDraw, ImageFont
 # Target stroke width as a fraction of body_height, matching the Bezier
 # synthetic mark (see make_synthetic_mark's stroke_w = body_height * 0.12).
 BEZIER_STROKE_FRACTION = 0.12
+# Spec 2026-04-19 (contraction + Caveat thickness): human Review 6 rated
+# trailing marks "a bit small" at the 1.0x Bezier target. Lift the Caveat
+# dilation target to 1.15x Bezier so the font-rendered marks read as
+# visually equivalent to the old Bezier blobs.
+TRAILING_MARK_TARGET_MULTIPLIER = 1.15
 MIN_STROKE_PX = 1.5
 
 
@@ -136,9 +141,17 @@ def render_trailing_mark(
     canvas_w = visible_w + horizontal_padding_px * 2
     canvas_h = ascent + descent
 
-    # Leave enough vertical/horizontal slack on the canvas for the dilation
-    # step to expand strokes without hitting the edge.
-    target_stroke = max(MIN_STROKE_PX, body_height * BEZIER_STROKE_FRACTION)
+    # Target the actual measured Bezier stroke at this body_height rather
+    # than the nominal body_height * 0.12 — for marks with a dot component
+    # (".", ";", "!"), the measured Bezier runs higher than nominal, and
+    # criterion 2 asserts against the MEASURED value.
+    from reforge.model.generator import make_synthetic_mark
+    bezier_img = make_synthetic_mark(mark, ink_intensity, body_height)
+    bezier_stroke = _median_stroke_width_px(bezier_img)
+    target_stroke = max(
+        MIN_STROKE_PX,
+        bezier_stroke * TRAILING_MARK_TARGET_MULTIPLIER,
+    )
     dilate_margin = int(np.ceil(target_stroke)) + 1
     canvas_w_padded = canvas_w + 2 * dilate_margin
 

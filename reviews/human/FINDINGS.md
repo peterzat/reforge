@@ -276,6 +276,28 @@ CLAUDE.md section where they were added.
   (4) equalize_body_zones(): post-normalization pass scales down words
   whose x-height exceeds 105% of median, preventing non-ascender words
   from appearing disproportionately large.
+- **Review 10 (2026-04-19_154926): short-word baseline fix landed; baseline
+  eval 4/5.** Spec 2026-04-19 "Short-word baseline alignment at composition"
+  identified a two-part root cause in `detect_baseline`: (a) the absolute
+  `BASELINE_DENSITY_DROP = 0.15` threshold was calibrated against solid
+  rectangle fixtures and was too high for real handwriting words whose
+  body density tops out around 0.12-0.28, and (b) when the density-walkback
+  failed to find a row meeting `BASELINE_BODY_DENSITY = 0.35`, the baseline
+  silently stayed at the descender-bottom default. Fix: replace the
+  absolute drop threshold with a per-word relative one
+  (`min(body_peak * 0.3, BASELINE_DENSITY_DROP)`), and when the walkback
+  fails on a known-descender word fall back to `r - 1` (the row just
+  before the detected drop, which is always body). Human review 2026-04-19:
+  baseline 4/5 (up from 3/5 stable plateau at Review 8), composition 3/5
+  (no regression), no freeform notes citing `two is super low` or
+  `by` descender clipping. The line-median drift that made non-descender
+  neighbors like `two` render low is gone because descender words now
+  report their body baseline, not their descender bottom, so the median
+  no longer drifts. Regression test coverage added in
+  `tests/quick/test_baseline.py::TestBaselineOnRealisticWordShapes` (cv2
+  script-font renders of `two/an/he/jump/by/py/gp`) and
+  `TestComposedLineBaselineAlignment` (end-to-end `compose_words` line of
+  `two + by + morning + he` asserts within-line baseline spread <= 3 px).
 
 ### Word sizing is inconsistent
 
@@ -598,6 +620,24 @@ CLAUDE.md section where they were added.
   still too small and low) are tracked in their own FINDINGS entries
   or BACKLOG items (Caveat glyph dilate, baseline alignment); not
   apostrophe-rendering issues.
+- **Review 10 (2026-04-19_173130): `_match_chunk_to_reference` landed;
+  per-seed contraction OCR went 0.125-0.4 → 1.000.** Spec 2026-04-19
+  "Contraction right-side sizing + Caveat thickness" added a post-generate
+  / pre-stitch step inside `_generate_contraction` that measures the left
+  chunk's ink height, stroke width, and ink-median and adjusts the right
+  chunk to match (bounded scale up to 1.8×; grayscale erode with 3×3
+  kernel then 5×5 fallback; double-pass ink-intensity shift). Seed-42
+  test-hard ledger for the four common contractions went from
+  `can't=0.4, they'd=1.0, don't=0.125 CRITICAL, it's=1.0` to all four
+  at **1.000**. Regression test `tests/medium/test_contraction_sizing.py`
+  asserts right/left stroke ratio ≥ 0.85, ink-median delta ≤ 20%, and
+  ink-height delta ≤ 15% across seeds 42/137/2718 × the four words, 24
+  cases total. Human Review 10 confirmed the improvement was visible
+  ("punctuation is improved"; "every word + punctuation improved over
+  prior runs") with no forbidden-phrase flags on contractions. Composition
+  held at 3/5; the 4/5 rating target was aspirational and user accepted
+  as partial (5/6 criteria). Option W's thin-ink sub-issue from Review 9
+  is closed at the automated level.
 
 ### Trailing punctuation is invisible in generated output
 
@@ -711,6 +751,20 @@ CLAUDE.md section where they were added.
   first `can't` still too small and too thin ink weight"* — W follow-up,
   already captured in FINDINGS Review 9 under Apostrophe-rendering. No
   action needed under this finding.
+- **Review 7 (2026-04-19_173130): Caveat dilation target lifted 1.0× → 1.15×
+  Bezier; punctuation notes positive, rating held at 3/5.** Spec 2026-04-19
+  "Contraction right-side sizing + Caveat thickness" introduced
+  `TRAILING_MARK_TARGET_MULTIPLIER = 1.15` in `reforge/model/font_glyph.py`
+  and retargeted `_dilate_to_stroke_width` against the measured Bezier
+  stroke instead of the nominal `body_height * 0.12` formula, so marks
+  like `!` and `?` (whose Bezier dot component already measures higher
+  than nominal) receive the correct 1.15× target. Unit test
+  `TestDilateToBezierBaseline` asserts the 1.15× ratio at body_heights
+  {18, 24, 32} across `. , ; ! ?`. Human Review 7: punctuation still
+  rated 3/5, but freeform note "every word + punctuation improved over
+  prior runs" confirms the thickness lift was visible. Rating bar to
+  4/5 aspirational; residual held at 3/5. No "a bit small" or
+  equivalent softened complaint in this review's notes.
 
 ### Single-character "I" loses ink, appears half-missing
 

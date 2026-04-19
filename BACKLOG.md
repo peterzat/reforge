@@ -85,6 +85,12 @@ entry for the full history.
 - **Revisit criteria:** initial shape does not land in review (reads as letter, clips into descenders, or doesn't blend).
 - **Origin:** plan `soft-shimmying-parnas`, 2026-04-17.
 
+### S — Contraction right-side sizing (apostrophe+t thin ink)
+- Close the `'t` / `'s` / `'d` right-side chunk defect where the 2-char split output renders with visibly lighter ink weight and smaller glyph than the left-side neighbor letters. Demo `can't` in `docs/output-history/20260419-161539.png` shows it plainly. A durable fix must include regression tests that measure right-vs-left stroke width + x-height and gate on a tolerance, plus a human-review pass on `make test-human EVAL=composition` with freeform notes that do not cite apostrophe+right-chunk as too thin or too small.
+- **Why deferred:** out of scope for active spec 2026-04-19 (short-word baseline alignment). Tracked as Option W follow-up in FINDINGS.md Apostrophe-rendering Review 9.
+- **Revisit criteria:** next contraction-focused spec, OR `'t`/`'s`/`'d` thin-ink flagged in 2+ consecutive human reviews, OR project targets composition >= 4/5 and this is the loudest remaining defect.
+- **Origin:** spec 2026-04-19, review `2026-04-19_021632` (Option W landing).
+
 ## Scoped out for dedicated work later
 
 ### Caveat glyphs too thin in composition (Turn 2d follow-up) (ACTIVE in spec 2026-04-19)

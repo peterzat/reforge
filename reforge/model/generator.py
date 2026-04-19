@@ -353,6 +353,122 @@ def _render_trailing_mark_or_fallback(
         return make_synthetic_mark(mark, ink_intensity, body_height)
 
 
+# --- Contraction chunk matching ---
+
+# Spec 2026-04-19: contraction right-side sizing. After the W split, the
+# 2-char right chunk ("'t", "'s", "'d") is below IAM's MIN_WORD_CHARS=4
+# training filter and DP renders it with noticeably lighter stroke and
+# smaller ink height than the left chunk. `_match_chunk_to_reference`
+# rescales and dilates the shorter/thinner chunk so the two halves stitch
+# together without a visible sizing discontinuity.
+CHUNK_MIN_HEIGHT_RATIO = 0.85  # right ink height must be >= this * left's
+CHUNK_MIN_STROKE_RATIO = 0.85  # right stroke width must be >= this * left's
+CHUNK_MAX_UPSCALE = 1.8  # never blow the shorter chunk up more than this
+CHUNK_MAX_DILATE_ITER = 6  # cap on grayscale-erode iterations
+
+
+def _match_chunk_to_reference(
+    adjust_img: np.ndarray,
+    reference_img: np.ndarray,
+) -> np.ndarray:
+    """Scale + dilate ``adjust_img`` so its ink height and stroke width
+    come within CHUNK_MIN_*_RATIO of ``reference_img``.
+
+    Bounded: scale is clamped to CHUNK_MAX_UPSCALE and dilation to
+    CHUNK_MAX_DILATE_ITER iterations. Reference image is left unchanged.
+    Returns ``adjust_img`` unchanged when either side has too little ink
+    for a reliable measurement.
+    """
+    INK_THRESH = 180
+
+    def _ink_height(img: np.ndarray) -> int:
+        rows = np.any(img < INK_THRESH, axis=1)
+        if not rows.any():
+            return 0
+        first = int(np.argmax(rows))
+        last = len(rows) - 1 - int(np.argmax(rows[::-1]))
+        return last - first + 1
+
+    def _stroke(img: np.ndarray) -> float:
+        import cv2
+        mask = (img < INK_THRESH).astype(np.uint8)
+        if int(mask.sum()) < 10:
+            return 0.0
+        dist = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+        ink_dists = dist[mask > 0]
+        if ink_dists.size == 0:
+            return 0.0
+        return 2.0 * float(np.mean(ink_dists))
+
+    import cv2
+
+    ref_h = _ink_height(reference_img)
+    adj_h = _ink_height(adjust_img)
+    if ref_h == 0 or adj_h == 0:
+        return adjust_img
+
+    out = adjust_img
+    # Step 1: height match via isotropic upscale.
+    height_ratio = adj_h / ref_h
+    if height_ratio < CHUNK_MIN_HEIGHT_RATIO:
+        target_scale = min(ref_h / adj_h, CHUNK_MAX_UPSCALE)
+        new_h = max(1, int(round(out.shape[0] * target_scale)))
+        new_w = max(1, int(round(out.shape[1] * target_scale)))
+        out = cv2.resize(out, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+    def _shift_ink_toward(img, target_ink_median):
+        ink_pixels = img[img < INK_THRESH]
+        if ink_pixels.size == 0:
+            return img
+        cur_median = float(np.median(ink_pixels))
+        if abs(target_ink_median - cur_median) < 5.0:
+            return img
+        shift = target_ink_median - cur_median
+        mask = img < INK_THRESH
+        shifted = img.astype(np.float32)
+        shifted[mask] += shift
+        return np.clip(shifted, 0, 255).astype(np.uint8)
+
+    ref_ink_pixels = reference_img[reference_img < INK_THRESH]
+    ref_ink = float(np.median(ref_ink_pixels)) if ref_ink_pixels.size > 0 else None
+
+    # Step 2: ink intensity pre-shift. Moving ink pixels toward the
+    # reference median before dilation lets the erode step operate on
+    # already-matched intensities; otherwise the min-filter behavior of
+    # erode on the original (wrong-intensity) pixels leaks back into the
+    # dilated output.
+    if ref_ink is not None:
+        out = _shift_ink_toward(out, ref_ink)
+
+    # Step 3: stroke match via bounded grayscale erosion.
+    ref_stroke = _stroke(reference_img)
+    cur_stroke = _stroke(out)
+    if ref_stroke > 0 and cur_stroke > 0:
+        ratio = cur_stroke / ref_stroke
+        if ratio < CHUNK_MIN_STROKE_RATIO:
+            target = ref_stroke * CHUNK_MIN_STROKE_RATIO
+            kernel_3 = np.ones((3, 3), dtype=np.uint8)
+            kernel_5 = np.ones((5, 5), dtype=np.uint8)
+            for _ in range(CHUNK_MAX_DILATE_ITER):
+                out = cv2.erode(out, kernel_3, iterations=1)
+                if _stroke(out) >= target:
+                    break
+            else:
+                for _ in range(2):
+                    out = cv2.erode(out, kernel_5, iterations=1)
+                    if _stroke(out) >= target:
+                        break
+
+    # Step 4: ink intensity post-shift. Erode's min-filter pulls in the
+    # darkest pixel in each kernel window, so the post-dilate median
+    # drifts darker even after the pre-shift. Re-match to pull the
+    # post-dilate median back to the reference.
+    if ref_ink is not None:
+        out = _shift_ink_toward(out, ref_ink)
+
+    return out
+
+
 def stitch_contraction(
     left_img: np.ndarray,
     right_img: np.ndarray,
@@ -1181,6 +1297,8 @@ def _generate_contraction(
 
     left_img = _gen_part(left_text)
     right_img = _gen_part(right_text)
+
+    right_img = _match_chunk_to_reference(right_img, left_img)
 
     result = stitch_contraction(left_img, right_img)
     log.debug(

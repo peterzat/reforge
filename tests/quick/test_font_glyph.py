@@ -124,45 +124,55 @@ class TestFallbackHelper:
 @pytest.mark.quick
 @pytest.mark.skipif(not FONT_EXISTS, reason="Caveat font not vendored")
 class TestDilateToBezierBaseline:
-    """Spec 2026-04-19 criterion 1: Caveat glyphs dilate to the Bezier
-    stroke-width baseline (body_height * 0.12)."""
+    """Spec 2026-04-19: Caveat glyphs dilate to at least 1.15x the Bezier
+    stroke width (the 2026-04-19 contraction + Caveat thickness spec lifted
+    the target from 1.0x after Review 6 flagged `; ? !` as `a bit small`)."""
 
-    def test_median_stroke_width_meets_bezier_at_body_height_24(self):
+    MULTIPLIER = 1.15
+
+    def test_caveat_stroke_at_least_1_15x_bezier_at_body_height_24(self):
         from reforge.model.font_glyph import (
             _median_stroke_width_px,
             render_trailing_mark,
         )
+        from reforge.model.generator import make_synthetic_mark
 
         body_height = 24
-        target = body_height * 0.12
-        # Semicolon exercises both body (dots) and descender (tail); the
-        # tail is the thinnest part of the renderer, so if its median still
-        # meets target, thicker marks trivially do.
         for mark in (".", ";", "!", "?", ","):
-            img = render_trailing_mark(
-                mark, body_height=body_height, ink_intensity=50, font_path=FONT_PATH
+            caveat = render_trailing_mark(
+                mark, body_height=body_height, ink_intensity=50, font_path=FONT_PATH,
             )
-            stroke = _median_stroke_width_px(img)
-            assert stroke >= target, (
-                f"{mark!r} median stroke {stroke:.2f} px < Bezier target {target:.2f} px"
+            bezier = make_synthetic_mark(mark, 50, body_height)
+            caveat_stroke = _median_stroke_width_px(caveat)
+            bezier_stroke = _median_stroke_width_px(bezier)
+            target = bezier_stroke * self.MULTIPLIER
+            assert caveat_stroke >= target, (
+                f"{mark!r}: caveat stroke {caveat_stroke:.2f} < "
+                f"{self.MULTIPLIER:.2f}x bezier {bezier_stroke:.2f} = {target:.2f}"
             )
 
-    def test_dilation_applies_across_production_body_heights(self):
-        """Spec criterion 1 checks body_heights {18, 24, 32}."""
+    def test_caveat_1_15x_bezier_across_production_body_heights(self):
+        """Body heights 18 / 24 / 32 must all meet the 1.15x target."""
         from reforge.model.font_glyph import (
             _median_stroke_width_px,
             render_trailing_mark,
         )
+        from reforge.model.generator import make_synthetic_mark
 
         for body_height in (18, 24, 32):
-            target = body_height * 0.12
-            img = render_trailing_mark(
-                ".", body_height=body_height, ink_intensity=50, font_path=FONT_PATH
-            )
-            stroke = _median_stroke_width_px(img)
-            assert stroke >= target, (
-                f"body_height={body_height}: stroke {stroke:.2f} < target {target:.2f}"
-            )
+            for mark in (".", ",", ";", "!", "?"):
+                caveat = render_trailing_mark(
+                    mark, body_height=body_height, ink_intensity=50, font_path=FONT_PATH,
+                )
+                bezier = make_synthetic_mark(mark, 50, body_height)
+                caveat_stroke = _median_stroke_width_px(caveat)
+                bezier_stroke = _median_stroke_width_px(bezier)
+                target = bezier_stroke * self.MULTIPLIER
+                assert caveat_stroke >= target, (
+                    f"body_height={body_height} {mark!r}: "
+                    f"caveat {caveat_stroke:.2f} < {target:.2f} "
+                    f"(1.15x bezier {bezier_stroke:.2f})"
+                )
 
 
 @pytest.mark.quick
