@@ -18,6 +18,8 @@
 
 - [ ] 7. `scripts/findings_sweep.py` exits 0 after the spec closes. The `FINDINGS_LAST_PROCESSED` marker at the top of `reviews/human/FINDINGS.md` is bumped to cover any review created during criterion 5.
 
+- [ ] 8. **`make test-full` passes reliably.** Two consecutive runs of `make test-full` from a clean shell return exit 0. The order-dependent failure observed this turn -- `tests/medium/test_contraction_sizing.py::test_right_chunk_matches_left` (`can't` seed=2718 right-chunk stroke 5.40 vs left 6.39, ratio 0.845 < 0.85 gate) -- is resolved by root-cause fix, not by lowering the quality bar. Acceptable fix paths: (a) identify and fix the state-leak in `tests/full/` (likely `tests/full/test_e2e.py`) that perturbs the medium tier's generation state; (b) harden `test_right_chunk_matches_left`'s fixture to reset `torch.manual_seed` / CUDA state / pipeline caches so the test is tier-order-independent; (c) if investigation confirms true generation variance at this boundary (the 0.845 result is within seed-consistent run-to-run noise) and (a)/(b) cannot yield determinism, widen the gate with a comment citing the measured variance -- but not below 0.83 without a new human review confirming visual contraction quality is still acceptable. If none of these paths yield a green test-full within a reasonable budget, escape to documenting the blocker in SPEC.md and mark this criterion unmet.
+
 ### Context
 
 This spec consumes the `### Proposal (2026-04-19, refreshed)` section of the prior SPEC.md under the "Recommended default: (4) + (3)" path. Directions (1), (2), and the `"by"` descender revisit stay deferred; see the consumed proposal's commit (`ea9ea73`) for the rationale. The other two proposal directions (5 -- promote findings_sweep hook to zat.env skill; 4 non-adopted items) are not in scope here.
@@ -54,6 +56,16 @@ The missing piece is a shared key. Record it in the review JSON (the human-visib
 - `"by"` descender clipping revisit (proposal revisit candidate).
 - Promoting the findings_sweep hook from project CLAUDE.md into `~/src/zat.env/skills/spec/SKILL.md`.
 
+**Test-full investigation (criterion 8):**
+
+The failure is deterministic under `make test-full` ordering and vanishes when `test_contraction_sizing.py` runs in its own pytest invocation or in `tests/medium/` alone (`341 passed` this turn). That narrows the likely causes:
+
+- The full-tier e2e tests (`tests/full/test_e2e.py`) warm the pipeline (load UNet, VAE, StyleEncoder into CUDA) in a way that changes cuDNN / tensor-core-convolution autotuning state by the time the medium tier runs.
+- Model weights persist in the HuggingFace cache; the e2e tests may write to the same cache with a different dtype or download variant.
+- `torch.manual_seed` is set per-test by `test_right_chunk_matches_left`, but `torch.cuda.manual_seed_all` and the cuDNN algorithm selection are not, so CUDA-side nondeterminism can shift outputs at the boundary.
+
+Start the investigation at option (b) (fixture hardening in `test_contraction_sizing.py`): add a fresh-CUDA reset (`torch.cuda.empty_cache()`, fresh seed via `torch.manual_seed` + `torch.cuda.manual_seed_all`, clear autotune cache if any) before the test body. If that deterministically passes in both standalone and after-test-full orderings, the criterion is met. Only fall to (c) gate widening if (a) and (b) fail.
+
 **Failure protocol:**
 
 - Criteria 1/2/3 (graduations): if during drafting the principle turns out to be narrower than "stable and generalizable" or specific to a code path that will likely change soon, leave that finding in its current status and note the reason in SPEC.md alongside the checkbox. Do not force-graduate.
@@ -61,6 +73,7 @@ The missing piece is a shared key. Record it in the review JSON (the human-visib
 - Criterion 5: if the verification session reveals any unpopulated key, revert criterion 4's change before closing the spec.
 - Criterion 6: any regression is almost certainly caused by the criterion 4 code change; revert that specifically, not the graduation work.
 - Criterion 7: if a review lands during criterion 5, process it into FINDINGS.md as a pointer + update the marker in the same edit, following the loop hook in CLAUDE.md.
+- Criterion 8: if two investigation cycles (fixture hardening, then state-leak identification) fail to yield a deterministic green `make test-full`, stop and document the blocker. Do not lower the 0.85 stroke-ratio gate below 0.83 without a human review. If the gate must widen, add an explanatory comment at the test citing the measured variance range.
 
 **zat.env practices carried in:**
 
@@ -72,4 +85,4 @@ The missing piece is a shared key. Record it in the review JSON (the human-visib
 ---
 *Prior spec (2026-04-19, body-zone sizing): escaped 6/6 via the failure-protocol two-attempts path. x-height-spread ruled out as a lever for `size_inconsistent`. Follow-on FINDINGS automation landed in 5 commits (837 -> 403 line cleanup, `findings_sweep.py`, `/spec` loop hook, BACKLOG retirement).*
 
-<!-- SPEC_META: {"date":"2026-04-20","title":"Graduation sweep + candidate-eval join key","criteria_total":7,"criteria_met":0} -->
+<!-- SPEC_META: {"date":"2026-04-20","title":"Graduation sweep + candidate-eval join key","criteria_total":8,"criteria_met":0} -->
