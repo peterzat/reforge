@@ -1,5 +1,7 @@
 # Human Review Findings
 
+<!-- FINDINGS_LAST_PROCESSED: 2026-04-19_215858 -->
+
 Durable quality principles extracted from human evaluation reviews. Each finding
 includes the reviews that support it and any code changes it motivated.
 
