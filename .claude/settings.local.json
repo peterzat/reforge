@@ -65,7 +65,13 @@
       "WebFetch(domain:luc.devroye.org)",
       "Bash(ps:*)",
       "Read(//home/peter/src/qwen-2.5-localreview/**)",
-      "Bash(~/src/qwen-2.5-localreview/gpu-release:*)"
+      "Bash(~/src/qwen-2.5-localreview/gpu-release:*)",
+      "Bash(curl -sSL --fail \"https://github.com/google/fonts/raw/main/ofl/caveat/static/Caveat-Regular.ttf\" -o fonts/Caveat-Regular.ttf)",
+      "Bash(curl -sSL --fail \"https://github.com/google/fonts/raw/main/ofl/caveat/OFL.txt\" -o fonts/OFL.txt)",
+      "Bash(curl -sI \"https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf\")",
+      "Bash(curl -sI \"https://fonts.google.com/download?family=Caveat\")",
+      "Bash(curl -sSL --fail \"https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf\" -o fonts/Caveat-VariableFont_wght.ttf)",
+      "Bash(pkill -f \"qpeek\")"
     ]
   }
 }

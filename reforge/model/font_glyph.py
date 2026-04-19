@@ -21,8 +21,54 @@ Design:
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+# Target stroke width as a fraction of body_height, matching the Bezier
+# synthetic mark (see make_synthetic_mark's stroke_w = body_height * 0.12).
+BEZIER_STROKE_FRACTION = 0.12
+MIN_STROKE_PX = 1.5
+
+
+def _median_stroke_width_px(gray_img: np.ndarray, ink_threshold: int = 200) -> float:
+    """Measure the median stroke width in pixels.
+
+    Uses a distance transform on the binary ink mask: each ink pixel's
+    distance to the nearest background pixel equals roughly half the local
+    stroke thickness. 2 * median(distance over ink) approximates the
+    median stroke width.
+    """
+    ink_mask = (gray_img < ink_threshold).astype(np.uint8)
+    if ink_mask.sum() == 0:
+        return 0.0
+    dist = cv2.distanceTransform(ink_mask, cv2.DIST_L2, 3)
+    ink_distances = dist[ink_mask > 0]
+    if ink_distances.size == 0:
+        return 0.0
+    return 2.0 * float(np.median(ink_distances))
+
+
+def _dilate_to_stroke_width(gray_img: np.ndarray, target_px: float, max_iter: int = 4) -> np.ndarray:
+    """Dilate the dark (ink) regions of a grayscale image until the median
+    stroke width reaches ``target_px``.
+
+    Iterates a 3x3 grayscale erosion (which is a local min-filter, so it
+    expands dark regions on the white background) and re-measures after
+    each step. Per-iteration growth depends on glyph shape: thin linear
+    strokes grow by ~2 px per iteration, compact glyphs (dots) grow less.
+    Iterative-with-measurement converges regardless of shape.
+    """
+    current = _median_stroke_width_px(gray_img)
+    if current <= 0 or current >= target_px:
+        return gray_img
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    for _ in range(max_iter):
+        gray_img = cv2.erode(gray_img, kernel, iterations=1)
+        current = _median_stroke_width_px(gray_img)
+        if current >= target_px:
+            break
+    return gray_img
 
 
 def _font_for_body_height(font_path: str, body_height: int) -> tuple[ImageFont.FreeTypeFont, int]:
@@ -90,18 +136,29 @@ def render_trailing_mark(
     canvas_w = visible_w + horizontal_padding_px * 2
     canvas_h = ascent + descent
 
-    img = Image.new("L", (canvas_w, canvas_h), 255)
+    # Leave enough vertical/horizontal slack on the canvas for the dilation
+    # step to expand strokes without hitting the edge.
+    target_stroke = max(MIN_STROKE_PX, body_height * BEZIER_STROKE_FRACTION)
+    dilate_margin = int(np.ceil(target_stroke)) + 1
+    canvas_w_padded = canvas_w + 2 * dilate_margin
+
+    img = Image.new("L", (canvas_w_padded, canvas_h), 255)
     draw = ImageDraw.Draw(img)
     # Anchor: draw so that the glyph's visible left edge lands at
-    # horizontal_padding_px. bbox[0] is the x-offset of visible left
-    # from the logical draw x; subtract it to zero-align.
+    # horizontal_padding_px + dilate_margin. bbox[0] is the x-offset of
+    # visible left from the logical draw x; subtract it to zero-align.
     draw.text(
-        (horizontal_padding_px - bbox[0], 0),
+        (dilate_margin + horizontal_padding_px - bbox[0], 0),
         mark,
         fill=ink_intensity,
         font=font,
     )
     arr = np.array(img, dtype=np.uint8)
+
+    # Dilate to match the Bezier stroke-width baseline. The measurement is
+    # done before horizontal tight-crop so the distance transform sees the
+    # full glyph on a padded canvas.
+    arr = _dilate_to_stroke_width(arr, target_stroke)
 
     # Tight-crop horizontally to visible ink, keeping the padding.
     col_ink = np.any(arr < 200, axis=0)

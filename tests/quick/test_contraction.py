@@ -1,4 +1,10 @@
-"""Quick tests for contraction detection, splitting, and synthetic apostrophe."""
+"""Quick tests for contraction detection, splitting, and two-part stitching.
+
+Spec 2026-04-18 Option W: split_contraction keeps the apostrophe on the
+right part (e.g. "can't" -> ("can", "'t")), so both parts render as normal
+words and stitch_contraction is a two-part baseline-aligned concatenation
+with no synthetic apostrophe insertion.
+"""
 
 import numpy as np
 import pytest
@@ -26,12 +32,10 @@ class TestIsContraction:
 
     def test_apostrophe_at_start(self):
         from reforge.model.generator import is_contraction
-        # Leading apostrophe (not a contraction split point)
         assert not is_contraction("'twas")
 
     def test_apostrophe_at_end(self):
         from reforge.model.generator import is_contraction
-        # Trailing apostrophe
         assert not is_contraction("dogs'")
 
     def test_no_letters_around_apostrophe(self):
@@ -42,101 +46,77 @@ class TestIsContraction:
 
 @pytest.mark.quick
 class TestSplitContraction:
-    def test_standard_splits(self):
+    def test_standard_splits_keep_apostrophe_on_right(self):
         from reforge.model.generator import split_contraction
-        assert split_contraction("can't") == ("can", "t")
-        assert split_contraction("don't") == ("don", "t")
-        assert split_contraction("it's") == ("it", "s")
-        assert split_contraction("they'd") == ("they", "d")
+        assert split_contraction("can't") == ("can", "'t")
+        assert split_contraction("don't") == ("don", "'t")
+        assert split_contraction("it's") == ("it", "'s")
+        assert split_contraction("they'd") == ("they", "'d")
 
     def test_possessive(self):
         from reforge.model.generator import split_contraction
-        assert split_contraction("Katherine's") == ("Katherine", "s")
+        assert split_contraction("Katherine's") == ("Katherine", "'s")
 
-    def test_multiple_apostrophes(self):
-        """With multiple apostrophes, splits at the first one."""
+    def test_multichar_suffix(self):
+        from reforge.model.generator import split_contraction
+        assert split_contraction("they've") == ("they", "'ve")
+        assert split_contraction("you're") == ("you", "'re")
+
+    def test_multiple_apostrophes_splits_at_first(self):
+        """With multiple apostrophes, split happens at the first one
+        and everything from that apostrophe onward is the right part."""
         from reforge.model.generator import split_contraction
         left, right = split_contraction("o'clock's")
         assert left == "o"
-        assert right == "clock's"
+        assert right == "'clock's"
 
-
-@pytest.mark.quick
-class TestMakeSyntheticApostrophe:
-    def test_returns_image(self):
-        from reforge.model.generator import make_synthetic_apostrophe
-        img = make_synthetic_apostrophe(ink_intensity=60, body_height=30)
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.uint8
-        assert img.ndim == 2
-
-    def test_dimensions_proportional(self):
-        from reforge.model.generator import make_synthetic_apostrophe
-        img = make_synthetic_apostrophe(ink_intensity=60, body_height=30)
-        assert img.shape[0] == 30  # matches body_height
-        assert img.shape[1] >= 3   # at least mark width + padding
-
-    def test_has_ink(self):
-        from reforge.model.generator import make_synthetic_apostrophe
-        img = make_synthetic_apostrophe(ink_intensity=60, body_height=30)
-        # Should have some dark pixels (the apostrophe mark)
-        assert np.any(img < 180)
-
-    def test_mostly_white(self):
-        from reforge.model.generator import make_synthetic_apostrophe
-        img = make_synthetic_apostrophe(ink_intensity=60, body_height=30)
-        # Most pixels should be white background
-        white_fraction = np.mean(img == 255)
-        assert white_fraction > 0.7
-
-    def test_different_intensities(self):
-        from reforge.model.generator import make_synthetic_apostrophe
-        light = make_synthetic_apostrophe(ink_intensity=120, body_height=30)
-        dark = make_synthetic_apostrophe(ink_intensity=40, body_height=30)
-        # Dark version should have darker ink pixels
-        light_ink = light[light < 200]
-        dark_ink = dark[dark < 200]
-        if len(light_ink) > 0 and len(dark_ink) > 0:
-            assert np.median(dark_ink) < np.median(light_ink)
-
-    def test_small_body_height(self):
-        """Should not crash on very small body heights."""
-        from reforge.model.generator import make_synthetic_apostrophe
-        img = make_synthetic_apostrophe(ink_intensity=60, body_height=4)
-        assert img.shape[0] == 4
-        assert img.shape[1] >= 2
+    def test_concatenation_reconstructs_original(self):
+        """Left + right must equal the original word (no characters lost)."""
+        from reforge.model.generator import split_contraction
+        for word in ("can't", "don't", "it's", "they'd", "they've", "Katherine's"):
+            left, right = split_contraction(word)
+            assert left + right == word, f"{word} -> {left!r} + {right!r}"
 
 
 @pytest.mark.quick
 class TestStitchContraction:
-    def test_stitches_three_parts(self):
-        from reforge.model.generator import stitch_contraction
-        left = np.full((30, 40), 255, dtype=np.uint8)
-        left[5:25, 5:35] = 60  # ink
-        apos = np.full((30, 6), 255, dtype=np.uint8)
-        apos[3:10, 2:4] = 60  # apostrophe mark
-        right = np.full((30, 20), 255, dtype=np.uint8)
-        right[5:25, 3:17] = 60  # ink
+    def _ink_rect(self, h, w, top, bottom, left, right, ink=60):
+        img = np.full((h, w), 255, dtype=np.uint8)
+        img[top:bottom, left:right] = ink
+        return img
 
-        result = stitch_contraction(left, apos, right)
+    def test_stitches_two_parts(self):
+        from reforge.model.generator import stitch_contraction
+        left = self._ink_rect(30, 40, 5, 25, 5, 35)
+        right = self._ink_rect(30, 20, 5, 25, 3, 17)
+
+        result = stitch_contraction(left, right)
         assert isinstance(result, np.ndarray)
         assert result.ndim == 2
-        # Width should be roughly sum of parts (minus tight crop + gaps)
+        # Width should be roughly left + right (after tight crop + 1px gap).
         assert result.shape[1] > 20
+        # The new signature is two-part only.
+        assert np.any(result < 180)
 
-    def test_baseline_alignment(self):
-        """Parts with different heights align by ink bottom."""
+    def test_baseline_alignment_across_differing_heights(self):
+        """Left and right parts with different ink bottoms align by baseline."""
         from reforge.model.generator import stitch_contraction
-        # Left: ink at rows 5-25 (bottom = 25)
-        left = np.full((30, 40), 255, dtype=np.uint8)
-        left[5:25, 5:35] = 60
-        # Right: ink at rows 10-28 (bottom = 28, different from left)
-        right = np.full((30, 20), 255, dtype=np.uint8)
-        right[10:28, 3:17] = 60
-        apos = np.full((30, 6), 255, dtype=np.uint8)
-        apos[3:10, 2:4] = 60
-
-        result = stitch_contraction(left, apos, right)
-        # Should not crash and should produce a valid image
+        left = self._ink_rect(30, 40, 5, 25, 5, 35)     # ink bottom at row 24
+        right = self._ink_rect(30, 20, 10, 28, 3, 17)   # ink bottom at row 27
+        result = stitch_contraction(left, right)
         assert result.shape[0] >= 30
-        assert np.any(result < 180)  # has ink
+        assert np.any(result < 180)
+
+    def test_signature_is_two_part_only(self):
+        """stitch_contraction no longer accepts an apostrophe image parameter."""
+        import inspect
+        from reforge.model.generator import stitch_contraction
+        params = list(inspect.signature(stitch_contraction).parameters)
+        assert params == ["left_img", "right_img"], params
+
+
+@pytest.mark.quick
+def test_make_synthetic_apostrophe_is_gone():
+    """make_synthetic_apostrophe was removed in spec 2026-04-18 Option W."""
+    from reforge.model import generator
+    assert not hasattr(generator, "make_synthetic_apostrophe")

@@ -535,6 +535,69 @@ CLAUDE.md section where they were added.
   pre-Turn-2b split path (commits fe12a7b, 7d55f9c). Findings stands
   unchanged; next-turn candidate is option E (full-word DP, NO overlay)
   rather than more overlay tuning — see BACKLOG for rationale.
+- **Review 8 (2026-04-18_213857): option E (full-word DP) failed, reverted.**
+  Spec 2026-04-18 deleted `is_contraction` dispatch + split_contraction +
+  make_synthetic_apostrophe + stitch_contraction so DP rendered whole
+  contractions via the normal generate_word path. Automated gates all
+  passed: test-quick 281, test-regression clean on all 3 seeds,
+  test-hard avg OCR 0.868, primary CV gates held. Human review
+  regressed: composition 2/5 notes `"can''t", other punctuation wrong
+  (too small). "they'd" looks right.`; punctuation 2/5 notes `double
+  apostrophes, small and too low ! and ;`; hard_words notes
+  `"impoocgsiblle", "can''t", gray boxes, "'t" in don't is cropped too
+  close, apostrophe and t both offset far to the right.` The `can''t`
+  double-apostrophe defect is the apostrophe-stacking failure mode the
+  spec explicitly guarded against — but it originates in DP itself this
+  time, not an overlay. DP sometimes renders a contraction with two
+  apostrophe-shaped strokes side by side, and without a split path
+  there is no wrapper layer to suppress the duplicate. `they'd` looked
+  clean in this review, matching the seed-2718 observation that drove
+  option E: DP *can* render contractions well, just not reliably
+  enough for a gate. The code change was reverted to the split path.
+  Per the spec's failure protocol, do not re-attempt option E with
+  tweaks; the next candidate is option W (split at `'t`) or a
+  BACKLOG F revisit with morphological-component apostrophe detection.
+  **Update to the understanding of this finding:** split-path right-side
+  weakness (Review 6 "cantt") and full-word DP stacking (Review 8
+  "can''t") are *both* seed-variant failure modes. Neither path is
+  robust across seeds 42/137/2718; both produce readable output on
+  some seeds and human-visible defects on others. Wrapper-layer tuning
+  has been exhausted at three structural levels (split, overlay, no
+  intervention); moves that remain are sub-word-level (option W split
+  at the `'t` boundary, keeping 2-char chunks above the IAM
+  `MIN_WORD_CHARS=4` filter via padding) or metric-layer (morphological
+  component detection to identify DP's spurious apostrophe ink).
+- **Review 9 (2026-04-18_233350): option W (split at `'t`) landed.**
+  Spec 2026-04-18 Option W changed `split_contraction("can't")` to
+  return `("can", "'t")` (apostrophe retained on the right part), so
+  both parts render through the normal word path and the synthetic
+  apostrophe generator was deleted. All 8 criteria met, including
+  criterion 8 (human review). Composition 3/5 (up from E's 2/5,
+  +1 point). None of the forbidden defect patterns appeared in notes:
+  no duplicated letter adjacent to apostrophe ("cantt"/"itss"), no
+  stacked apostrophes ("can''t"/"can'''t"), no detached apostrophe
+  ("can 't"). Human verbatim: "apostrophes look better." The
+  wrapper-layer exhaustion concern from Review 8 was incorrect — W
+  was a viable structural move that had not yet been tried.
+  **New sub-issue observed in the same review** (tracked as a W
+  follow-up, not a regression): the `'t` 2-char chunk renders with
+  visibly lighter ink weight than the `can` left part, and the `t`
+  glyph itself is tiny ("'t' in 'can't' has very light ink width vs
+  'can'"). This is the IAM `MIN_WORD_CHARS=4` risk the spec flagged —
+  DP produces a thin-ink 2-char output because 2-char inputs are below
+  its training distribution. The existing cross-word stroke-weight
+  harmonization pass should help but clearly isn't closing the gap on
+  a 2-char chunk against a 3-char neighbor. Candidate fixes for a
+  future spec: (a) pad the right chunk to >= 4 chars with a leading
+  invisible filler and tight-crop post-generation; (b) extend
+  `harmonize_words` stroke-shift to apply more aggressively when the
+  chunk length is below a threshold; (c) accept as a known W-era
+  limitation if the next spec targets a different quality dimension.
+  Other composition-level defects flagged in Review 9 (`by` descender
+  clipping, `morninggs`/`somettthing` duplicate letters, punctuation
+  still too small and low) are tracked in their own FINDINGS entries
+  or BACKLOG items (Caveat glyph dilate, baseline alignment); not
+  apostrophe-rendering issues.
 
 ### Trailing punctuation is invisible in generated output
 
@@ -620,6 +683,34 @@ CLAUDE.md section where they were added.
   dilate in `reforge/model/font_glyph.py::render_trailing_mark` targeting
   the Bezier-equivalent `body_height * 0.12` stroke width. Verify with a
   production-scale smoke test before integrating.
+- **Review 6 (2026-04-19_021632): Caveat dilate + baseline alignment
+  landed; punctuation None/5 → 3/5.** Spec 2026-04-19 added an iterative
+  morphological dilate in `render_trailing_mark` (3x3 grayscale erode
+  loop, iterates until median stroke width measured via distance
+  transform meets the Bezier baseline) and changed `_attach_mark_to_word`
+  to align the mark against the word's detected baseline
+  (`reforge.compose.layout.detect_baseline`) instead of its full ink
+  bottom. For descender marks (`,`, `;`) the mark's own body baseline is
+  used so the tail extends below without pulling the alignment point
+  down. All 7 criteria met: test-quick 299, test-regression clean on 3
+  seeds, test-hard avg OCR 0.694, human review punctuation 3/5 (up from
+  Review 5's None/5 in the first Caveat landing), composition 3/5 (no
+  regression from Option W). Human verbatim: *"all significantly
+  improved.. ; ? and ! are all a bit small"*. The "a bit small" residual
+  is a softened echo of Review 5's "small" complaint — further thickness
+  gain (e.g. targeting 1.2× Bezier rather than 1.0×, or re-calibrating
+  `_font_for_body_height`'s cap-height factor from 0.55 to something
+  larger) is a plausible next-iteration knob but not urgent.
+- **Unrelated observations from Review 6** (tracked here so they don't
+  get lost; not trailing-punctuation issues): *"`two` is super low"* —
+  a non-descender short word composited below its expected baseline.
+  Likely a composition-time baseline-detection bug in `compose/render.py`
+  (not `_attach_mark_to_word`, which this spec changed). Related to the
+  BACKLOG "`by` descender clipping" entry; may be the same underlying
+  baseline-detection problem on short words generally. *"apostrophe+t in
+  first `can't` still too small and too thin ink weight"* — W follow-up,
+  already captured in FINDINGS Review 9 under Apostrophe-rendering. No
+  action needed under this finding.
 
 ### Single-character "I" loses ink, appears half-missing
 
