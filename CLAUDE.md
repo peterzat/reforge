@@ -455,7 +455,7 @@ These are lessons learned from the penforge predecessor. Each describes a real p
 - Score all split positions: balance (prefer equal chunks) + consonant-cluster penalty (-3 if >= 3 trailing consonants) + boundary bonus (+2 for CC boundary, +1 for CV)
 - Each chunk must be >= 4 chars (IAM minimum)
 - Normalize chunk heights to median before stitching
-- Baseline-aligned stitching (align at bottom, pad shorter chunks at top)
+- Baseline-aligned stitching via **ink-profile cross-correlation**, not single-point ink-bottom alignment (graduated from FINDINGS 2026-04-19). Single-point alignment fails when ink distribution differs between chunks; cross-correlation finds the vertical shift that maximizes profile overlap. The original "stitching produces visible seams" complaint was actually height-mismatch from the single-point approach; four fixes at various height-normalization layers were insufficient before cross-correlation landed.
 - Overlap blending (8px linear alpha fade) at stitch boundary
 
 ### Preprocessing order (per-word operations only after segmentation)
