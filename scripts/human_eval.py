@@ -1028,7 +1028,10 @@ def main():
     review_path = save_review(responses, eval_metadata, eval_types)
     print_summary(review_path, responses)
 
-    print("Review captured. Run the coding agent to draft updated FINDINGS.md.")
+    print(
+        "Review captured. FINDINGS.md refresh will run on next `/spec` "
+        "(or `make findings-sweep` to preview now)."
+    )
 
 
 if __name__ == "__main__":

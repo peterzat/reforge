@@ -195,10 +195,34 @@ prints a staleness notice when pipeline files have changed since the last review
 **When changing generation, composition, or quality code, read `reviews/human/FINDINGS.md`
 for human-observed quality patterns.**
 
-**Findings workflow:** After a review, the agent detects unprocessed review JSON files
-(review timestamp newer than FINDINGS.md modification time), drafts updated findings,
-and presents the draft via qpeek for human approval. Findings that persist across 3+
-reviews and 2+ code changes are candidates for graduation to CLAUDE.md.
+**Findings workflow:** FINDINGS.md maintenance is tied into the `/spec` loop.
+
+- **Detection:** `scripts/findings_sweep.py` (also `make findings-sweep`) lists any
+  review JSON in `reviews/human/` whose filename stem sorts after the
+  `FINDINGS_LAST_PROCESSED` marker at the top of FINDINGS.md. Exits 1 if anything
+  is unprocessed, 0 otherwise. Read-only; no LLM calls, no file writes, no qpeek.
+- **Automatic hook on `/spec` in evolve mode at turn close:** after all spec
+  acceptance criteria are verified met, AND before generating the next-turn
+  proposal, run `.venv/bin/python scripts/findings_sweep.py`. If it exits 1, draft
+  FINDINGS.md updates inline, **present the diff in the terminal** (not via
+  qpeek -- qpeek is for images only), wait for user ack, apply the edits, bump the
+  `FINDINGS_LAST_PROCESSED` marker to the newest review's stem in the same edit,
+  then continue to proposal generation. If the sweep exits 0, skip; FINDINGS is
+  already current.
+- **When drafting updates**, use the triage rules in FINDINGS.md's "How this file
+  works" section (evidence-for-existing / new-standalone / not-actionable) and
+  apply the status-change triggers:
+  - Move to **Resolved** when a targeted eval or specific review note confirms
+    the fix ("significantly improved", "every word + punctuation improved",
+    OCR -> 1.000 on the gated cases, etc.).
+  - Move to **Plateaued** when the rule in FINDINGS.md is met: 3+ code changes,
+    3+ reviews, no rating movement >= 1 point.
+  - Propose **Graduation** to CLAUDE.md when 3+ reviews AND 2+ code changes AND
+    the principle is stable and generalizable. Graduation means promoting the
+    principle into "Hard-won design constraints" (or equivalent) and compressing
+    the FINDINGS entry to a pointer.
+- **Ad-hoc preview:** `make findings-sweep` any time. Useful right after a
+  `make test-human` session to see what the next `/spec` will draft.
 
 **Finding-driven iteration pattern:**
 1. Read `reviews/human/FINDINGS.md` and pick the most actionable Active finding.

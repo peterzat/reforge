@@ -1,4 +1,4 @@
-.PHONY: test test-quick test-medium test-full test-regression test-ocr test-hard test-human test-tuning setup-hooks review
+.PHONY: test test-quick test-medium test-full test-regression test-ocr test-hard test-human test-tuning setup-hooks review findings-sweep
 
 test-quick:
 	.venv/bin/python -m pytest tests/quick/ -x -q
@@ -57,3 +57,6 @@ test-human:
 
 setup-hooks:
 	./scripts/setup-hooks.sh
+
+findings-sweep:
+	.venv/bin/python scripts/findings_sweep.py
