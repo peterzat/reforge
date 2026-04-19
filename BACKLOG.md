@@ -99,6 +99,12 @@ entry for the full history.
 - **Revisit criteria:** review after turn 2026-04-17 still cites the defect; then draft a dedicated spec.
 - **Origin:** FINDINGS.md (Baseline alignment fragile finding, review 9 = 2026-04-17_141320).
 
+### size_inconsistent defect — x-height-spread lever ruled out
+- `size_inconsistent` persists in 5 of the last 5 human reviews. Spec 2026-04-19 attacked it by reducing `x_height_spread` on the demo sentence (defined and measured by `scripts/measure_word_sizing.py`). Two attempts (shrink dimensions; preserve dimensions via padding) both reduced the metric 21% on seed 42 but produced the same "superscript" regression (short words reading as raised). The metric is orthogonal to human perception of size_inconsistent; see `docs/sizing_diagnostic.md` for the full record.
+- **Why deferred:** the lever the spec targeted is wrong. A replacement turn needs a different diagnostic and probably a different layer (composition/layout, or a finding-definition refinement).
+- **Revisit criteria:** a future turn commits to one of these directions: (a) composition-layer fix that makes visually-shorter words read as naturally shorter without breaking baseline alignment; (b) dedicated human-eval type that elicits which specific words are flagged under "size_inconsistent" (different from the current aggregate flag); (c) explicit user acceptance of this as a wrapper-layer plateau. `scripts/measure_word_sizing.py` and `docs/sizing_diagnostic.md` are the starting artifacts for any revisit.
+- **Origin:** spec 2026-04-19 (body-zone sizing), escape via failure-protocol "two consecutive fix attempts failed".
+
 ### QUALITY_WEIGHTS reweighting
 - Retune the weights in `reforge/quality/score.py` to better match human candidate preference (reviews show ~25% human-metric agreement).
 - **Why deferred:** blocked on the candidate-score log from spec 2026-04-17 D1 reaching N>=15 samples.

@@ -113,6 +113,82 @@ or reach <= 1.4.
   lever (all the levers inflate ink_h and break the regression gate).
   4.67 is the practical target.
 
-## Post-fix outcome
+## Post-fix outcome — spec escaped after two failed attempts
 
-_To be filled in after the code change lands._
+Both attempts reduced the numeric `x_height_spread` but introduced the
+same human-observed "superscript" regression. The conclusion is that
+x-height-spread is orthogonal to the human perception of
+`size_inconsistent`, and the spec's stated lever is wrong.
+
+### Attempt 1 (commit `cdb7dad`, reverted in `484c89b`)
+
+Added `equalize_body_zones_pass2(imgs)` to `font_scale.py` and called
+it in `pipeline.py` after `harmonize_words`. Scales DOWN any word
+whose `_effective_x_height` exceeds `1.05 * median_xh`. Image height
+shrinks with the content.
+
+- Numeric result: spread 5.500 -> 4.333 on seed 42 (21% reduction).
+- `make test-regression`: 304 passed, primary gates hold on seeds 42/137/2718.
+- `make test-quick`: 306 passed.
+- Human review `reviews/human/2026-04-19_215858.json`:
+  - sizing A/B: 4/5 (new variant preferred over pre-fix)
+  - composition: 3/5 (unchanged numerically)
+  - freeform notes: "size and baseline inconsistencies, but only on a
+    few specific words. The first sentence widely varies ('I can't' is
+    superscript, as is 'it was a', and 'exactly' is also too high.
+    Significant visual regression. Other small+superscript words:
+    'so', and 'by'".
+- Mechanism of the regression: `cv2.resize` produced a shorter image
+  for each scaled-down word. `compose_words` computes a per-line
+  baseline as the median of per-word baselines and clamps outliers
+  (> 20% from median) to the median. A shrunk word's baseline (e.g.
+  row 30 of a 38-row image) deviates >20% from the line median
+  (row 50 of 64-row neighbors), gets clamped to 50, but the shrunk
+  image has no content at row 50 -- its ink is at rows 12 to 28. The
+  compose step places the image at the line's y-anchor and the ink
+  ends up in the top of its slot, reading as superscript.
+
+### Attempt 2 (uncommitted; discarded after preview)
+
+Same `equalize_body_zones_pass2` algorithm, but image height is
+preserved: the scaled-down content is pasted into a canvas matching
+the original height, positioned so its ink bottom aligns with the
+original ink bottom (baseline preservation). Width scales
+proportionally.
+
+- Numeric result: spread 5.500 -> 4.333 on seed 42 (same 21% reduction).
+- `make test-regression`: 309 passed.
+- `make test-quick`: 307 passed.
+- Visual preview via `./demo.sh` + `./qpeek.sh result.png`: user
+  confirmed "the 'superscript' issue persists like we saw before".
+- Why baseline preservation was not enough: even with
+  baseline-correct placement, the shrunk word is *visibly shorter*
+  than its neighbors on the same line. The human eye reads a word
+  whose top extends less far than its neighbors' as "raised", even
+  when its bottom sits on the same baseline. The defect the spec
+  calls "size_inconsistent" is not really x-height disparity -- it
+  is cross-word *total-height* disparity against a visual reference
+  of the taller neighbors, and the only way to fix that within this
+  pipeline is to inflate the short words' total ink height, which
+  is exactly what `harmonize_heights` already does and exactly what
+  CLAUDE.md's `height_outlier_score` gate is designed to tolerate.
+
+### Conclusion
+
+`x_height_spread` reduction is the wrong lever for `size_inconsistent`.
+A future turn targeting `size_inconsistent` should either:
+
+1. Attack composition/layout: teach `compose_words` to place
+   visually-shorter words so they read as naturally shorter (e.g.
+   adjust per-line baselines when word heights are bimodal).
+2. Attack the finding definition: the reviewer's "size_inconsistent"
+   flag may describe perceived unevenness rather than metric
+   disparity. A dedicated human-eval type could elicit which specific
+   words are flagged, producing a different, more actionable
+   diagnostic than x_height_spread.
+3. Accept the plateau: note the finding as a wrapper-layer structural
+   limit (like the single-char sizing plateau) and stop iterating.
+
+The diagnostic script (`scripts/measure_word_sizing.py`) and this doc
+are preserved so a future lever-investigation turn starts with a
+measured baseline rather than speculation.
