@@ -144,6 +144,24 @@
       "category": "punctuated",
       "reason": "Short word with apostrophe",
       "added": "2026-04-02"
+    },
+    {
+      "word": "mornings",
+      "category": "duplicate_letter_hallucination",
+      "reason": "DP renders as 'morninggs' (cited review 2026-04-18_233350)",
+      "added": "2026-04-19"
+    },
+    {
+      "word": "something",
+      "category": "duplicate_letter_hallucination",
+      "reason": "DP renders as 'somettthing' (cited review 2026-04-18_233350)",
+      "added": "2026-04-19"
+    },
+    {
+      "word": "really",
+      "category": "duplicate_letter_hallucination",
+      "reason": "DP renders as 'reallly' (cited review 2026-04-18_154757)",
+      "added": "2026-04-19"
     }
   ],
   "candidates": [

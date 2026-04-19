@@ -214,6 +214,25 @@ CLAUDE.md section where they were added.
   still flagged as unreadable by human. The right-side single character
   ("t", "s", "d") suffers from the same canvas-fill problem as other short
   words.
+- **Review 8 (2026-04-19_181354): duplicate-letter hallucination words
+  promoted to curated hard_words; rating 2/5 → 3/5.** Spec 2026-04-19
+  "Duplicate-letter hallucination class" added `mornings`, `something`,
+  `really` to `reforge/data/hard_words.json::curated` alongside the
+  already-present `impossible`. These words had been cited as
+  `morninggs`, `somettthing`, `reallly` across Reviews 5-7 but weren't
+  gated. On today's tree (commit `1a6e03e`, post-`_match_chunk_to_reference`
+  and Caveat 1.15×), all three pass cleanly: seed-42 test-hard reads
+  mornings=0.889, something=1.000, really=1.000 with zero critical
+  flags (prior run had 2 critical). Medium-tier multi-seed test
+  `tests/medium/test_duplicate_letter_hallucinations.py` confirmed each
+  target word clears OCR >= 0.5 on all three seeds (42/137/2718); the
+  weakest cell was `mornings` at seed 2718 at 0.750. No generation-side
+  code change was needed — the defect was the test-gating gap. Human
+  Review 8: composition held at 3/5, hard_words lifted to **3/5** (up
+  from 2/5 in Review 6). No freeform defect flags on the three target
+  words. This was the pragmatic confirmation of the hypothesis that the
+  composition plateau persists partly because the gates weren't catching
+  the exact words humans kept flagging.
 
 ### Baseline alignment fragile across generation runs
 
