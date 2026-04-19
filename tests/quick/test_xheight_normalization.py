@@ -8,7 +8,11 @@ look proportional next to words with ascenders (like "jumping").
 import numpy as np
 import pytest
 
-from reforge.quality.font_scale import equalize_body_zones, normalize_font_size
+from reforge.quality.font_scale import (
+    equalize_body_zones,
+    equalize_body_zones_pass2,
+    normalize_font_size,
+)
 from reforge.quality.ink_metrics import compute_x_height
 
 
@@ -86,3 +90,64 @@ class TestEqualizeBodyZones:
         result = equalize_body_zones([a, b])
         assert result[0].shape == a.shape
         assert result[1].shape == b.shape
+
+
+@pytest.mark.quick
+class TestEqualizeBodyZonesPass2:
+    """Pass2 runs post-harmonize to catch body-zone outliers that harmonize
+    created by inflating short no-ascender words."""
+
+    def test_scales_down_post_harmonize_outlier(self):
+        """Words whose x-height is above 105% of median get scaled down."""
+        oversized = _word_without_ascender(body_top=10, body_bottom=50)  # 40px body
+        normal1 = _word_with_ascender(body_top=20, body_bottom=45)  # 25px body
+        normal2 = _word_with_ascender(body_top=20, body_bottom=45)
+        normal3 = _word_with_ascender(body_top=20, body_bottom=45)
+
+        imgs = [oversized, normal1, normal2, normal3]
+        result = equalize_body_zones_pass2(imgs)
+
+        heights = [compute_x_height(img) for img in result]
+        max_h = max(heights)
+        min_h = min(heights)
+        assert min_h > 0
+        assert max_h / min_h <= 1.15, (
+            f"Pass2 should have scaled the outlier closer to median. "
+            f"Heights: {heights}"
+        )
+
+    def test_does_not_scale_up(self):
+        """Pass2 is unidirectional: never inflates small bodies."""
+        tiny_body = _word_with_ascender(body_top=30, body_bottom=40)  # 10px body
+        normal1 = _word_without_ascender(body_top=20, body_bottom=45)  # 25px
+        normal2 = _word_without_ascender(body_top=20, body_bottom=45)
+        normal3 = _word_without_ascender(body_top=20, body_bottom=45)
+
+        imgs = [tiny_body, normal1, normal2, normal3]
+        result = equalize_body_zones_pass2(imgs)
+        assert result[0].shape == tiny_body.shape
+
+    def test_too_few_words_noop(self):
+        a = _word_without_ascender()
+        b = _word_with_ascender()
+        result = equalize_body_zones_pass2([a, b])
+        assert result[0].shape == a.shape
+        assert result[1].shape == b.shape
+
+    def test_single_pass_no_iteration(self):
+        """Pass2 runs once. Extreme outliers are scaled in one step, not
+        iteratively converged. This keeps the pass cheap and predictable."""
+        extreme = _word_without_ascender(body_top=5, body_bottom=60)  # 55px body
+        normal1 = _word_with_ascender(body_top=20, body_bottom=45)
+        normal2 = _word_with_ascender(body_top=20, body_bottom=45)
+        normal3 = _word_with_ascender(body_top=20, body_bottom=45)
+
+        imgs = [extreme, normal1, normal2, normal3]
+        result = equalize_body_zones_pass2(imgs)
+        first_pass_height = compute_x_height(result[0])
+
+        result2 = equalize_body_zones_pass2(result)
+        second_pass_height = compute_x_height(result2[0])
+
+        assert first_pass_height <= compute_x_height(extreme)
+        assert second_pass_height <= first_pass_height * 1.1

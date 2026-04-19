@@ -143,3 +143,46 @@ def equalize_body_zones(word_images: list[np.ndarray]) -> list[np.ndarray]:
             break
 
     return result
+
+
+def equalize_body_zones_pass2(word_images: list[np.ndarray]) -> list[np.ndarray]:
+    """Post-harmonize body-zone equalization.
+
+    Runs after harmonize_words, which inflates short no-ascender words
+    (so, was, on, a) to the median ink-height band. Because those words
+    have no ascender or descender to absorb the scale-up, their body
+    zones balloon. equalize_body_zones at the pre-harmonize stage cannot
+    see this defect: at that stage those words still have small ink
+    heights, so their body zones look proportional.
+
+    This pass scales DOWN any word whose x-height exceeds 105% of the
+    post-harmonize median x-height. Same unidirectional discipline as
+    the pre-harmonize equalize_body_zones (the A1 lesson -- never
+    inflate bodies -- still applies).
+
+    Skipped on sets of fewer than 3 words, where "median" is noise.
+
+    See docs/sizing_diagnostic.md for the measurement driving this pass.
+    """
+    if len(word_images) < 3:
+        return word_images
+
+    x_heights = [_effective_x_height(img) for img in word_images]
+    median_xh = float(np.median(x_heights))
+    if median_xh <= 0:
+        return word_images
+
+    upper = median_xh * 1.05
+
+    result = []
+    for img, xh in zip(word_images, x_heights):
+        if xh <= upper:
+            result.append(img)
+            continue
+        scale = upper / xh
+        new_h = max(1, int(img.shape[0] * scale))
+        new_w = max(1, int(img.shape[1] * scale))
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+        result.append(cv2.resize(img, (new_w, new_h), interpolation=interp))
+
+    return result
