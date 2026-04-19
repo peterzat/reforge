@@ -215,11 +215,7 @@ def run(
     _log(f"\r  [{n_words}/{n_words}] done ({_fmt_time(gen_time)})" + " " * 20, verbose)
 
     # --- Font normalization ---
-    from reforge.quality.font_scale import (
-        equalize_body_zones,
-        equalize_body_zones_pass2,
-        normalize_font_size,
-    )
+    from reforge.quality.font_scale import equalize_body_zones, normalize_font_size
 
     for i, (img, word) in enumerate(zip(generated_images, flat_words)):
         if img is not None and word is not None:
@@ -247,18 +243,6 @@ def run(
         if generated_images[i] is not None:
             generated_images[i] = harmonized[real_idx]
             real_idx += 1
-
-    # --- Post-harmonize body-zone equalization ---
-    # harmonize_words inflates short no-ascender words (so, was, on) to the
-    # median ink band, which balloons their body zones. This second pass
-    # scales those outliers back down. See docs/sizing_diagnostic.md.
-    real_for_xh2 = [img for img in generated_images if img is not None]
-    equalized2 = equalize_body_zones_pass2(real_for_xh2)
-    eq2_idx = 0
-    for i in range(len(generated_images)):
-        if generated_images[i] is not None:
-            generated_images[i] = equalized2[eq2_idx]
-            eq2_idx += 1
 
     # --- Compose ---
     from reforge.compose.render import compose_words
