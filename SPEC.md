@@ -66,4 +66,25 @@ Either is a valid implementation path; the criteria gate on the measurable outco
 ---
 *Prior spec (2026-04-19, Composition rating window): SHIPPED 6/6. All window medians = 3 on the 33-review corpus; CLAUDE.md target stays at last-5; FINDINGS.md gets a Methodology notes section recording the ruling.*
 
+### Proposal (2026-04-19)
+
+**What happened this turn**
+
+Spec 2026-04-19 (body-zone sizing) closed 6/6 via the failure-protocol escape. Two attempts to reduce the diagnosed metric (`x_height_spread` on the demo sentence) shipped the numeric win (5.500 -> 4.333, 21% reduction) but both introduced the same "superscript" regression in human review: short words like `so`, `was`, `on`, `I`, `it`, `a` read as floating above the line's baseline. Attempt 1 shrank image dimensions (commit `cdb7dad`, reverted in `484c89b`); Attempt 2 padded to preserve image height (discarded pre-commit after a qpeek preview). Root cause of attempt 2's failure: the "superscript" read is not about baseline position -- it's about cross-word top-extent disparity. Once one word on a line is visibly shorter than its neighbors, the eye reads it as raised regardless of its baseline alignment. Artifacts preserved for future investigation: `scripts/measure_word_sizing.py`, `docs/sizing_diagnostic.md`. BACKLOG gets a dedicated entry recording that x-height-spread is ruled out as a lever for `size_inconsistent`.
+
+The human-review JSON (`reviews/human/2026-04-19_215858.json`, sizing 4/5, composition 3/5, freeform note "significant visual regression") is the first review in the corpus where the sizing A/B preferred the new variant but the composition rating and freeform notes reported a regression. That is evidence that the sizing A/B type is measuring something narrower than "composition size balance" -- a methodological finding in its own right.
+
+**Questions and directions for the next turn**
+
+1. **Compose-layer lever.** `compose_words` (see `reforge/compose/render.py`) collapses per-line baselines to a median and clamps outliers > 20% from median to that median. That works for single-mode height distributions but not for bimodal (tall+short) lines. A turn could investigate whether per-word baseline *offsets* (not a clamped median) would let visually-shorter words sit visibly lower on the line -- a geometry closer to how real handwriting places `by` under `remember`. Risk: layout regressions on other defect classes. Budget: one focused turn.
+2. **Finding definition refinement.** `size_inconsistent` is an aggregate flag on a 0-5 composition rating. It does not tell the coding agent which specific words the reviewer flagged, so every fix attempt has to guess. A dedicated `make test-human EVAL=size_inconsistent` type that surfaces per-word flags (click the word that looks wrong) would produce actionable diagnostics and unblock the next lever. Cheap, methodological.
+3. **Accept the plateau.** Mark `size_inconsistent` as Plateaued (like single-char sizing already is). Four-plus attempts at wrapper-layer interventions have not moved the needle on this finding across two specs. This is the honest option if directions 1 and 2 are not attractive; it bounds the quality-ceiling conversation in CLAUDE.md to what the wrapper can actually deliver.
+4. **Pick a different defect.** The "by descender clipping" finding has persisted across multiple reviews and is its own BACKLOG entry with met revisit criteria. A dedicated spec would target the layout/render side (not the sizing side) and may be tractable in one turn.
+
+The recommended default is (2) -> (1): methodology first (so the next lever is chosen against evidence), then a compose-layer attempt armed with per-word data. (3) is the fallback if (2) reveals no actionable signal.
+
+**Revisit candidates**
+
+- `"by" descender clipping` -- recurring human observation, has persisted through turns 2026-04-17 and 2026-04-19. Revisit criterion ("review after turn 2026-04-17 still cites the defect") has been met by multiple reviews. Ready to be picked up as its own spec if direction (4) above is chosen.
+
 <!-- SPEC_META: {"date":"2026-04-19","title":"size_inconsistent composition defect (body-zone sizing)","criteria_total":6,"criteria_met":6} -->
