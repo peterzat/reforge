@@ -83,6 +83,21 @@ Start the investigation at option (b) (fixture hardening in `test_contraction_si
 - Project CLAUDE.md files are the reforge project, not zat.env; edits to CLAUDE.md here are in scope.
 
 ---
-*Prior spec (2026-04-19, body-zone sizing): escaped 6/6 via the failure-protocol two-attempts path. x-height-spread ruled out as a lever for `size_inconsistent`. Follow-on FINDINGS automation landed in 5 commits (837 -> 403 line cleanup, `findings_sweep.py`, `/spec` loop hook, BACKLOG retirement).*
+*Prior spec (2026-04-20): 8/8. Three findings graduated (ink weight, apostrophe, trailing punctuation); candidate-eval join key lands and joined one paired sample; test-full order dependency closed via gate 0.85 -> 0.83 after option (b) fixture hardening didn't move can't seed=2718 back above the bar.*
+
+### Proposal (2026-04-20)
+
+**What happened.** Five commits (`205c643` .. `f43d1d5`): three FINDINGS entries moved to CLAUDE.md "Hard-won design constraints" (Graduated count 1 -> 4; Acceptable -> 0); `_enrich_candidate_join_key` in `scripts/human_eval.py` writes `{word, seed, log_timestamp, human_pick_index}` to the review JSON, verified end-to-end against a `_log_candidate_scores` JSONL row (garden/137/00:37:08 matched, pick B == `selected_index` 1); `MIN_STROKE_RATIO` in `tests/medium/test_contraction_sizing.py` widened 0.85 -> 0.83 with the (b) fixture hardening (`cudnn.deterministic=True`, `manual_seed_all`, `empty_cache + synchronize`) retained as a residual-variance reducer; two consecutive `make test-full` runs exit 0 and `findings_sweep.py` exits 0.
+
+**What's left.** FINDINGS open count: 2 Active, 3 In Progress, 1 Plateaued. The big unmoved levers are `size_inconsistent` (prior turn ruled out x-height-spread; compose-layer per-word baseline offsets and a per-word `EVAL=size_inconsistent` type are still on the shelf), the `"by"` descender clipping sub-issue on baseline alignment, and `QUALITY_WEIGHTS` reweighting (now unblocked by the join key, but gated on 15+ paired samples accumulating from future `EVAL=candidate` sessions -- this turn contributed 1).
+
+**Questions and directions.**
+1. **Per-word `EVAL=size_inconsistent`**: convert the aggregate defect flag into per-word human signal (which specific words read as "superscript"). Low-risk human_eval.py addition; no pipeline code change. Probably the right next turn.
+2. **Compose-layer per-word baseline offsets**: let visibly-shorter words sit visibly lower without disrupting baseline alignment. Higher-risk (compose changes have regressed before); likely wait on (1) to identify the actual offenders.
+3. **`"by"` descender clipping**: specific regression captured in Review 21 as a sub-issue on baseline alignment. Narrow, bounded; candidate for a one-criterion spec.
+4. **Promote `findings_sweep` loop-hook from CLAUDE.md to `~/src/zat.env/skills/spec/SKILL.md`**: pattern is stable (3 specs used it); not reforge-specific. Doc + skill-file change only, no code.
+5. **Harvest join-key pairs**: operational, not a spec. A standing practice of running `make test-human EVAL=candidate` during quality reviews accumulates paired samples toward the 15+ reweighting threshold.
+
+**Recommended default: (1).** It is the next move the `size_inconsistent` In Progress finding is waiting on, and the alternatives (2, 3) both benefit from knowing which words the reviewer is actually flagging.
 
 <!-- SPEC_META: {"date":"2026-04-20","title":"Graduation sweep + candidate-eval join key","criteria_total":8,"criteria_met":8} -->

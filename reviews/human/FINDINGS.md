@@ -352,8 +352,9 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   contractions at OCR 1.000, "every word + punctuation improved."
 - **Code:** `reforge/model/generator.py` (`_match_chunk_to_reference`,
   `stitch_contraction`, `split_contraction`); regression coverage in
-  `tests/medium/test_contraction_sizing.py` (stroke ratio >= 0.85, ink-median
-  delta <= 20%, ink-height delta <= 15%).
+  `tests/medium/test_contraction_sizing.py` (stroke ratio >= 0.83 after
+  spec 2026-04-20 criterion 8 widened it from 0.85, ink-median delta
+  <= 20%, ink-height delta <= 15%).
 
 ### Trailing punctuation via Caveat dilate retargeted to measured Bezier stroke
 
