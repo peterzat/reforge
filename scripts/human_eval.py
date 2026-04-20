@@ -907,6 +907,38 @@ def launch_qpeek(html_path, image_files):
         return None
 
 
+def _enrich_candidate_join_key(responses, eval_metadata):
+    """Add join-key fields to the candidate response so it can be matched
+    against `_log_candidate_scores` JSONL rows.
+
+    Minimum sufficient key: word + seed + log_timestamp (the session
+    timestamp the generator shares with the JSONL row). The human pick is
+    recorded as both label (UI-facing) and index (matches the JSONL's
+    `selected_index`), so downstream analysis can compare the agreement
+    without reparsing labels.
+    """
+    if "candidate" not in responses or "candidate" not in eval_metadata:
+        return
+    cand_resp = responses["candidate"]
+    if cand_resp.get("skipped"):
+        return
+    pick_label = cand_resp.get("pick")
+    if not pick_label:
+        return
+    cand_meta = eval_metadata["candidate"]
+    labels = [c["label"] for c in cand_meta.get("candidates", [])]
+    try:
+        pick_index = labels.index(pick_label)
+    except ValueError:
+        pick_index = None
+    cand_resp["join_key"] = {
+        "word": cand_meta["word"],
+        "seed": cand_meta["seed"],
+        "log_timestamp": cand_meta["log_timestamp"],
+    }
+    cand_resp["human_pick_index"] = pick_index
+
+
 def save_review(responses, eval_metadata, eval_types):
     """Persist review JSON. Returns path to saved file."""
     now = datetime.now()
@@ -922,6 +954,8 @@ def save_review(responses, eval_metadata, eval_types):
         cv_metrics = comp.get("cv_metrics", {})
         per_seed_cv = comp.get("per_seed_cv")
         selected_seed = comp.get("selected_seed")
+
+    _enrich_candidate_join_key(responses, eval_metadata)
 
     review = {
         "version": 1,
