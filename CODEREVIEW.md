@@ -1,141 +1,123 @@
-## Review -- 2026-04-20 (commit: f43d1d5)
+## Review -- 2026-04-20 (commit: 369a5df)
 
-**Review scope:** Refresh review against prior review commit `e2233f6`. Focus:
-7 file(s) changed since prior review (`CLAUDE.md`, `docs/OUTPUT_HISTORY.md`,
-`docs/best-output.png`, `docs/output-history/20260420-002636.png`,
-`reviews/human/FINDINGS.md`, `scripts/human_eval.py`,
-`tests/medium/test_contraction_sizing.py`) plus the unstaged `SPEC.md` proposal
-append. No prior-scope files were modified again since, so the
-already-reviewed set is empty. Tier: refresh (code + doc).
+**Review scope:** Refresh review against prior review commit `f43d1d5`. Focus:
+1 file changed since the prior review (`reviews/human/FINDINGS.md`; the
+CODEREVIEW.md / SECURITY.md / SPEC.md meta-files in the same commit are
+excluded per skill scope). The prior already-reviewed set (`CLAUDE.md`,
+`docs/OUTPUT_HISTORY.md`, `docs/best-output.png`,
+`docs/output-history/20260420-002636.png`, `scripts/human_eval.py`,
+`tests/medium/test_contraction_sizing.py`) was not re-modified. Tier:
+**light** (markdown-only change across all reviewed files).
 
-**Summary:** Five commits (`205c643` .. `f43d1d5`) close spec 2026-04-20 at
-8/8. Three FINDINGS entries graduate to `CLAUDE.md` "Hard-won design
-constraints" (Status Summary: Acceptable 1 -> 0, Resolved 4 -> 2, Graduated 1 -> 4,
-`CLAUDE.md` gains Plateau note under Stroke weight variation, Asymmetric split
-stitching subsection under Long word chunking, and a new "Trailing punctuation
-synthesis" section). `scripts/human_eval.py` gains
-`_enrich_candidate_join_key`: when the candidate eval runs,
-`{word, seed, log_timestamp, human_pick_index}` is written onto the
-`responses["candidate"]` dict before `save_review` persists, wired once via
-`_enrich_candidate_join_key(responses, eval_metadata)` at
-`save_review:958`. `tests/medium/test_contraction_sizing.py` widens
-`MIN_STROKE_RATIO` 0.85 -> 0.83 and adds CUDA-state hardening
-(`cudnn.benchmark=False`, `cudnn.deterministic=True`,
-`torch.cuda.manual_seed_all(seed)` per iteration,
-`empty_cache + synchronize` once before the loop) under a `try/finally` that
-restores the two cudnn backends on exit. The prior cycle's spec-criterion-8
-option (b) fixture hardening plus option (c) gate widening are both present.
-Archival files land: `docs/best-output.png` refresh +
-`docs/output-history/20260420-002636.png` new + one new
-`OUTPUT_HISTORY.md` entry (consistent with the "one per push" rule). The
-unstaged `SPEC.md` edit appends the 2026-04-20 Proposal and rewrites the
-prior-spec footer; `SPEC_META.criteria_met=8` remains correct.
+**Summary:** One new commit (`369a5df`) since the prior review, scoped to
+(a) fix the NOTE from the prior review by updating the Apostrophe Graduated
+pointer in `reviews/human/FINDINGS.md:355` from `stroke ratio >= 0.85` to
+`stroke ratio >= 0.83 after spec 2026-04-20 criterion 8 widened it from 0.85`,
+(b) refresh `CODEREVIEW.md` (the prior review result) and `SECURITY.md` (the
+2026-04-20 scan result), and (c) append a forward-looking `### Proposal
+(2026-04-20)` section plus updated prior-spec footer to `SPEC.md`. No code
+files, configuration files, tests, CI, scripts, Makefile, or dependency
+manifests touched. Scope of change is pure documentation.
 
-Verification: `make test-quick` passes (302/302, 5.02s); `scripts/findings_sweep.py`
-returns exit 0 against the current tree (39 reviews scanned, 0 unprocessed,
-marker at `2026-04-20_005013`); join-key flow verified end-to-end against
-`reviews/human/2026-04-20_005013.json` + `experiments/output/candidate_scores.jsonl`
-(`word=garden, seed=137, log_timestamp=2026-04-20T00:37:08`,
-`human_pick_index=1` == JSONL `selected_index=1`).
+Verification: FINDINGS.md:355 now reflects `MIN_STROKE_RATIO = 0.83` in
+`tests/medium/test_contraction_sizing.py:40` (verified match). All 11
+referenced commit SHAs (`205c643`, `2736bd2`, `3bdcb1b`, `894de99`,
+`f43d1d5`, `e2233f6`, `d0c3276`, `d2bd957`, `ea9ea73`, `16f0e48`,
+`369a5df`) resolve in git. `scripts/findings_sweep.py` exits 0 (39 reviews
+scanned, marker at `2026-04-20_005013`). FINDINGS.md Status Summary
+(Active 2, In Progress 3, Resolved 2, Acceptable 0, Plateaued 1,
+Graduated 4) is internally consistent with the SPEC.md Proposal's open-count
+claim ("2 Active, 3 In Progress, 1 Plateaued"). SPEC_META remains
+`criteria_total=8, criteria_met=8`.
 
 **External reviewers:**
-`/home/peter/bin/review-external.sh` produced no output for this diff.
+Skipped (light review; docs-only diff).
 
 ### Findings
 
-[NOTE] reviews/human/FINDINGS.md:355 -- Graduated-pointer docstring drift: the
-Apostrophe Graduated entry says "stroke ratio >= 0.85" but the test gate was
-widened to 0.83 in commit `2736bd2` (same push). Both commits (`205c643`
-graduation and `2736bd2` gate widening) land together in this review; the
-pointer should reflect the post-widening state (0.83) or note that the gate
-was widened under criterion 8.
-  Evidence: FINDINGS.md line 355 -- "tests/medium/test_contraction_sizing.py
-  (stroke ratio >= 0.85, ink-median delta <= 20%, ink-height delta <= 15%)";
-  actual value is `MIN_STROKE_RATIO = 0.83` in
-  tests/medium/test_contraction_sizing.py:40.
-  Suggested fix: change `stroke ratio >= 0.85` to
-  `stroke ratio >= 0.83 (widened from 0.85 under spec 2026-04-20 criterion 8)`
-  or simply `>= 0.83`. Low urgency: the FINDINGS pointer is advisory and the
-  CLAUDE.md graduation text does not repeat the numeric value.
+[NOTE] CODEREVIEW.md:46 -- Stale finding in the prior-review entry: the first
+listed NOTE (`reviews/human/FINDINGS.md:355 -- Graduated-pointer docstring
+drift`) was auto-fixed in the same commit (`369a5df`) that wrote the
+CODEREVIEW.md it appears in. At HEAD, FINDINGS.md:355 already reads
+`stroke ratio >= 0.83 after spec 2026-04-20 criterion 8 widened it from 0.85`,
+so the finding as written ("actual value is `MIN_STROKE_RATIO = 0.83`...
+pointer should reflect the post-widening state") no longer describes the
+file. The `### Fixes Applied` section in that same entry says "None," which
+is inconsistent with the in-commit fix.
+  Evidence: `git show 369a5df -- reviews/human/FINDINGS.md` shows the pointer
+  updated to `>= 0.83 after spec 2026-04-20 criterion 8 widened it from 0.85`
+  in the same commit whose message "Addresses one NOTE finding from
+  /codereview" explicitly records the fix.
+  Suggested fix: when refreshing the CODEREVIEW.md entry in a future cycle,
+  either drop the stale NOTE (addressed), or move it to `### Fixes Applied`
+  with attribution to `369a5df`. Not a bug: this is a paper-trail
+  inconsistency in the meta-file, not a defect in pipeline code or tests.
+
+[NOTE] SECURITY.md:11 -- Off-by-one line pointer in Accepted Risks: the
+Katherine PII pointer cites `scripts/human_eval.py:556`, but the actual
+string literal `"We grabbed two, maybe three? Katherine laughed..."` is on
+line 555 (verified via `grep -n Katherine`). The summary narrative at
+`SECURITY.md:3` has the same `:556` pointer. The surrounding file and
+literal are correct; only the line number is off by one.
+  Evidence: `scripts/human_eval.py:555` contains the Katherine literal;
+  line 556 is the continuation `"wonderful about mornings..."` fragment.
+  Suggested fix: retarget both pointers to `:555` (or a small range like
+  `:553-557` if line numbers drift). Low urgency: documentary, not
+  affecting code or scan coverage.
 
 [NOTE] reforge/compose/layout.py:155 -- walkback uses `BASELINE_BODY_DENSITY`
-(0.35) instead of the just-computed `body_threshold` (0.25 for descender words
-/ 0.35 otherwise). For descender words whose peak body density falls between
-0.25 and 0.35, the walkback would find `found=True` if it used `body_threshold`,
-skipping the descender fallback entirely. Carried forward from the prior review
-(same file, same pattern, not in Accepted Risks, and `layout.py` is unmodified
-in this focus set so the condition is unchanged).
+(0.35) instead of the just-computed `body_threshold` (0.25 for descender
+words / 0.35 otherwise). For descender words whose peak body density falls
+between 0.25 and 0.35, the walkback would find `found=True` if it used
+`body_threshold`, skipping the descender fallback entirely. Carried forward
+from the prior review (same file, same pattern, not in Accepted Risks, and
+`layout.py` is unmodified in this focus set so the condition is unchanged).
   Evidence: line 123 computes `body_threshold = 0.25 if has_descender else
-  BASELINE_BODY_DENSITY`; line 144 (has_body_below) uses it; line 155 (walkback)
-  does not.
+  BASELINE_BODY_DENSITY`; line 144 (has_body_below) uses it; line 155
+  (walkback) does not.
   Suggested fix: change line 155 to `if row_density[rb] >= body_threshold`
-  for consistency. The `has_descender` fallback at line 159 can then be tightened
-  (or removed) since walkback will succeed for the cases it was patching around.
-  Not a bug at current test tolerances: the 6 baseline tests pass within 3 px
-  and the fallback path catches the `jump`/`by`/`py`/`gp` cases this flags.
+  for consistency. The `has_descender` fallback at line 159 can then be
+  tightened (or removed) since walkback will succeed for the cases it was
+  patching around. Not a bug at current test tolerances: the 6 baseline
+  tests pass within 3 px and the fallback path catches the
+  `jump`/`by`/`py`/`gp` cases this flags.
 
-Refresh-review verification notes:
-- Security scan: `/security` invoked with 4 files (`Makefile`,
-  `scripts/findings_sweep.py`, `scripts/human_eval.py`,
-  `tests/medium/test_contraction_sizing.py`) since last scan's
-  `scanned_files` did not cover them. Result: 0 BLOCK / 0 WARN / 0 NOTE. All
-  `subprocess.run` usages are argv-lists with fixed arguments; no `shell=True`,
-  `eval`, `exec`, `pickle`, or dynamic import paths. Eval-type CLI args are
-  whitelisted against `EVAL_TYPES` before use. HTML-template injection only
-  receives hardcoded strings and committed `hard_words.json` values. SECURITY.md
-  refreshed with the new `SECURITY_META`.
-- `_enrich_candidate_join_key` correctness: guard clauses (`"candidate" not in
-  responses`, `"candidate" not in eval_metadata`, `cand_resp.get("skipped")`,
-  falsy `pick_label`) correctly no-op when the candidate eval was not run, was
-  skipped, or produced no pick. `labels.index(pick_label)` in `try/except
-  ValueError` handles pick-label-not-in-labels (`pick_index = None`, join_key
-  still written). The wizard HTML always produces `{"skipped": true|false, ...}`
-  (never `None`), so `.get(...)` on `cand_resp` is safe. Verified end-to-end
-  against the committed review JSON + JSONL row (garden/137/00:37:08,
-  `human_pick_index=1` == `selected_index=1`).
-- `torch.initial_seed()` returns 137 after `torch.manual_seed(137)` (verified
-  in a one-shot probe), so the `seed` field matches across the review JSON's
-  `join_key` and the JSONL row for small integer seeds.
-- `test_contraction_sizing.py` state hygiene: `try/finally` correctly restores
-  `cudnn.benchmark`/`cudnn.deterministic` even when the terminal assert fails;
-  `empty_cache()` + `synchronize()` are one-way and do not need restoration.
-  The comment's ordering claim ("tests/full/ warms CUDA first under the
-  conftest DAG") is verified -- `pytest tests/full/ --collect-only -q` shows
-  full -> quick -> medium collection order.
-- Graduation bar check: Ink weight (6 reviews >= 3, 2+ code changes: harmonize
-  blend + candidate-selection scoring, stable principle), Apostrophe rendering
-  (10 reviews >= 3, 3+ code changes: split-path, Option W, chunk matching, stable
-  principle), Trailing punctuation (7 reviews >= 3, 3+ code changes: Bezier -> 
-  Caveat -> 1.15x retarget, stable principle). All three clear the bar.
-- Status Summary arithmetic: counted bodies (Active 2, In Progress 3, Resolved 2,
-  Acceptable 0, Plateaued 1, Graduated 4) -- matches the summary table.
-- FINDINGS marker bump: `FINDINGS_LAST_PROCESSED: 2026-04-20_005013` is the
-  newest review JSON stem; `findings_sweep.py` exits 0.
-- Output history: exactly one new entry (`20260420-002636`), consistent with
-  the one-per-push rule.
-- Commit decomposition: 5 commits address criterion 1-3 (graduations), 8
-  (test-full order-dependency), 4-5 (join key), 7 (marker bump), and
-  close/archive respectively. Each commit scoped to a specific spec criterion.
+Light-review verification notes:
+- Link check: all 11 commit SHAs referenced across SPEC.md / CODEREVIEW.md
+  / SECURITY.md / FINDINGS.md resolve via `git rev-parse --verify`.
+- Secret-leak check: no new secrets introduced in any of the four markdown
+  files. Only PII reference is the previously-accepted `Katherine` name,
+  still under `### Accepted Risks` in SECURITY.md.
+- Factual accuracy: FINDINGS.md:355 value (`>= 0.83`) matches code
+  (`MIN_STROKE_RATIO = 0.83` at `tests/medium/test_contraction_sizing.py:40`).
+  FINDINGS Status Summary arithmetic consistent with SPEC.md Proposal's
+  open-count claim. `scripts/findings_sweep.py` exits 0 at HEAD.
+- SPEC.md structure: the appended `### Proposal (2026-04-20)` sits below
+  the prior-spec footer within the same-dated spec document. The current
+  entry header (line 1, "Spec -- 2026-04-20") and `SPEC_META.criteria_met=8`
+  correctly describe the closed-at-8/8 state; the Proposal is forward-looking
+  input for the next `/spec` turn and does not contradict the completed
+  spec. Acceptable per the project `/spec` convention.
+- Commit scope: single commit `369a5df` bundles one NOTE fix plus three
+  meta-file refreshes that are normal end-of-push bookkeeping for that fix.
   Not spaghetti.
-- Unstaged `SPEC.md`: appends the 2026-04-20 Proposal and updates the
-  prior-spec footer. `SPEC_META` is still correct for the closed 8/8 spec;
-  the proposal is the forward-looking recommendation consistent with this
-  repo's `/spec` convention.
 
 ### Fixes Applied
 
-None. No BLOCK or WARN findings.
+None. Three NOTEs, all documentary; no BLOCK/WARN findings.
 
 ### Accepted Risks
 
 None.
 
 ---
-*Prior review (2026-04-19, commit e2233f6): Refresh review of two batches --
-FINDINGS automation (3 commits: `findings_sweep.py`, CLAUDE.md wiring,
-FINDINGS compression) and SPEC + artifacts (4 commits: CODEREVIEW/SECURITY
-artifacts, proposal refresh, spec 2026-04-20 open, criterion 8 append).
-0 BLOCK / 0 WARN / 1 NOTE (walkback threshold consistency in `detect_baseline`,
-carried forward).*
+*Prior review (2026-04-20, commit f43d1d5): Refresh review of five commits
+closing spec 2026-04-20 at 8/8 (three FINDINGS graduations to CLAUDE.md,
+`_enrich_candidate_join_key` added to `scripts/human_eval.py`,
+`MIN_STROKE_RATIO` widened 0.85 -> 0.83 with CUDA-state hardening,
+best-output + OUTPUT_HISTORY refresh, SPEC.md proposal append). 0 BLOCK /
+0 WARN / 2 NOTE (FINDINGS.md:355 stroke-ratio drift -- auto-fixed in
+commit 369a5df; `reforge/compose/layout.py:155` walkback threshold
+consistency -- carried forward).*
 
-<!-- REVIEW_META: {"date":"2026-04-20","commit":"f43d1d5","reviewed_up_to":"f43d1d5e6eb7e0f470f3bc78910741b859100ef0","base":"origin/main","tier":"refresh","block":0,"warn":0,"note":2} -->
+<!-- REVIEW_META: {"date":"2026-04-20","commit":"369a5df","reviewed_up_to":"369a5df53de7d179e3ca8eb8187a5a81f2359b4d","base":"origin/main","tier":"light","block":0,"warn":0,"note":3} -->
