@@ -11,10 +11,10 @@ includes the reviews that support it and any code changes it motivated.
 |--------|-------|
 | Active | 2 |
 | In Progress | 3 |
-| Resolved | 4 |
-| Acceptable | 1 |
+| Resolved | 2 |
+| Acceptable | 0 |
 | Plateaued | 1 |
-| Graduated | 1 |
+| Graduated | 4 |
 
 ## How this file works
 
@@ -146,21 +146,6 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   join key work is the unblocker. Surfaced in spec 2026-04-19's next-turn proposal
   as direction (3).
 
-### Ink weight inconsistency across words
-
-- **Status:** Acceptable (promoted 2026-04-14)
-- **Reviews:** 6 (2026-04-03 through 2026-04-14)
-- **Principle:** The real stroke-weight improvement comes from candidate selection
-  (stroke width scoring during best-of-N), not post-processing harmonization. Six
-  consecutive reviews with no visible A/B difference on the harmonize pass.
-- **Applies to:** `reforge/quality/harmonize.py`, `reforge/quality/score.py`,
-  `reforge/model/generator.py` (candidate selection)
-- **Code changes:** Blended morphological stroke-width harmonization; stroke-width
-  scoring in candidate selection using style images as reference.
-- **Acceptance rationale:** Within-line variability remains but is a generation-level
-  property wrapper harmonization cannot fix. User confirmed A/B variants look identical
-  but imperfection is within each line, not between variants.
-
 ### Hard words show gray box artifacts and poor apostrophes
 
 - **Status:** In Progress
@@ -276,60 +261,6 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   `size_inconsistent` (Cross-word size balance finding), `letter_malformed`
   (intermittent).
 
-### Apostrophe rendering is consistently poor
-
-- **Status:** Resolved (2026-04-19 after `_match_chunk_to_reference`)
-- **Reviews:** 10 (2026-04-04 through 2026-04-19)
-- **Principle:** DiffusionPen renders apostrophes as oversized malformed blobs; even
-  with contraction splitting, the single-character right-side chunks (`'t`, `'s`, `'d`)
-  fail IAM's `MIN_WORD_CHARS=4` filter and come out with thin ink and small glyphs.
-  The fix was a layered approach: split-path (2026-04-14) -> Option W split at `'t`
-  (2026-04-18) -> `_match_chunk_to_reference` right-chunk matching (2026-04-19).
-- **Applies to:** `reforge/model/generator.py` (contraction splitting, synthetic
-  apostrophe, `_match_chunk_to_reference`), `reforge/config.py` (charset)
-- **Code changes:** (1) `is_contraction()` + `split_contraction()`. (2)
-  `make_synthetic_apostrophe()`. (3) `stitch_contraction()` with baseline alignment.
-  (4) Tight-crop padding 1px -> 3px for 1-2 char right parts. (5) Bezier apostrophe
-  rendering. (6) Option E (full-word DP, no overlay) attempted and reverted due to
-  seed-variant `can''t` stacking. (7) Option W: split at `'t` so right part renders
-  as `'t` via normal word path, synthetic apostrophe generator deleted.
-  (8) `_match_chunk_to_reference`: measures left-chunk ink height + stroke width +
-  ink-median; adjusts right chunk (bounded scale up to 1.8x; grayscale erode; double-
-  pass ink-intensity shift).
-- **Resolution:** Review 10 (`2026-04-19_173130`): seed-42 test-hard contraction OCR
-  went from `can't=0.4, they'd=1.0, don't=0.125 CRITICAL, it's=1.0` to all four at
-  **1.000**. Medium-tier test `test_contraction_sizing.py` gates right/left stroke
-  ratio >= 0.85, ink-median delta <= 20%, ink-height delta <= 15% across 24 cases
-  (4 words x 3 seeds x 2 metrics). Human: "every word + punctuation improved over
-  prior runs." No apostrophe-specific defects flagged in the subsequent Review 21
-  (`2026-04-19_215858`).
-
-### Trailing punctuation is invisible in generated output
-
-- **Status:** Resolved (2026-04-19 after Caveat dilate + 1.15x target)
-- **Reviews:** 7 (2026-04-14 through 2026-04-19)
-- **Principle:** DiffusionPen does not produce visible ink for trailing punctuation
-  (commas, periods, question marks, exclamation marks, semicolons). Fix: strip
-  trailing marks before generation; attach synthetic marks afterward. Caveat TTF
-  glyphs replaced Bezier rendering for natural shape; morphological dilate + 1.15x
-  Bezier-equivalent stroke width target brought production-scale visibility to par.
-- **Applies to:** `reforge/model/generator.py` (`strip_trailing_punctuation`,
-  `_generate_punctuated_word`, `_attach_mark_to_word`),
-  `reforge/model/font_glyph.py` (Caveat rasterization, `render_trailing_mark`,
-  `TRAILING_MARK_TARGET_MULTIPLIER`).
-- **Code changes:** (1) `make_synthetic_mark()` with cubic Bezier curves.
-  (2) 3x mark scaling. (3) Caveat TTF replaces Bezier. (4) Iterative morphological
-  dilate targeting measured Bezier stroke (spec 2026-04-19). (5) Baseline-aware
-  attachment using `compose.layout.detect_baseline` instead of full ink bottom.
-  (6) `TRAILING_MARK_TARGET_MULTIPLIER = 1.15` retargets dilation against measured
-  Bezier stroke (not nominal `body_height * 0.12`).
-- **Resolution:** Review 6 (`2026-04-19_021632`) rated punctuation 3/5 with "all
-  significantly improved, `;`, `?`, `!` all a bit small". Review 7
-  (`2026-04-19_173130`) held 3/5 with "every word + punctuation improved over prior
-  runs". `TestDilateToBezierBaseline` asserts 1.15x ratio at body_heights {18, 24, 32}
-  across `. , ; ! ?`. No trailing-punctuation-specific defects flagged in Review 21
-  (`2026-04-19_215858`).
-
 ### Single-character "I" loses ink, appears half-missing
 
 - **Status:** Resolved (2026-04-17 variance check)
@@ -403,3 +334,57 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
 - **Review trajectory:** 4 reviews of "eval broken" due to severe misalignment ->
   cross-correlation fix 2026-04-14 -> Review 8 (`2026-04-16_020920`) confirmed.
 - **Code:** `reforge/model/generator.py` chunk stitch alignment.
+
+### Apostrophe rendering via asymmetric split-chunk matching
+
+- **Graduated:** 2026-04-20 to `CLAUDE.md` > Hard-won design constraints >
+  Long word chunking (Asymmetric split stitching subsection).
+- **Core principle:** split-word stitching where one chunk is substantially
+  shorter than the other (e.g. `can` + `'t` via Option W) needs
+  `_match_chunk_to_reference`-style matching of the short chunk's ink height,
+  stroke width, and ink median to the long chunk. The short chunk falls outside
+  IAM's 4-char minimum training distribution, so it emerges thinner / smaller /
+  lighter and cannot be normalized to a shared target -- it must be matched to
+  its neighbor.
+- **Review trajectory:** 10 reviews (2026-04-04 through 2026-04-19); layered
+  fixes (contraction split -> synthetic apostrophe -> Option W -> chunk
+  matching). Review 10 (`2026-04-19_173130`) confirmed all four canonical
+  contractions at OCR 1.000, "every word + punctuation improved."
+- **Code:** `reforge/model/generator.py` (`_match_chunk_to_reference`,
+  `stitch_contraction`, `split_contraction`); regression coverage in
+  `tests/medium/test_contraction_sizing.py` (stroke ratio >= 0.85, ink-median
+  delta <= 20%, ink-height delta <= 15%).
+
+### Trailing punctuation via Caveat dilate retargeted to measured Bezier stroke
+
+- **Graduated:** 2026-04-20 to `CLAUDE.md` > Hard-won design constraints >
+  Trailing punctuation synthesis.
+- **Core principle:** OFL-font synthetic marks at production body_height
+  require morphological dilation retargeted against the measured
+  Bezier-equivalent stroke width, with `TRAILING_MARK_TARGET_MULTIPLIER = 1.15`;
+  nominal `body_height * 0.12` underestimates the dot-component strokes of
+  `!` and `?`.
+- **Review trajectory:** 7 reviews (2026-04-14 through 2026-04-19); Bezier
+  synthetic -> Caveat TTF -> iterative dilate -> 1.15x retarget. Reviews 6 and
+  7 held punctuation 3/5 with "every word + punctuation improved over prior
+  runs."
+- **Code:** `reforge/model/generator.py` (`strip_trailing_punctuation`,
+  `_attach_mark_to_word`), `reforge/model/font_glyph.py`
+  (`TRAILING_MARK_TARGET_MULTIPLIER`, `render_trailing_mark`); regression
+  coverage in `TestDilateToBezierBaseline` across five marks at three body
+  heights.
+
+### Ink weight harmonize pass has plateaued; gains come from candidate selection
+
+- **Graduated:** 2026-04-20 to `CLAUDE.md` > Hard-won design constraints >
+  Stroke weight variation.
+- **Core principle:** post-processing stroke-weight harmonization delivers a
+  floor but no further lift. Six consecutive A/B reviews on the harmonize pass
+  showed no visible difference between variants; remaining within-line
+  variability is a generation-level property the wrapper cannot fix. Candidate
+  selection (stroke-width scoring during best-of-N against style images as
+  reference) is where future stroke-weight gains come from.
+- **Review trajectory:** 6 reviews (2026-04-03 through 2026-04-14),
+  A/B-indistinguishable, promoted Acceptable 2026-04-14 then Graduated 2026-04-20.
+- **Code:** `reforge/quality/harmonize.py` (floor), `reforge/quality/score.py`
+  and `reforge/model/generator.py` candidate selection (the lever).

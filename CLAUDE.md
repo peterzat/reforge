@@ -471,6 +471,8 @@ These are lessons learned from the penforge predecessor. Each describes a real p
 
 **Required solution:** Compute median ink brightness across all words, shift each word's ink to converge on global median. Do this after generation, before composition.
 
+**Plateau (graduated from FINDINGS 2026-04-20):** The post-processing harmonize pass has exhausted its lift. Six consecutive A/B reviews on the harmonize strength showed no visible difference between variants, and within-line stroke-weight variability remains after harmonization. Further stroke-weight gains come from **candidate selection** (stroke-width scoring during best-of-N against style images as reference), not from the harmonize pass. Keep the harmonize pass as a floor, but do not tune it further; invest instead in candidate-scoring weights.
+
 ### Long word chunking (score-based syllable splitting)
 
 **Problem:** Words >10 chars need splitting, but naive splits create awkward chunks and visible seams.
@@ -481,6 +483,22 @@ These are lessons learned from the penforge predecessor. Each describes a real p
 - Normalize chunk heights to median before stitching
 - Baseline-aligned stitching via **ink-profile cross-correlation**, not single-point ink-bottom alignment (graduated from FINDINGS 2026-04-19). Single-point alignment fails when ink distribution differs between chunks; cross-correlation finds the vertical shift that maximizes profile overlap. The original "stitching produces visible seams" complaint was actually height-mismatch from the single-point approach; four fixes at various height-normalization layers were insufficient before cross-correlation landed.
 - Overlap blending (8px linear alpha fade) at stitch boundary
+
+**Asymmetric split stitching (contractions, graduated from FINDINGS 2026-04-20):** Split-word stitching where one chunk is substantially shorter than the other (e.g. `can` + `'t` via the Option W contraction path) cannot rely on the standard normalize-to-median pass. The short chunk falls outside IAM's `MIN_WORD_CHARS=4` training distribution and emerges with systematically thinner ink, smaller glyphs, and different ink median than its neighbor. Use `_match_chunk_to_reference` (`reforge/model/generator.py`): measure the long chunk's ink height + stroke width + ink-median, then adjust the short chunk (bounded scale up to 1.8x, grayscale erode to thicken strokes, double-pass ink-intensity shift) so the pair reads as one word. The layered history (split-path -> Option W -> chunk matching) is preserved in FINDINGS Graduated pointer; the rule here is: whenever a split produces asymmetric chunk lengths, match the short chunk to the long chunk rather than to a shared target.
+
+### Trailing punctuation synthesis (graduated from FINDINGS 2026-04-20)
+
+**Problem:** DiffusionPen does not produce visible ink for trailing punctuation (commas, periods, semicolons, question marks, exclamation marks). Any punctuated word rendered whole comes out unpunctuated.
+
+**Root cause:** IAM training data has punctuation attached to words but at production body heights the model's output contains no visible mark. Rendering a nominal `body_height * 0.12` synthetic stroke under-measures the dot-component strokes of `!` and `?`.
+
+**Required solution:**
+- Strip trailing marks before generation; attach synthetic marks afterward (`strip_trailing_punctuation`, `_generate_punctuated_word`, `_attach_mark_to_word` in `reforge/model/generator.py`).
+- Use Caveat TTF glyphs (not Bezier curves) for natural mark shape (`reforge/model/font_glyph.py`).
+- Retarget morphological dilation against the **measured Bezier-equivalent stroke width**, not a nominal `body_height * 0.12`. `TRAILING_MARK_TARGET_MULTIPLIER = 1.15` is the production value; the 1.15x factor gives the OFL-font glyphs enough weight to read at body_heights {18, 24, 32} across `. , ; ! ?`.
+- Attach baseline-aware using `compose.layout.detect_baseline`, not full ink bottom (descenders would otherwise push marks down below the line).
+
+**Regression coverage:** `TestDilateToBezierBaseline` asserts the 1.15x ratio across the five trailing marks at three body heights.
 
 ### Preprocessing order (per-word operations only after segmentation)
 
