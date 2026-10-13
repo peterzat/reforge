@@ -1,0 +1,1496 @@
+{
+"note": "Raw generate_word() crops (quality preset, hw-sample style) from the demo text, a short-word batch and the regression-gate words, seeds 42/137/2718, generated 2026-10-13. status/written: blind transcription by eye from index-only contact sheets; \"malformed\" means the letters differ from the intended word.",
+"items": [
+{
+"key": "w0",
+"source": "demo_s42",
+"target": "I",
+"status": "ok",
+"written": "I"
+},
+{
+"key": "w1",
+"source": "demo_s42",
+"target": "can't",
+"status": "ok",
+"written": "can't"
+},
+{
+"key": "w2",
+"source": "demo_s42",
+"target": "remember",
+"status": "ok",
+"written": "remember"
+},
+{
+"key": "w3",
+"source": "demo_s42",
+"target": "exactly,",
+"status": "ok",
+"written": "exactly,"
+},
+{
+"key": "w4",
+"source": "demo_s42",
+"target": "but",
+"status": "ok",
+"written": "but"
+},
+{
+"key": "w5",
+"source": "demo_s42",
+"target": "it",
+"status": "ok",
+"written": "it"
+},
+{
+"key": "w6",
+"source": "demo_s42",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w7",
+"source": "demo_s42",
+"target": "a",
+"status": "ok",
+"written": "a"
+},
+{
+"key": "w8",
+"source": "demo_s42",
+"target": "Thursday;",
+"status": "malformed",
+"written": "Thurday"
+},
+{
+"key": "w9",
+"source": "demo_s42",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w10",
+"source": "demo_s42",
+"target": "bakery",
+"status": "ok",
+"written": "bakery"
+},
+{
+"key": "w11",
+"source": "demo_s42",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w12",
+"source": "demo_s42",
+"target": "Birchwood",
+"status": "ok",
+"written": "Birchwood"
+},
+{
+"key": "w13",
+"source": "demo_s42",
+"target": "had",
+"status": "ok",
+"written": "had"
+},
+{
+"key": "w14",
+"source": "demo_s42",
+"target": "croissants",
+"status": "malformed",
+"written": "croisisants"
+},
+{
+"key": "w15",
+"source": "demo_s42",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w16",
+"source": "demo_s42",
+"target": "perfect",
+"status": "ok",
+"written": "perfect"
+},
+{
+"key": "w17",
+"source": "demo_s42",
+"target": "they'd",
+"status": "ok",
+"written": "they'd"
+},
+{
+"key": "w18",
+"source": "demo_s42",
+"target": "disappear",
+"status": "malformed",
+"written": "disapppear"
+},
+{
+"key": "w19",
+"source": "demo_s42",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w20",
+"source": "demo_s42",
+"target": "noon.",
+"status": "ok",
+"written": "noon."
+},
+{
+"key": "w21",
+"source": "demo_s42",
+"target": "We",
+"status": "ok",
+"written": "We"
+},
+{
+"key": "w22",
+"source": "demo_s42",
+"target": "grabbed",
+"status": "malformed",
+"written": "grabbbed"
+},
+{
+"key": "w23",
+"source": "demo_s42",
+"target": "two,",
+"status": "ok",
+"written": "two,"
+},
+{
+"key": "w24",
+"source": "demo_s42",
+"target": "maybe",
+"status": "ok",
+"written": "maybe"
+},
+{
+"key": "w25",
+"source": "demo_s42",
+"target": "three?",
+"status": "ok",
+"written": "three?"
+},
+{
+"key": "w26",
+"source": "demo_s42",
+"target": "Katherine",
+"status": "malformed",
+"written": "Katherime"
+},
+{
+"key": "w27",
+"source": "demo_s42",
+"target": "laughed",
+"status": "ok",
+"written": "laughed"
+},
+{
+"key": "w28",
+"source": "demo_s42",
+"target": "and",
+"status": "ok",
+"written": "and"
+},
+{
+"key": "w29",
+"source": "demo_s42",
+"target": "said",
+"status": "ok",
+"written": "said"
+},
+{
+"key": "w30",
+"source": "demo_s42",
+"target": "something",
+"status": "malformed",
+"written": "somethhing"
+},
+{
+"key": "w31",
+"source": "demo_s42",
+"target": "wonderful",
+"status": "malformed",
+"written": "wonderdful"
+},
+{
+"key": "w32",
+"source": "demo_s42",
+"target": "about",
+"status": "ok",
+"written": "about"
+},
+{
+"key": "w33",
+"source": "demo_s42",
+"target": "mornings",
+"status": "malformed",
+"written": "morniings"
+},
+{
+"key": "w34",
+"source": "demo_s42",
+"target": "being",
+"status": "ok",
+"written": "being"
+},
+{
+"key": "w35",
+"source": "demo_s42",
+"target": "too",
+"status": "ok",
+"written": "too"
+},
+{
+"key": "w36",
+"source": "demo_s42",
+"target": "beautiful",
+"status": "malformed",
+"written": "beautitful"
+},
+{
+"key": "w37",
+"source": "demo_s42",
+"target": "for",
+"status": "ok",
+"written": "for"
+},
+{
+"key": "w38",
+"source": "demo_s42",
+"target": "ordinary",
+"status": "ok",
+"written": "ordinary"
+},
+{
+"key": "w39",
+"source": "demo_s42",
+"target": "breakfast.",
+"status": "malformed",
+"written": "breakffast"
+},
+{
+"key": "w40",
+"source": "demo_s137",
+"target": "I",
+"status": "ok",
+"written": "I"
+},
+{
+"key": "w41",
+"source": "demo_s137",
+"target": "can't",
+"status": "ok",
+"written": "can't"
+},
+{
+"key": "w42",
+"source": "demo_s137",
+"target": "remember",
+"status": "ok",
+"written": "remember"
+},
+{
+"key": "w43",
+"source": "demo_s137",
+"target": "exactly,",
+"status": "ok",
+"written": "exactly,"
+},
+{
+"key": "w44",
+"source": "demo_s137",
+"target": "but",
+"status": "ok",
+"written": "but"
+},
+{
+"key": "w45",
+"source": "demo_s137",
+"target": "it",
+"status": "ok",
+"written": "it"
+},
+{
+"key": "w46",
+"source": "demo_s137",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w47",
+"source": "demo_s137",
+"target": "a",
+"status": "ok",
+"written": "a"
+},
+{
+"key": "w48",
+"source": "demo_s137",
+"target": "Thursday;",
+"status": "malformed",
+"written": "Thurrday"
+},
+{
+"key": "w49",
+"source": "demo_s137",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w50",
+"source": "demo_s137",
+"target": "bakery",
+"status": "ok",
+"written": "bakery"
+},
+{
+"key": "w51",
+"source": "demo_s137",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w52",
+"source": "demo_s137",
+"target": "Birchwood",
+"status": "ok",
+"written": "Birchwood"
+},
+{
+"key": "w53",
+"source": "demo_s137",
+"target": "had",
+"status": "ok",
+"written": "had"
+},
+{
+"key": "w54",
+"source": "demo_s137",
+"target": "croissants",
+"status": "malformed",
+"written": "craisisisants"
+},
+{
+"key": "w55",
+"source": "demo_s137",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w56",
+"source": "demo_s137",
+"target": "perfect",
+"status": "ok",
+"written": "perfect"
+},
+{
+"key": "w57",
+"source": "demo_s137",
+"target": "they'd",
+"status": "ok",
+"written": "they'd"
+},
+{
+"key": "w58",
+"source": "demo_s137",
+"target": "disappear",
+"status": "malformed",
+"written": "disapppear"
+},
+{
+"key": "w59",
+"source": "demo_s137",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w60",
+"source": "demo_s137",
+"target": "noon.",
+"status": "ok",
+"written": "noon."
+},
+{
+"key": "w61",
+"source": "demo_s137",
+"target": "We",
+"status": "ok",
+"written": "We"
+},
+{
+"key": "w62",
+"source": "demo_s137",
+"target": "grabbed",
+"status": "ok",
+"written": "grabbed"
+},
+{
+"key": "w63",
+"source": "demo_s137",
+"target": "two,",
+"status": "ok",
+"written": "two,"
+},
+{
+"key": "w64",
+"source": "demo_s137",
+"target": "maybe",
+"status": "ok",
+"written": "maybe"
+},
+{
+"key": "w65",
+"source": "demo_s137",
+"target": "three?",
+"status": "malformed",
+"written": "threa"
+},
+{
+"key": "w66",
+"source": "demo_s137",
+"target": "Katherine",
+"status": "malformed",
+"written": "Kathicrine"
+},
+{
+"key": "w67",
+"source": "demo_s137",
+"target": "laughed",
+"status": "ok",
+"written": "laughed"
+},
+{
+"key": "w68",
+"source": "demo_s137",
+"target": "and",
+"status": "ok",
+"written": "and"
+},
+{
+"key": "w69",
+"source": "demo_s137",
+"target": "said",
+"status": "ok",
+"written": "said"
+},
+{
+"key": "w70",
+"source": "demo_s137",
+"target": "something",
+"status": "malformed",
+"written": "someething"
+},
+{
+"key": "w71",
+"source": "demo_s137",
+"target": "wonderful",
+"status": "ok",
+"written": "wonderful"
+},
+{
+"key": "w72",
+"source": "demo_s137",
+"target": "about",
+"status": "malformed",
+"written": "abaut"
+},
+{
+"key": "w73",
+"source": "demo_s137",
+"target": "mornings",
+"status": "malformed",
+"written": "morninog"
+},
+{
+"key": "w74",
+"source": "demo_s137",
+"target": "being",
+"status": "ok",
+"written": "being"
+},
+{
+"key": "w75",
+"source": "demo_s137",
+"target": "too",
+"status": "ok",
+"written": "too"
+},
+{
+"key": "w76",
+"source": "demo_s137",
+"target": "beautiful",
+"status": "malformed",
+"written": "beauntiful"
+},
+{
+"key": "w77",
+"source": "demo_s137",
+"target": "for",
+"status": "ok",
+"written": "for"
+},
+{
+"key": "w78",
+"source": "demo_s137",
+"target": "ordinary",
+"status": "ok",
+"written": "ordinary"
+},
+{
+"key": "w79",
+"source": "demo_s137",
+"target": "breakfast.",
+"status": "ok",
+"written": "breakfast."
+},
+{
+"key": "w80",
+"source": "demo_s2718",
+"target": "I",
+"status": "ok",
+"written": "I"
+},
+{
+"key": "w81",
+"source": "demo_s2718",
+"target": "can't",
+"status": "ok",
+"written": "can't"
+},
+{
+"key": "w82",
+"source": "demo_s2718",
+"target": "remember",
+"status": "ok",
+"written": "remember"
+},
+{
+"key": "w83",
+"source": "demo_s2718",
+"target": "exactly,",
+"status": "ok",
+"written": "exactly,"
+},
+{
+"key": "w84",
+"source": "demo_s2718",
+"target": "but",
+"status": "ok",
+"written": "but"
+},
+{
+"key": "w85",
+"source": "demo_s2718",
+"target": "it",
+"status": "ok",
+"written": "it"
+},
+{
+"key": "w86",
+"source": "demo_s2718",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w87",
+"source": "demo_s2718",
+"target": "a",
+"status": "ok",
+"written": "a"
+},
+{
+"key": "w88",
+"source": "demo_s2718",
+"target": "Thursday;",
+"status": "ok",
+"written": "Thursday;"
+},
+{
+"key": "w89",
+"source": "demo_s2718",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w90",
+"source": "demo_s2718",
+"target": "bakery",
+"status": "ok",
+"written": "bakery"
+},
+{
+"key": "w91",
+"source": "demo_s2718",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w92",
+"source": "demo_s2718",
+"target": "Birchwood",
+"status": "ok",
+"written": "Birchwood"
+},
+{
+"key": "w93",
+"source": "demo_s2718",
+"target": "had",
+"status": "ok",
+"written": "had"
+},
+{
+"key": "w94",
+"source": "demo_s2718",
+"target": "croissants",
+"status": "malformed",
+"written": "craisissiands"
+},
+{
+"key": "w95",
+"source": "demo_s2718",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w96",
+"source": "demo_s2718",
+"target": "perfect",
+"status": "ok",
+"written": "perfect"
+},
+{
+"key": "w97",
+"source": "demo_s2718",
+"target": "they'd",
+"status": "ok",
+"written": "they'd"
+},
+{
+"key": "w98",
+"source": "demo_s2718",
+"target": "disappear",
+"status": "malformed",
+"written": "disappppear"
+},
+{
+"key": "w99",
+"source": "demo_s2718",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w100",
+"source": "demo_s2718",
+"target": "noon.",
+"status": "ok",
+"written": "noon."
+},
+{
+"key": "w101",
+"source": "demo_s2718",
+"target": "We",
+"status": "ok",
+"written": "We"
+},
+{
+"key": "w102",
+"source": "demo_s2718",
+"target": "grabbed",
+"status": "malformed",
+"written": "grabbbed"
+},
+{
+"key": "w103",
+"source": "demo_s2718",
+"target": "two,",
+"status": "ok",
+"written": "two,"
+},
+{
+"key": "w104",
+"source": "demo_s2718",
+"target": "maybe",
+"status": "ok",
+"written": "maybe"
+},
+{
+"key": "w105",
+"source": "demo_s2718",
+"target": "three?",
+"status": "ok",
+"written": "three?"
+},
+{
+"key": "w106",
+"source": "demo_s2718",
+"target": "Katherine",
+"status": "malformed",
+"written": "Katherirne"
+},
+{
+"key": "w107",
+"source": "demo_s2718",
+"target": "laughed",
+"status": "ok",
+"written": "laughed"
+},
+{
+"key": "w108",
+"source": "demo_s2718",
+"target": "and",
+"status": "ok",
+"written": "and"
+},
+{
+"key": "w109",
+"source": "demo_s2718",
+"target": "said",
+"status": "ok",
+"written": "said"
+},
+{
+"key": "w110",
+"source": "demo_s2718",
+"target": "something",
+"status": "malformed",
+"written": "someething"
+},
+{
+"key": "w111",
+"source": "demo_s2718",
+"target": "wonderful",
+"status": "malformed",
+"written": "wonderfful"
+},
+{
+"key": "w112",
+"source": "demo_s2718",
+"target": "about",
+"status": "malformed",
+"written": "abouf"
+},
+{
+"key": "w113",
+"source": "demo_s2718",
+"target": "mornings",
+"status": "malformed",
+"written": "mormings"
+},
+{
+"key": "w114",
+"source": "demo_s2718",
+"target": "being",
+"status": "ok",
+"written": "being"
+},
+{
+"key": "w115",
+"source": "demo_s2718",
+"target": "too",
+"status": "ok",
+"written": "too"
+},
+{
+"key": "w116",
+"source": "demo_s2718",
+"target": "beautiful",
+"status": "malformed",
+"written": "beautthiful"
+},
+{
+"key": "w117",
+"source": "demo_s2718",
+"target": "for",
+"status": "ok",
+"written": "for"
+},
+{
+"key": "w118",
+"source": "demo_s2718",
+"target": "ordinary",
+"status": "ok",
+"written": "ordinary"
+},
+{
+"key": "w119",
+"source": "demo_s2718",
+"target": "breakfast.",
+"status": "ok",
+"written": "breakfast."
+},
+{
+"key": "w120",
+"source": "short_seed42",
+"target": "go",
+"status": "ok",
+"written": "go"
+},
+{
+"key": "w121",
+"source": "short_seed42",
+"target": "go.",
+"status": "ok",
+"written": "go."
+},
+{
+"key": "w122",
+"source": "short_seed42",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w123",
+"source": "short_seed42",
+"target": "gym",
+"status": "ok",
+"written": "gym"
+},
+{
+"key": "w124",
+"source": "short_seed42",
+"target": "jog",
+"status": "ok",
+"written": "jog"
+},
+{
+"key": "w125",
+"source": "short_seed42",
+"target": "is",
+"status": "ok",
+"written": "is"
+},
+{
+"key": "w126",
+"source": "short_seed42",
+"target": "in",
+"status": "ok",
+"written": "in"
+},
+{
+"key": "w127",
+"source": "short_seed42",
+"target": "mix",
+"status": "ok",
+"written": "mix"
+},
+{
+"key": "w128",
+"source": "short_seed42",
+"target": "rain",
+"status": "ok",
+"written": "rain"
+},
+{
+"key": "w129",
+"source": "short_seed42",
+"target": "sir",
+"status": "ok",
+"written": "sir"
+},
+{
+"key": "w130",
+"source": "short_seed42",
+"target": "its",
+"status": "ok",
+"written": "its"
+},
+{
+"key": "w131",
+"source": "short_seed42",
+"target": "us",
+"status": "ok",
+"written": "us"
+},
+{
+"key": "w132",
+"source": "short_seed42",
+"target": "me",
+"status": "ok",
+"written": "me"
+},
+{
+"key": "w133",
+"source": "short_seed42",
+"target": "if",
+"status": "ok",
+"written": "if"
+},
+{
+"key": "w134",
+"source": "short_seed42",
+"target": "of",
+"status": "ok",
+"written": "of"
+},
+{
+"key": "w135",
+"source": "short_seed42",
+"target": "up",
+"status": "ok",
+"written": "up"
+},
+{
+"key": "w136",
+"source": "short_seed42",
+"target": "ox",
+"status": "ok",
+"written": "ox"
+},
+{
+"key": "w137",
+"source": "short_seed42",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w138",
+"source": "short_seed42",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w139",
+"source": "short_seed42",
+"target": "foxes",
+"status": "malformed",
+"written": "fooxes"
+},
+{
+"key": "w140",
+"source": "short_seed42",
+"target": "morning",
+"status": "ok",
+"written": "morning"
+},
+{
+"key": "w141",
+"source": "short_seed137",
+"target": "go",
+"status": "ok",
+"written": "go"
+},
+{
+"key": "w142",
+"source": "short_seed137",
+"target": "go.",
+"status": "ok",
+"written": "go."
+},
+{
+"key": "w143",
+"source": "short_seed137",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w144",
+"source": "short_seed137",
+"target": "gym",
+"status": "ok",
+"written": "gym"
+},
+{
+"key": "w145",
+"source": "short_seed137",
+"target": "jog",
+"status": "ok",
+"written": "jog"
+},
+{
+"key": "w146",
+"source": "short_seed137",
+"target": "is",
+"status": "ok",
+"written": "is"
+},
+{
+"key": "w147",
+"source": "short_seed137",
+"target": "in",
+"status": "ok",
+"written": "in"
+},
+{
+"key": "w148",
+"source": "short_seed137",
+"target": "mix",
+"status": "ok",
+"written": "mix"
+},
+{
+"key": "w149",
+"source": "short_seed137",
+"target": "rain",
+"status": "ok",
+"written": "rain"
+},
+{
+"key": "w150",
+"source": "short_seed137",
+"target": "sir",
+"status": "ok",
+"written": "sir"
+},
+{
+"key": "w151",
+"source": "short_seed137",
+"target": "its",
+"status": "ok",
+"written": "its"
+},
+{
+"key": "w152",
+"source": "short_seed137",
+"target": "us",
+"status": "ok",
+"written": "us"
+},
+{
+"key": "w153",
+"source": "short_seed137",
+"target": "me",
+"status": "ok",
+"written": "me"
+},
+{
+"key": "w154",
+"source": "short_seed137",
+"target": "if",
+"status": "ok",
+"written": "if"
+},
+{
+"key": "w155",
+"source": "short_seed137",
+"target": "of",
+"status": "ok",
+"written": "of"
+},
+{
+"key": "w156",
+"source": "short_seed137",
+"target": "up",
+"status": "ok",
+"written": "up"
+},
+{
+"key": "w157",
+"source": "short_seed137",
+"target": "ox",
+"status": "ok",
+"written": "ox"
+},
+{
+"key": "w158",
+"source": "short_seed137",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w159",
+"source": "short_seed137",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w160",
+"source": "short_seed137",
+"target": "foxes",
+"status": "ok",
+"written": "foxes"
+},
+{
+"key": "w161",
+"source": "short_seed137",
+"target": "morning",
+"status": "ok",
+"written": "morning"
+},
+{
+"key": "w162",
+"source": "short_seed2718",
+"target": "go",
+"status": "ok",
+"written": "go"
+},
+{
+"key": "w163",
+"source": "short_seed2718",
+"target": "go.",
+"status": "ok",
+"written": "go."
+},
+{
+"key": "w164",
+"source": "short_seed2718",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w165",
+"source": "short_seed2718",
+"target": "gym",
+"status": "ok",
+"written": "gym"
+},
+{
+"key": "w166",
+"source": "short_seed2718",
+"target": "jog",
+"status": "ok",
+"written": "jog"
+},
+{
+"key": "w167",
+"source": "short_seed2718",
+"target": "is",
+"status": "ok",
+"written": "is"
+},
+{
+"key": "w168",
+"source": "short_seed2718",
+"target": "in",
+"status": "ok",
+"written": "in"
+},
+{
+"key": "w169",
+"source": "short_seed2718",
+"target": "mix",
+"status": "ok",
+"written": "mix"
+},
+{
+"key": "w170",
+"source": "short_seed2718",
+"target": "rain",
+"status": "ok",
+"written": "rain"
+},
+{
+"key": "w171",
+"source": "short_seed2718",
+"target": "sir",
+"status": "ok",
+"written": "sir"
+},
+{
+"key": "w172",
+"source": "short_seed2718",
+"target": "its",
+"status": "ok",
+"written": "its"
+},
+{
+"key": "w173",
+"source": "short_seed2718",
+"target": "us",
+"status": "ok",
+"written": "us"
+},
+{
+"key": "w174",
+"source": "short_seed2718",
+"target": "me",
+"status": "ok",
+"written": "me"
+},
+{
+"key": "w175",
+"source": "short_seed2718",
+"target": "if",
+"status": "ok",
+"written": "if"
+},
+{
+"key": "w176",
+"source": "short_seed2718",
+"target": "of",
+"status": "ok",
+"written": "of"
+},
+{
+"key": "w177",
+"source": "short_seed2718",
+"target": "up",
+"status": "ok",
+"written": "up"
+},
+{
+"key": "w178",
+"source": "short_seed2718",
+"target": "ox",
+"status": "ok",
+"written": "ox"
+},
+{
+"key": "w179",
+"source": "short_seed2718",
+"target": "the",
+"status": "ok",
+"written": "the"
+},
+{
+"key": "w180",
+"source": "short_seed2718",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w181",
+"source": "short_seed2718",
+"target": "foxes",
+"status": "ok",
+"written": "foxes"
+},
+{
+"key": "w182",
+"source": "short_seed2718",
+"target": "morning",
+"status": "ok",
+"written": "morning"
+},
+{
+"key": "w183",
+"source": "gate_seed42",
+"target": "Quick",
+"status": "malformed",
+"written": "Guick"
+},
+{
+"key": "w184",
+"source": "gate_seed42",
+"target": "brown",
+"status": "ok",
+"written": "brown"
+},
+{
+"key": "w185",
+"source": "gate_seed42",
+"target": "foxes",
+"status": "ok",
+"written": "foxes"
+},
+{
+"key": "w186",
+"source": "gate_seed42",
+"target": "jump",
+"status": "ok",
+"written": "jump"
+},
+{
+"key": "w187",
+"source": "gate_seed42",
+"target": "high",
+"status": "ok",
+"written": "high"
+},
+{
+"key": "w188",
+"source": "gate_seed42",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w189",
+"source": "gate_seed42",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w190",
+"source": "gate_seed42",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w191",
+"source": "gate_seed42",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w192",
+"source": "gate_seed42",
+"target": "it",
+"status": "ok",
+"written": "it"
+},
+{
+"key": "w193",
+"source": "gate_seed137",
+"target": "Quick",
+"status": "malformed",
+"written": "Guick"
+},
+{
+"key": "w194",
+"source": "gate_seed137",
+"target": "brown",
+"status": "ok",
+"written": "brown"
+},
+{
+"key": "w195",
+"source": "gate_seed137",
+"target": "foxes",
+"status": "ok",
+"written": "foxes"
+},
+{
+"key": "w196",
+"source": "gate_seed137",
+"target": "jump",
+"status": "ok",
+"written": "jump"
+},
+{
+"key": "w197",
+"source": "gate_seed137",
+"target": "high",
+"status": "ok",
+"written": "high"
+},
+{
+"key": "w198",
+"source": "gate_seed137",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w199",
+"source": "gate_seed137",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w200",
+"source": "gate_seed137",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w201",
+"source": "gate_seed137",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w202",
+"source": "gate_seed137",
+"target": "it",
+"status": "ok",
+"written": "it"
+},
+{
+"key": "w203",
+"source": "gate_seed2718",
+"target": "Quick",
+"status": "malformed",
+"written": "Guick"
+},
+{
+"key": "w204",
+"source": "gate_seed2718",
+"target": "brown",
+"status": "malformed",
+"written": "borown"
+},
+{
+"key": "w205",
+"source": "gate_seed2718",
+"target": "foxes",
+"status": "malformed",
+"written": "froxess"
+},
+{
+"key": "w206",
+"source": "gate_seed2718",
+"target": "jump",
+"status": "ok",
+"written": "jump"
+},
+{
+"key": "w207",
+"source": "gate_seed2718",
+"target": "high",
+"status": "ok",
+"written": "high"
+},
+{
+"key": "w208",
+"source": "gate_seed2718",
+"target": "was",
+"status": "ok",
+"written": "was"
+},
+{
+"key": "w209",
+"source": "gate_seed2718",
+"target": "so",
+"status": "ok",
+"written": "so"
+},
+{
+"key": "w210",
+"source": "gate_seed2718",
+"target": "on",
+"status": "ok",
+"written": "on"
+},
+{
+"key": "w211",
+"source": "gate_seed2718",
+"target": "by",
+"status": "ok",
+"written": "by"
+},
+{
+"key": "w212",
+"source": "gate_seed2718",
+"target": "it",
+"status": "ok",
+"written": "it"
+}
+]
+}

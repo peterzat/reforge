@@ -49,9 +49,11 @@ Validity status matters more than the list: see docs/metric_correlation.md.
 | `check_stroke_weight_consistency(word_imgs)` | cross-word ink median spread | Diagnostic |
 | `check_word_height_ratio(word_imgs)` | max/min total ink height | Diagnostic; rewards equal total height, which zone sizing gives up |
 | `compute_height_outlier_ratio(word_imgs)` | max/median total ink height | Diagnostic; did not replicate on held-out reviews |
-| `check_baseline_alignment(img, positions)` | canvas bottoms, not ink baselines | Known broken (ignores `img`) |
+| `check_baseline_consistency(word_imgs, positions, words)` | placed ink baselines vs line median | Diagnostic; clean 0.92 vs jitter canary 0.63-0.65 |
+| `check_word_gap_ratio(word_imgs, positions)` | median inter-word ink gap in x-heights | Diagnostic measurement; clean ~0.8-0.9 |
+| `check_baseline_alignment(img, positions)` | canvas bottoms, not ink baselines | Retired in practice (ignores `img`); still in `overall` at 0.05 pending a weights decision |
 | `compute_style_similarity` / `style_fidelity` | similarity to style crops | One third is `_xheight_ratio`, ~1.0 for nearly every word |
-| OCR (`ocr_accuracy`, `ocr_min`, `word_readability_rate`) | TrOCR-small character accuracy | Hallucinates on 1-2 letter words |
+| OCR (`ocr_accuracy`, `ocr_min`, `word_readability_rate`) | TrOCR-small character accuracy (`REFORGE_OCR_BACKEND=vlm` for the local VLM reader) | Hallucinates on 1-2 letter words; no reader detects misspelled renderings (docs/cv-instruments.md) |
 | `overall_quality_score(...)` | weighted composite + gates | Diagnostic composite |
 
 ## Autonomous quality loop

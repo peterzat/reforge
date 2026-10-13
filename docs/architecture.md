@@ -34,7 +34,8 @@ reforge/
   evaluate/
     visual.py            CV quality metrics and overall_quality_score
     regression_gate.py   Pure-python gate logic (strict primary metrics, OCR floor)
-    ocr.py               TrOCR-small word reading (CPU)
+    ocr.py               Word reading: TrOCR-small (CPU) or REFORGE_OCR_BACKEND=vlm
+    vlm.py               Stdlib client for a local vision-language model server
     ledger.py            JSONL quality ledger + drift detection
     experiments.py       docs/experiment-log.jsonl (expected vs. observed)
     reference.py         SSIM against reference images
@@ -50,11 +51,12 @@ reforge/
     feature_extractor.py ImageEncoder (timm MobileNetV2), verbatim
 styles/                  Style reference images (hw-sample.png)
 fonts/                   Caveat (OFL) for trailing marks
-experiments/             A/B harness and sweeps (output/ is gitignored)
+experiments/             A/B harness, sweeps, replay_cache.py (cache generations,
+                         replay downstream stages), cv_bench/ (instrument benchmarks)
 tests/                   quick/ (CPU, mocked), medium/ (GPU, gate + A/B), full/ (e2e)
 docs/                    Design docs, analyses, output history, this file
 scripts/                 human_eval.py, metric_correlation.py, findings_sweep.py,
-                         archive-output.sh, prune_reviews.py, analyses
+                         archive-output.sh, prune_reviews.py, vlm_server.sh, analyses
 reviews/human/           Review JSONs (tracked ground truth), FINDINGS.md,
                          images/ (local only)
 ```
