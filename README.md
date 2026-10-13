@@ -100,61 +100,67 @@ DiffusionPen generates dark-gray backgrounds (~150-175 brightness) around word i
 
 **Layer 5: Post-upscale halo cleanup.** After 2x bicubic upscaling, interpolation creates gray halos around sharp edges. Strong ink is dilated by 4px, and gray pixels (128-230) outside this dilated region are blanked.
 
-### 6. Quality normalization
+### 6. Sizing and harmonization
 
-After generation and postprocessing, words are normalized for visual consistency:
+DiffusionPen fills its 64px canvas vertically for every word, whatever its letters: "was" and "remember" both arrive about 64px tall, so "was" has roughly twice the body (x-height) of "remember". Equalizing total word height keeps that gap and makes short words look shouted next to long ones.
 
-**Font size normalization** uses a unified height strategy. Short words (1-3 characters) are normalized by ink height to a 32px target, preventing single characters from filling the entire 64x256 canvas. Longer words (4+ characters) target a slightly higher ink height (~35px) to account for denser ink. Scale factors are clamped to [0.3, 1.6].
+**Zone sizing** instead sizes every word so its x-height matches. The word's letters predict how many x-heights tall its ink is (all-body "was" about 1.2, "the" about 2.3, "by" with both an ascender and a descender about 2.9; "t" is a short ascender in this hand). For words of four or more letters, the prediction is blended with the x-height measured from the image, which is reliable once a word has a dense body band. All sizing decisions are composed into one scale per word and applied in a **single resample**; chaining resizes blurred short words and once reduced "by" to a smudge. In a blind A/B against equal-total-height sizing, the human reviewer preferred zone sizing on all three test seeds.
 
-**Height harmonization** scales words toward the median ink height. Words exceeding 120% of median are scaled down; words below 80% of median are scaled up. This two-sided approach reduces the height variance that causes uneven baselines.
-
-**Stroke weight harmonization** computes the median ink brightness for each word, then shifts each word's ink toward the global median with a blend factor of 0.85. This reduces the jarring effect of adjacent words having inconsistent line thickness.
+**Stroke harmonization** then converges stroke widths (partial erosion/dilation for words more than 15% off the median) and shifts each word's ink toward the global median brightness with a blend factor of 0.92.
 
 ### 7. Composition: page layout
 
 Words are arranged on a page with:
 
-- **Baseline detection**: a top-down density scan from the midpoint of each word's ink region, looking for the row where ink density drops below 15%. Handles looped descenders (g, y) by requiring no body-density rows below the candidate baseline.
+- **Baseline detection** uses the word's text. A word with no descender-capable letter (g, j, p, q, y, cursive f, trailing comma or semicolon) sits on its ink bottom. Otherwise a density scan from the word's midpoint finds where the body ends and the descender begins, ignoring one-row tail curls and walking back to the last row that is still body.
 - **Line wrapping**: words are placed left-to-right until they exceed the page width (800px minus 30px margins), then wrap to a new line with 12px spacing.
 - **Paragraph layout**: None sentinels in the word list trigger paragraph breaks with 30px spacing and 40px indent.
-- **Baseline-aligned compositing**: words on the same line share a baseline computed from the maximum baseline offset, aligning descenders and ascenders naturally.
+- **Baseline-aligned compositing**: each word's detected baseline is placed on its line's ruled baseline. There is no outlier snapping: word images are scaled by different factors, so their baseline rows are not comparable, and an earlier snap-to-median clamp misplaced about 30% of words.
 - **2x upscaling** with bicubic interpolation for the final output, followed by Layer 5 halo cleanup.
 
 ---
 
 ## Testing and the Agentic Coding Loop
 
-Reforge is developed using an experiment-driven workflow where Claude Code autonomously iterates on output quality. The test infrastructure is designed so the agent can make a change, measure its effect numerically, and decide whether to keep or revert it, without requiring human visual inspection.
+Reforge is developed using an experiment-driven workflow where Claude Code iterates on output quality, measuring each change and deciding whether to keep or revert it.
 
-### The core idea: CV metrics replace human eyes
+### Metrics, and their limits
 
-Every quality dimension is reduced to a float in [0, 1]. The agent reads numbers, not pixels:
+Quality dimensions are reduced to numbers the agent can compare across runs:
 
-| Metric | What it measures | How |
-|--------|-----------------|-----|
-| `check_gray_boxes()` | Rectangular gray artifacts | Connected-component rectangularity on gray (140-220) pixels |
-| `check_ink_contrast()` | Ink-to-background separation | Mean brightness difference, normalized to 200 |
-| `check_background_cleanliness()` | Isolated noise in background | Gray pixel ratio excluding anti-aliasing near ink |
-| `check_stroke_weight_consistency()` | Cross-word ink uniformity | Standard deviation of per-word ink medians |
-| `check_word_height_ratio()` | Word size consistency | Max/min ink height ratio |
-| `check_baseline_alignment()` | Vertical alignment per line | Standard deviation of bottom positions |
-| `ocr_accuracy()` | Readability | TrOCR character recognition vs. target text, Levenshtein distance |
+| Metric | What it measures | Status |
+|--------|-----------------|--------|
+| `check_x_height_consistency()` | Body size of short all-body words vs. long words | Gates the build; matches a blind human A/B |
+| `check_gray_boxes()` | Rectangular gray artifacts | Hard gate inside `overall` |
+| `check_ink_contrast()` | Ink-to-background separation | Hard gate inside `overall` |
+| `check_background_cleanliness()` | Isolated noise in background | Hard gate inside `overall` |
+| `check_stroke_weight_consistency()` | Cross-word ink uniformity | Diagnostic |
+| `check_word_height_ratio()` | Max/min total word height | Diagnostic (rewards the old equal-height policy) |
+| `check_baseline_alignment()` | Spread of word-canvas bottoms | Diagnostic; does not measure ink baselines |
+| OCR (`ocr_accuracy`, `ocr_min`) | TrOCR character accuracy vs. target text | Floor gate on 3+ letter words |
 
-`overall_quality_score()` combines these into a single number. OCR accuracy is the dominant factor (40% weight). If any word scores below 0.5 on OCR, the overall score is capped at 0.45, preventing aesthetically clean but unreadable output from passing.
+`overall_quality_score()` combines the continuous metrics with weights, caps the result when a hard gate fails, multiplies by the fraction of readable words (OCR >= 0.5), and caps at 0.45 when words are mostly blank.
+
+The metrics are instruments, not the goal. Spearman correlation against 34 human composition ratings (`docs/metric_correlation.md`) shows no CV metric that reliably tracks overall human preference: the metric originally chosen to gate the build correlated at +0.30 on the reviews it was selected on and -0.22 on the 18 reviews collected since. The workflow therefore leans on controlled human comparisons:
+
+- **Seeded runs.** `--seed` makes output pixel-identical across processes, and every run writes a manifest (`result.json`) with the seed, settings, git state and metrics.
+- **Generation held fixed.** For changes downstream of the model, generated words are cached once and both variants are rendered from the cache, so only the change under test differs.
+- **Blind pairwise review.** A human picks between randomized A/B pages instead of rating single pages 1-5. A fresh-context Claude judge with a fixed rubric reviews the same pairs first; on the first session it agreed with the human 3/3.
+- **Looking at the output.** Claude Code reads the PNGs directly; contact sheets of every word with detected baselines drawn found more bugs than any metric.
 
 ### Three test tiers
 
 | Tier | Runtime | GPU | What it validates |
 |------|---------|-----|-------------------|
-| **Quick** (102 tests) | <1s | No | All metric functions, scoring logic, layout, preprocessing, charset validation. Everything mocked. Runs on every commit (pre-commit hook). |
-| **Medium** (30 tests) | ~2 min | Yes | Real model generation with quality assertions. A/B comparisons, OCR accuracy gates, quality regression tracking. |
+| **Quick** (~330 tests) | ~5s | No | All metric functions, sizing, scoring logic, layout and baseline placement, preprocessing, punctuation routing, gate logic. Everything mocked. Runs on every commit (pre-commit hook). |
+| **Medium** (~40 tests) | ~4 min | Yes | Real model generation: the regression gate (runs before every push), A/B comparisons, OCR, hard words, contraction sizing. |
 | **Full** (e2e) | ~10 min | Yes | Complete pipeline with real style images. Visual output saved to `tests/full/output/` for inspection. |
 
 ```bash
 make test-quick     # quick tests only
 make test           # medium tests (default)
 make test-full      # full e2e tests
-make setup-hooks    # install pre-commit hook (runs quick tests on every commit)
+make setup-hooks    # pre-commit: quick tests; pre-push: regression gate
 ```
 
 ### The feedback loop
@@ -182,9 +188,9 @@ make setup-hooks    # install pre-commit hook (runs quick tests on every commit)
 
 ### Key instruments
 
-**Quality regression test** (`test_quality_regression.py`). Generates 5 fixed words across 3 fixed seeds (42, 137, 2718), computes all metrics, and compares against a recorded per-seed baseline in `quality_baseline.json`. Only metrics in `PRIMARY_METRICS` (the metric(s) selected by the Spearman correlation analysis in `docs/metric_correlation.md`) gate the build; the rest are diagnostics that print on regression but do not fail. A primary metric that drops by more than 0.05 on any seed fails the test. Baseline updates are manual only via `pytest tests/medium/test_quality_regression.py --update-baseline -x -s`; auto-ratcheting was removed to prevent silent baseline drift.
+**Quality regression test** (`test_quality_regression.py`). Generates the five style words plus short words of each letter class (`was so on by it`) across 3 fixed seeds (42, 137, 2718), runs them through the same sizing and composition stages as production, and compares against a recorded per-seed baseline in `quality_baseline.json`. The gating metric (`x_height_consistency`) must not drop by more than 0.05 on any seed, every word of three or more letters must read at OCR >= 0.3, and the composed image must match a reference at SSIM >= 0.80. A baseline recorded for a different word list, or missing a gating metric, fails the test. Baseline updates are deliberate and manual: `pytest tests/medium/test_quality_regression.py --update-baseline --update-reference -x -s`.
 
-**OCR rejection loop** (inside `generate_word()`). During generation, each word's best candidate is evaluated by TrOCR. If character accuracy is below 0.3, the word is regenerated up to 2 times. This is a generation-time quality gate: the agent's postprocessing changes can affect what passes this gate, creating a direct feedback signal.
+**OCR rejection loop** (inside `generate_word()`). During generation, each word's best candidate is evaluated by TrOCR. If character accuracy is below 0.4, the word is regenerated up to 2 times. This is a generation-time quality gate: the agent's postprocessing changes can affect what passes this gate, creating a direct feedback signal.
 
 **Postprocessing diagnostic** (`diagnose_postprocessing()`). Traces a word image through each defense layer, reporting:
 - Ink extent near left/right edges before and after each layer
