@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20261013-174230
+
+![output](output-history/20261013-174230.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `3b55d09 (uncommitted changes)` |
+| Commit message | Protect the evaluator in code; publish the audit write-up |
+| Style input | `styles/hw-sample.png` |
+| Metrics | seed=42, sizing=zone, overall=0.711, height_outlier_score=0.071, baseline_alignment=0.356, stroke_weight_consistency=0.879, ocr_accuracy=0.908, ocr_min=0.000, word_readability_rate=0.925, style_fidelity=0.387 |
+
+---
+
 ## 20260420-030258
 
 ![output](output-history/20260420-030258.png)
