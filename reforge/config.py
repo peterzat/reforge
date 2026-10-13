@@ -62,6 +62,25 @@ VAE_SCALE_FACTOR = 0.18215
 
 # Font normalization
 SHORT_WORD_HEIGHT_TARGET = 26  # pixels, for 1-2 char words
+
+# Word sizing policy (audit 2026-10-13). DiffusionPen fills its 64px canvas
+# vertically for every word, so an all-body word ("was") arrives with ~2.2x
+# the x-height of an ascender word ("remember"). "total_height" equalizes
+# total ink height and keeps that x-height gap; "zone" sizes each word so
+# x-heights match, using the word's letters to predict how many x-heights
+# tall its ink is (ZONE_HEIGHT_RATIOS), blended with the measured ratio for
+# longer words where the x-height measurement is reliable.
+SIZING_POLICY = "total_height"  # "zone" pending human A/B (audit 2026-10-13)
+# Target x-height in pixels. 28 / 2.26 keeps strong-ascender words ("the")
+# at the 28px total height the total_height policy gives 3+ char words.
+ZONE_X_HEIGHT_TARGET = 28 / 2.26
+# ink height / x-height by (ascender, descender) class, measured on demo-text
+# output (seeds 42/137/2718). Ascender: 0 none, 1 weak ("t" only; a short
+# ascender in this hand), 2 strong (bdfhkl, capitals, digits, apostrophe).
+ZONE_HEIGHT_RATIOS = {
+    (0, 0): 1.21, (1, 0): 1.55, (2, 0): 2.26,
+    (0, 1): 2.78, (1, 1): 2.50, (2, 1): 2.85,
+}
 # A1 lesson: these thresholds must not be tightened beyond 1.10/0.88.
 # Tightening to 1.05/0.93 achieved word_height_ratio 1.00 but distorted
 # letterforms (over-normalization, "The" -> "Tle"). The honest 0.91 at

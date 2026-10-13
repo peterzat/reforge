@@ -93,8 +93,53 @@ def normalize_font_sizes(
     return [normalize_font_size(img, word) for img, word in zip(word_images, words)]
 
 
-def plan_word_scales(word_images: list[np.ndarray], words: list[str]) -> list[float]:
-    """Compose the sizing passes into one scale factor per word.
+_STRONG_ASCENDERS = set("bdfhkl'") | set("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+_WEAK_ASCENDERS = set("t")
+_DESCENDERS = set("gjpqy")
+
+
+def zone_class(word: str) -> tuple[int, int]:
+    """(ascender 0/1/2, descender 0/1) for a word, ignoring trailing marks."""
+    core = word.strip().rstrip(".,;:!?\"")
+    if any(c in _STRONG_ASCENDERS for c in core):
+        asc = 2
+    elif any(c in _WEAK_ASCENDERS for c in core):
+        asc = 1
+    else:
+        asc = 0
+    return asc, int(any(c in _DESCENDERS for c in core))
+
+
+def plan_zone_scales(word_images: list[np.ndarray], words: list[str]) -> list[float]:
+    """Scale each word so its x-height lands on ZONE_X_HEIGHT_TARGET.
+
+    The word's ink height in x-heights is predicted from its letters
+    (ZONE_HEIGHT_RATIOS). For words of 4+ letters the prediction is blended
+    toward the measured ink/x-height ratio (up to 75% weight at 6+ letters):
+    long words have a dense, measurable body band, while short words do not
+    (compute_x_height reads "it" as 5-9px of a 64px word).
+    """
+    from reforge.config import ZONE_HEIGHT_RATIOS, ZONE_X_HEIGHT_TARGET
+
+    scales = []
+    for img, word in zip(word_images, words):
+        ink_h = compute_ink_height(img)
+        prior = ZONE_HEIGHT_RATIOS[zone_class(word)]
+        measured = float(np.clip(ink_h / max(compute_x_height(img), 1), 1.0, 3.5))
+        n_letters = len(word.strip().strip(".,;:!?\"'"))
+        weight = float(np.clip((n_letters - 3) / 4, 0.0, 0.75))
+        ratio = prior ** (1 - weight) * measured ** weight
+        scales.append(float(np.clip(ZONE_X_HEIGHT_TARGET * ratio / ink_h, 0.15, 1.6)))
+    return scales
+
+
+def plan_word_scales(
+    word_images: list[np.ndarray], words: list[str], policy: str | None = None,
+) -> list[float]:
+    """One scale factor per word under the configured SIZING_POLICY.
+
+    ``policy="zone"`` delegates to ``plan_zone_scales``. ``"total_height"``
+    composes the legacy passes, described below.
 
     Runs the same decisions as ``normalize_font_size`` ->
     ``equalize_body_zones`` -> ``harmonize_heights`` ->
@@ -112,7 +157,14 @@ def plan_word_scales(word_images: list[np.ndarray], words: list[str]) -> list[fl
         HEIGHT_OUTLIER_THRESHOLD_PASS2,
         HEIGHT_UNDERSIZE_THRESHOLD,
         HEIGHT_UNDERSIZE_THRESHOLD_PASS2,
+        SIZING_POLICY,
     )
+
+    policy = policy or SIZING_POLICY
+    if policy == "zone":
+        return plan_zone_scales(word_images, words)
+    if policy != "total_height":
+        raise ValueError(f"unknown SIZING_POLICY {policy!r}")
 
     n = len(word_images)
     ink_h = np.array([compute_ink_height(img) for img in word_images], dtype=np.float64)
@@ -160,9 +212,11 @@ def plan_word_scales(word_images: list[np.ndarray], words: list[str]) -> list[fl
     return [float(s) for s in scales]
 
 
-def size_words(word_images: list[np.ndarray], words: list[str]) -> list[np.ndarray]:
+def size_words(
+    word_images: list[np.ndarray], words: list[str], policy: str | None = None,
+) -> list[np.ndarray]:
     """Resize each word once by its planned scale (see ``plan_word_scales``)."""
-    scales = plan_word_scales(word_images, words)
+    scales = plan_word_scales(word_images, words, policy)
     result = []
     for img, word, s in zip(word_images, words, scales):
         if abs(s - 1.0) < 1e-6:

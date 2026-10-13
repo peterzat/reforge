@@ -117,8 +117,8 @@ class TestSingleResampleSizing:
         import cv2
         from reforge.quality.font_scale import plan_word_scales, size_words
         imgs, words = self._words()
-        scales = plan_word_scales(imgs, words)
-        out = size_words(imgs, words)
+        scales = plan_word_scales(imgs, words, policy="total_height")
+        out = size_words(imgs, words, policy="total_height")
         for img, s, o in zip(imgs, scales, out):
             if abs(s - 1.0) < 1e-6:
                 assert o is img
@@ -135,7 +135,7 @@ class TestSingleResampleSizing:
         from reforge.quality.font_scale import plan_word_scales
         from reforge.quality.ink_metrics import compute_ink_height
         imgs, words = self._words()
-        scales = plan_word_scales(imgs, words)
+        scales = plan_word_scales(imgs, words, policy="total_height")
         h = np.array([compute_ink_height(i) for i in imgs]) * np.array(scales)
         med = np.median(h)
         assert np.all(h <= med * HEIGHT_OUTLIER_THRESHOLD_PASS2 + 1e-6)
@@ -148,8 +148,60 @@ class TestSingleResampleSizing:
         from reforge.quality.font_scale import size_words
         from reforge.quality.harmonize import harmonize_heights, harmonize_heights_pass2
         imgs, words = self._words()
-        single = size_words(imgs, words)[3]
+        single = size_words(imgs, words, policy="total_height")[3]
         chained = [normalize_font_size(i, w) for i, w in zip(imgs, words)]
         chained = harmonize_heights_pass2(harmonize_heights(equalize_body_zones(chained)))[3]
         assert (chained < 128).sum() < 20
         assert (single < 128).sum() > 150
+
+
+@pytest.mark.quick
+class TestZoneSizing:
+    """SIZING_POLICY="zone": x-heights match across letter classes."""
+
+    def _canvas_word(self, asc_rows=0, body=30, overshoot=0, width=200):
+        """DiffusionPen-like word filling a 64px canvas: dense body band,
+        sparse ascender stems above it, and sparse round-letter overshoot
+        rows above and below the body (what makes real ink/x-height 1.2 for
+        all-body words)."""
+        img = np.full((64, width), 255, dtype=np.uint8)
+        top = 2
+        if asc_rows:
+            img[top:top + asc_rows, 20:24] = 30
+        bt = top + asc_rows + overshoot
+        img[bt - overshoot:bt, 40:60] = 30
+        img[bt:bt + body, 20:width - 20] = 30
+        img[bt + body:bt + body + overshoot, 40:60] = 30
+        return img
+
+    def test_zone_class(self):
+        from reforge.quality.font_scale import zone_class
+        assert zone_class("was") == (0, 0)
+        assert zone_class("two,") == (1, 0)
+        assert zone_class("the") == (2, 0)
+        assert zone_class("gray") == (0, 1)
+        assert zone_class("by") == (2, 1)
+        assert zone_class("I") == (2, 0)
+        assert zone_class("they'd") == (2, 1)
+
+    def test_short_words_get_matching_x_heights(self):
+        """An all-body 'was' and a strong-ascender 'the' both fill the 64px
+        canvas; zone sizing must give them matching measured x-heights, where
+        the total_height policy gives 'was' ~2x the x-height of 'the'."""
+        import cv2
+        from reforge.config import ZONE_X_HEIGHT_TARGET
+        from reforge.quality.font_scale import size_words
+        from reforge.quality.ink_metrics import compute_x_height
+        was = self._canvas_word(body=50, overshoot=5)        # ink 60, x 50
+        the = self._canvas_word(asc_rows=34, body=26)        # ink 60, x 26
+        imgs, words = [was, the], ["was", "the"]
+        z = [compute_x_height(i) for i in size_words(imgs, words, policy="zone")]
+        assert abs(z[0] - z[1]) <= 1, z
+        assert abs(z[0] - ZONE_X_HEIGHT_TARGET) <= 1.5, z
+        t = [compute_x_height(i) for i in size_words(imgs, words, policy="total_height")]
+        assert t[0] > 1.6 * t[1], t
+
+    def test_unknown_policy_raises(self):
+        from reforge.quality.font_scale import plan_word_scales
+        with pytest.raises(ValueError):
+            plan_word_scales([self._canvas_word(body=40)], ["so"], policy="bogus")
