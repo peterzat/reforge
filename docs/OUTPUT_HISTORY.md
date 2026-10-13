@@ -7,6 +7,19 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
+## 20261013-220332
+
+![output](output-history/20261013-220332.png)
+
+| Field | Value |
+|-------|-------|
+| Git state | `4f6cb50 (uncommitted changes)` |
+| Commit message | Instruments: Claude spelling rater (kappa 0.83) and the selector A/B (TrOCR wins 3/3) |
+| Style input | `styles/hw-sample.png` |
+| Metrics | seed=42, sizing=zone, overall=0.691, height_outlier_score=0.123, baseline_alignment=0.368, stroke_weight_consistency=0.878, ocr_accuracy=0.883, ocr_min=0.000, word_readability_rate=0.900, style_fidelity=0.387 |
+
+---
+
 ## 20261013-185952
 
 ![output](output-history/20261013-185952.png)

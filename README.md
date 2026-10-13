@@ -20,8 +20,11 @@ The system is built on [DiffusionPen](https://github.com/koninik/DiffusionPen) (
 python reforge.py \
     --style styles/hw-sample.png \
     --text "The morning sun cast long shadows across the quiet garden. Birds sang their familiar songs while dew drops sparkled on fresh green leaves.\nShe sat near the old stone wall, reading her favorite book. The pages felt warm and soft under her fingers." \
-    --output result.png
+    --output result.png \
+    --seed 42
 ```
+
+`--seed` makes a run reproducible (pixel-identical across processes), and every run writes a manifest next to the image (`result.json`: seed, settings, git state, quality metrics).
 
 ### What this is not
 
@@ -29,6 +32,16 @@ python reforge.py \
 - Not a training system. DiffusionPen weights are frozen; reforge is inference-only.
 - Not multilingual. The IAM dataset is Latin script only (80-character ASCII subset).
 - Not a web app. CLI-first, library-second.
+
+### Recent improvements (October 2026)
+
+An audit of the pipeline and of how quality was being measured ([write-up](docs/audit-2026-10-13.md)) found that the most persistent complaint from human reviews, short words looking oversized or raised ("superscript"), came from wrapper bugs rather than model limits:
+
+- **Size by x-height, not total height.** DiffusionPen fills its canvas for every word, so equal total heights made "was", "on" and "so" twice the body size of their neighbors. Words are now sized so their lowercase bodies match, predicted from their letters. A blind human A/B preferred it on 3 of 3 seeds.
+- **Words sit on their lines.** A baseline "outlier clamp" compared row positions across differently scaled word images and moved about 30% of words up or down. Baseline detection now uses the word's text, cross-checks two estimators, and is pinned by a golden test of 81 real word crops with eye-verified baselines.
+- **One resample per word.** Chained resizes had blurred short words; "by" came out as a smudge.
+- **Contractions and punctuation.** Contraction halves align on their baselines; "Wait...", "don't." and "Really?!" render every mark; marks scale with the word.
+- **Measurement you can trust.** The metric that gated the build had stopped tracking human ratings (correlation +0.30 on the reviews it was chosen from, -0.22 on later ones). It was replaced by a body-size consistency check validated by human A/B, runs are seeded and recorded, human reviews are versioned, and new instruments were validated against known-answer cases before use ([CV instruments](docs/cv-instruments.md)).
 
 ---
 
@@ -104,7 +117,7 @@ DiffusionPen generates dark-gray backgrounds (~150-175 brightness) around word i
 
 DiffusionPen fills its 64px canvas vertically for every word, whatever its letters: "was" and "remember" both arrive about 64px tall, so "was" has roughly twice the body (x-height) of "remember". Equalizing total word height keeps that gap and makes short words look shouted next to long ones.
 
-**Zone sizing** instead sizes every word so its x-height matches. The word's letters predict how many x-heights tall its ink is (all-body "was" about 1.2, "the" about 2.3, "by" with both an ascender and a descender about 2.9; "t" is a short ascender in this hand). For words of four or more letters, the prediction is blended with the x-height measured from the image, which is reliable once a word has a dense body band. All sizing decisions are composed into one scale per word and applied in a **single resample**; chaining resizes blurred short words and once reduced "by" to a smudge. In a blind A/B against equal-total-height sizing, the human reviewer preferred zone sizing on all three test seeds.
+**Zone sizing** instead sizes every word so its x-height matches. The word's letters predict how many x-heights tall its ink is (all-body "was" about 1.2, "the" about 2.3, "by" with both an ascender and a descender about 2.9). Two letters behave differently in this hand: "t" and an "i" dot rise only a little (short ascenders), and a cursive "f" descends as well as ascends; treating them as ordinary letters sized "is", "rain", "for" and "of" 20-30% small. For words of four or more letters, the prediction is blended with the x-height measured from the image, which is reliable once a word has a dense body band. All sizing decisions are composed into one scale per word and applied in a **single resample**; chaining resizes blurred short words and once reduced "by" to a smudge. In a blind A/B against equal-total-height sizing, the human reviewer preferred zone sizing on all three test seeds.
 
 **Stroke harmonization** then converges stroke widths (partial erosion/dilation for words more than 15% off the median) and shifts each word's ink toward the global median brightness with a blend factor of 0.92.
 
@@ -112,7 +125,7 @@ DiffusionPen fills its 64px canvas vertically for every word, whatever its lette
 
 Words are arranged on a page with:
 
-- **Baseline detection** uses the word's text. A word with no descender-capable letter (g, j, p, q, y, cursive f, trailing comma or semicolon) sits on its ink bottom. Otherwise a density scan from the word's midpoint finds where the body ends and the descender begins, ignoring one-row tail curls and walking back to the last row that is still body.
+- **Baseline detection** uses the word's text. Trailing punctuation is set aside first (a comma's tail once lifted "it," onto its t crossbar). A word with no descender-capable letter (g, j, p, q, y, cursive f) sits on its ink bottom. For descender words, two estimators run: a density scan down from the word's midpoint, and the bottom of the dense body band. They fail in opposite directions (the scan can land in a descender that dominates a short word like "gym" or "up"; the band can sit a little high on a thin round bottom like the "o" of "for"), so the scan is kept when they agree and the band wins when they do not. 81 real word crops with eye-verified baselines pin this behavior in a golden test.
 - **Line wrapping**: words are placed left-to-right until they exceed the page width (800px minus 30px margins), then wrap to a new line with 12px spacing.
 - **Paragraph layout**: None sentinels in the word list trigger paragraph breaks with 30px spacing and 40px indent.
 - **Baseline-aligned compositing**: each word's detected baseline is placed on its line's ruled baseline. There is no outlier snapping: word images are scaled by different factors, so their baseline rows are not comparable, and an earlier snap-to-median clamp misplaced about 30% of words.
@@ -130,13 +143,15 @@ Quality dimensions are reduced to numbers the agent can compare across runs:
 
 | Metric | What it measures | Status |
 |--------|-----------------|--------|
-| `check_x_height_consistency()` | Body size of short all-body words vs. long words | Gates the build; matches a blind human A/B |
+| `check_x_height_consistency()` | Body size of short all-body words vs. long words, measured from pixels with sub-pixel precision | Gates the build; matches a blind human A/B |
 | `check_gray_boxes()` | Rectangular gray artifacts | Hard gate inside `overall` |
 | `check_ink_contrast()` | Ink-to-background separation | Hard gate inside `overall` |
 | `check_background_cleanliness()` | Isolated noise in background | Hard gate inside `overall` |
 | `check_stroke_weight_consistency()` | Cross-word ink uniformity | Diagnostic |
 | `check_word_height_ratio()` | Max/min total word height | Diagnostic (rewards the old equal-height policy) |
-| `check_baseline_alignment()` | Spread of word-canvas bottoms | Diagnostic; does not measure ink baselines |
+| `check_baseline_consistency()` | Offset of each placed word's ink baseline from its line | Diagnostic; clean pages ~0.92, injected baseline jitter ~0.64 |
+| `check_word_gap_ratio()` | Median gap between words, in x-heights | Diagnostic measurement |
+| `check_baseline_alignment()` | Spread of word-canvas bottoms | Retired in practice: does not look at ink |
 | OCR (`ocr_accuracy`, `ocr_min`) | TrOCR character accuracy vs. target text | Floor gate on 3+ letter words |
 
 `overall_quality_score()` combines the continuous metrics with weights, caps the result when a hard gate fails, multiplies by the fraction of readable words (OCR >= 0.5), and caps at 0.45 when words are mostly blank.
@@ -145,7 +160,8 @@ The metrics are instruments, not the goal. Spearman correlation against 34 human
 
 - **Seeded runs.** `--seed` makes output pixel-identical across processes, and every run writes a manifest (`result.json`) with the seed, settings, git state and metrics.
 - **Generation held fixed.** For changes downstream of the model, generated words are cached once and both variants are rendered from the cache, so only the change under test differs.
-- **Blind pairwise review.** A human picks between randomized A/B pages instead of rating single pages 1-5. A fresh-context Claude judge with a fixed rubric reviews the same pairs first; on the first session it agreed with the human 3/3.
+- **Blind pairwise review.** A human picks between randomized A/B pages instead of rating single pages 1-5. A fresh-context Claude judge with a fixed rubric reviews the same pairs first: it has agreed with the human on 6 of 6 pairs and picked the clean page on 12 of 12 known-answer pairs with injected defects (blur, oversized words, baseline jitter, cramped spacing).
+- **Instruments are validated before use.** A judge or metric must pass known-answer cases first ([CV instruments](docs/cv-instruments.md)). Two findings from doing that: local vision-language models that fit a 20 GB GPU read words better than TrOCR but are not trustworthy page judges (they flip their answer when the A/B order flips), and a better reader made a worse candidate selector, because it reads split and overinked candidates as the right word and stops filtering them.
 - **Looking at the output.** Claude Code reads the PNGs directly; contact sheets of every word with detected baselines drawn found more bugs than any metric.
 
 ### Three test tiers
@@ -209,7 +225,7 @@ The A/B harness (`experiments/ab_harness.py`) runs structured comparisons betwee
 python experiments/ab_harness.py --style styles/hw-sample.png --experiment cfg
 ```
 
-Predefined experiments compare CFG scale (1.0 vs 3.0 vs 5.0 vs 7.5), schedulers (DDIM vs DPM++ vs UniPC), postprocessing strategies, and combined parameter sets. For each variant, the harness:
+Predefined experiments vary CFG scale (1.0 vs 3.0 vs 5.0 vs 7.5) and step counts. (The scheduler and postprocessing presets are defined but the harness does not apply those keys yet, so those variants currently run identical configurations.) For each variant, the harness:
 
 1. Generates N candidates per word across multiple runs
 2. Computes `overall_quality_score()` on each
@@ -219,6 +235,8 @@ Predefined experiments compare CFG scale (1.0 vs 3.0 vs 5.0 vs 7.5), schedulers 
 
 The comparison images and metrics JSON give the agent two channels of feedback: numeric scores for pass/fail decisions, and visual comparisons for understanding why one variant wins.
 
+For changes downstream of the model (sizing, composition, post-processing), `experiments/replay_cache.py` caches seeded generations once and renders them with the working tree or any git ref, so both arms of an A/B use identical words. `experiments/cv_bench/` holds the instrument benchmarks: 213 labeled word crops for comparing readers, and a builder for known-answer page pairs for validating judges. `scripts/vlm_server.sh` serves the optional local vision-language model.
+
 ### Where the agent "inspects" images
 
 Claude Code is multimodal. It can read PNG files directly, viewing the actual generated handwriting. The system exploits this at several points:
@@ -227,5 +245,6 @@ Claude Code is multimodal. It can read PNG files directly, viewing the actual ge
 - **A/B comparison PNGs**: side-by-side variant images with labels and metrics overlaid. The agent sees which variant looks better and confirms the numeric ranking.
 - **Diagnostic tracing**: the `diagnose_postprocessing()` function reports numeric deltas, but the agent can also read intermediate images at each layer to understand what's being removed.
 - **test/full/output/**: e2e test outputs saved as PNGs. The agent reads these to validate that composed pages look correct beyond what metrics capture.
+- **Contact sheets**: every word of a page cropped side by side, with detected baselines and the target x-height drawn on. These found more defects than any metric (the baseline clamp, the resize bottleneck, short descender words detected at their tails).
 
 This dual-channel approach (numeric metrics for automated decisions, visual inspection for novel failure modes) is what makes the agentic loop effective. Metrics handle the 90% case. When a human looks at the output and says "words are being clipped", the agent builds a diagnostic instrument, finds the root cause numerically, fixes it, and adds a test so the same failure class is caught automatically going forward.
