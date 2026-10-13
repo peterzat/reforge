@@ -126,6 +126,30 @@ class TestOCRAwareCandidateSelection:
             # Should select the candidate with OCR=0.9 (imgs[1])
             assert np.array_equal(result, imgs[1])
 
+    def test_candidate_logging_when_winner_is_not_first(self, monkeypatch):
+        """REFORGE_LOG_CANDIDATES=1 crashed with "truth value of an array is
+        ambiguous" whenever the winner was not candidate 0: list.index()
+        compared candidate tuples holding numpy arrays with ==."""
+        from reforge.model.generator import generate_word
+
+        monkeypatch.setenv("REFORGE_LOG_CANDIDATES", "1")
+        imgs = [_make_word_img(ink_val=v) for v in [30, 40, 50]]
+        img_iter = iter(imgs)
+        mock_ocr = MagicMock(side_effect=[0.2, 0.9, 0.5])
+        mock_log = MagicMock()
+        with patch("reforge.model.generator.ddim_sample", side_effect=lambda *a, **kw: next(img_iter)), \
+             patch("reforge.model.generator.postprocess_word", side_effect=lambda x: x), \
+             patch("reforge.quality.score.quality_score", return_value=0.8), \
+             patch("reforge.model.generator._get_ocr_fn", return_value=mock_ocr), \
+             patch("reforge.model.generator._log_candidate_scores", mock_log):
+            result = generate_word(
+                "hello", MagicMock(), MagicMock(),
+                MagicMock(return_value={"input_ids": np.zeros((1, 16))}),
+                style_features=MagicMock(), num_candidates=3, device="cpu",
+            )
+        assert np.array_equal(result, imgs[1])
+        assert mock_log.call_args[0][2] == 1
+
     def test_reuse_ocr_in_rejection_loop(self):
         """A3: Selected candidate's OCR accuracy reused in rejection loop."""
         from reforge.model.generator import generate_word

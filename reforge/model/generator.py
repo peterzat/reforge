@@ -1110,7 +1110,7 @@ def generate_word(
                     chunk_text, winner[1], winner[2], winner[3],
                 )
                 if log_candidates and candidate_log_rows:
-                    sel_idx = candidates.index(winner)
+                    sel_idx = next(i for i, c in enumerate(candidates) if c is winner)
                     _log_candidate_scores(chunk_text, candidate_log_rows, sel_idx)
                 return winner[0], winner[2]
 
@@ -1120,7 +1120,7 @@ def generate_word(
             chunk_text, winner[1], winner[2], winner[3],
         )
         if log_candidates and candidate_log_rows:
-            sel_idx = candidates.index(winner)
+            sel_idx = next(i for i, c in enumerate(candidates) if c is winner)
             _log_candidate_scores(chunk_text, candidate_log_rows, sel_idx)
         return winner[0], winner[2]
 
