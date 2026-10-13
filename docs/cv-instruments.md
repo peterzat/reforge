@@ -11,7 +11,8 @@ scored the same way in minutes.
 |-----|-----|----------|------------|
 | Decide between two pages (A/B) | Fresh-context Claude subagent, images only, fixed rubric, blind A/B order | 15/15 on known-answer pairs (12 injected-defect canaries + 3 human-validated pairs); 6/6 agreement with the human across two sessions | Local VLMs <= 20 GB: Qwen3.5-9B 6/12 and Qwen3-VL-8B 3/12 on canaries judged in both orders |
 | Read a word (legibility) | Local Qwen3.5-9B-AWQ via `REFORGE_OCR_BACKEND=vlm`, Latin-constrained | 93% exact on well-formed words (92% on 1-2 letter words) vs TrOCR-small 88% (83%) | TrOCR-large (44% exact, misreads and spaced punctuation); Qwen3-VL-8B (89%, 82% on short words) |
-| Catch misspelled renderings ("disapppear") | Human or Claude review; nothing automated yet | All readers "correct" 59-68% of malformed renderings to the intended word; AUC 0.59-0.64 | Any OCR accuracy-vs-target score as a spelling check |
+| Catch misspelled renderings ("disapppear") | Fresh-context Claude subagent on word sheets labeled with the intended spelling | Agreement with blind by-eye labels on 213 crops: 31 both flagged, 3 only by eye, 7 only by Claude (recall 0.91, precision 0.82, Cohen's kappa 0.83) | Any OCR score (readers "correct" 59-68% of malformed renderings); the local VLM's targeted check (53% caught, 17% false alarms) |
+| Choose among best-of-N candidates | TrOCR-small (current) | Blind judge preferred TrOCR-selected pages on 3/3 seeds over VLM-selected ones | The VLM reader: it reads split, broken and overinked candidates ("o n", "thi eee?", heavy "and") as the right word, so it stops filtering them |
 | Body-size consistency | `x_height_consistency` (gates) | 3/3 human A/B direction; 0.94-0.98 vs 0.49-0.68 between approved and rejected sizing | `height_outlier_score`, `word_height_ratio` (reward the rejected policy) |
 | Baseline placement | `baseline_consistency` (diagnostic) | clean 0.92 vs jitter canary 0.63-0.65 on all 3 seeds | `baseline_alignment` (retired: measures canvas bottoms; noisy 0.14-0.36, ranks some defective pages above clean) |
 | Word spacing | `word_gap_ratio` (diagnostic measurement) | clean 0.81-0.89 vs minimum-gap layout 0.65 | A pass/fail gap threshold (layout floors gaps at 4px; "run-together" is perceptual) |
@@ -82,12 +83,22 @@ The Claude judge named the affected words for every defect (for example
 "'but' raised above 'exactly.', 'was' sunk"). The local models' stated
 reasons repeated the rubric regardless of which page they picked.
 
+## Candidate selection: a better reader is a worse selector
+
+Same seeds, so each word's first three candidates were identical in both
+arms; only the reader scoring them (and triggering retries) changed. A blind
+Claude judge compared the three page pairs word by word and preferred the
+TrOCR-selected page each time. The VLM accepted candidates TrOCR rejects
+because it recovers the word anyway: "o n" and "per fect" (split), "thi eee?"
+(broken), and an overinked "and" picked on every seed. Selection needs a
+reader that fails on visual defects; legibility measurement needs one that
+does not. Different jobs, different instruments.
+
 ## Open directions
 
-- Candidate selection with the VLM reader (see the selector A/B in
-  docs/experiment-log.jsonl).
-- A spelling-defect detector (duplicate and dropped letters), for example a
-  character-level comparison against a font rendering of the target, or a
-  larger judge on word crops.
+- Use the Claude word-sheet rater as the hard-words review between human
+  sessions (kappa 0.83 against blind labels).
+- An automated stroke-weight outlier check at selection time: the heavy
+  "and" was the most visible defect on every VLM-selected page.
 - Calibrate the Claude judge on every future human A/B; promote it to a
   pre-push advisory only after agreement holds over ~10 sessions.
