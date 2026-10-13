@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-13T21:33:30",
+  "commit": "eed1ec2",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:d17f0904d08fee0ae175adf7f42d4080e3d20a970a28deedc7aec7a77e2558a0",
+    "reforge/compose/layout.py": "sha256:958e2f856417273946401ff1b51458766724d051f9b584572179c2dcdd46bb9e",
+    "reforge/compose/render.py": "sha256:dbe38dd03439198b385dd0268cda1b367554b24d30bf813b5a2707a08022522d",
+    "reforge/quality/harmonize.py": "sha256:0ef98219a026eef6bb600fd1b6a45a4442047f6b3c4b83bd4d1d26843900511b",
+    "reforge/quality/font_scale.py": "sha256:b367a81a4177b25461f76e6201baa5ff850374942fd2b7113680ac91362aa208",
+    "reforge/quality/score.py": "sha256:348ec6e7d923d29a440a8827ed1e82ec4eee5288feb50e1a07bc990f12653611",
+    "reforge/config.py": "sha256:4d51287acea956ddc9ab7d43b42e5ee409db482b43d906fee00b3bc3e8bad592",
+    "reforge/evaluate/visual.py": "sha256:4fe9a5f0cde4da50f5e3b9fff5b1753716ca1d585fba976dda17f3a4a5379026",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "candidate": {
+      "skipped": false,
+      "pick": "A",
+      "agrees_with_metric": false,
+      "notes": ""
+    },
+    "stitch": {
+      "skipped": false,
+      "pick": "4px",
+      "notes": "This test is flawed:  the \"tanding\" is significantly higher than \"under\", making it difficult to compare."
+    },
+    "sizing": {
+      "skipped": false,
+      "rating": 1,
+      "notes": "continued problem with this test:  the \"I\" takes up the full vertical space, with no room for descenders, so the whole thing looks wring (\"q\" is as big as \"I\")."
+    },
+    "baseline": {
+      "skipped": false,
+      "rating": 2,
+      "notes": "gray sits too high, fences sits too log (the f extends into descender territory)"
+    },
+    "spacing": {
+      "skipped": false,
+      "preferred": "B",
+      "notes": ""
+    },
+    "ink_weight": {
+      "skipped": false,
+      "preferred": "A",
+      "notes": "looks identical."
+    },
+    "composition": {
+      "skipped": false,
+      "rating": 3,
+      "defects": [
+        "size_inconsistent",
+        "baseline_drift",
+        "letter_malformed"
+      ],
+      "notes": "apostrophe in can't remains super malformed."
+    },
+    "hard_words": {
+      "skipped": false,
+      "rating": 2,
+      "flagged_unreadable": [
+        "can't",
+        "noon",
+        "impossible"
+      ],
+      "notes": "apostrophes are terrible looking"
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9947602511192168,
+    "stroke_weight_consistency": 0.8736908829278125,
+    "word_height_ratio": 0.8799999999999999,
+    "height_outlier_ratio": 1.0,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.3977493424711729,
+    "baseline_alignment": 0.8295726556826841,
+    "composition_score": 0.4059714937001952,
+    "layout_regularity": 0.7102825480157591,
+    "ocr_accuracy": 0.9321031746031746,
+    "ocr_min": 0.4285714285714286,
+    "ocr_per_word": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.5,
+      1.0,
+      0.8888888888888888,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.4285714285714286,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.5,
+      0.8,
+      1.0,
+      1.0,
+      0.75,
+      1.0,
+      0.6666666666666667,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.75
+    ],
+    "blank_word_ratio": 1.0,
+    "height_outlier_score": 1.0,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "word_readability_rate": 0.975,
+    "overall": 0.7656754000276661
+  }
+}

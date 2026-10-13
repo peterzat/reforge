@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-14T04:17:53",
+  "commit": "1fc02ad",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:dcc00fdf3a34361888458650fb1cc2ddbcfa0093e6ca0001912f852098cae10b",
+    "reforge/compose/layout.py": "sha256:73e0f4e79a91b453d768dc6dd2c3a9502ab6276b7dc5890183f0d4de19dee831",
+    "reforge/compose/render.py": "sha256:3f9d9d54e27f86974479f8c1cc670bdef3d44da2eb501184a9e51cf20d26a86d",
+    "reforge/quality/harmonize.py": "sha256:56d8660068df13d068f38000a752783744b13b94841fc2aec62298a28b80d495",
+    "reforge/quality/font_scale.py": "sha256:b367a81a4177b25461f76e6201baa5ff850374942fd2b7113680ac91362aa208",
+    "reforge/quality/score.py": "sha256:348ec6e7d923d29a440a8827ed1e82ec4eee5288feb50e1a07bc990f12653611",
+    "reforge/config.py": "sha256:4d51287acea956ddc9ab7d43b42e5ee409db482b43d906fee00b3bc3e8bad592",
+    "reforge/evaluate/visual.py": "sha256:4fe9a5f0cde4da50f5e3b9fff5b1753716ca1d585fba976dda17f3a4a5379026",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "candidate": {
+      "skipped": false,
+      "pick": "B",
+      "agrees_with_metric": false,
+      "notes": ""
+    },
+    "stitch": {
+      "skipped": false,
+      "pick": "4px",
+      "notes": "this test is broken, the \"unders\" is way below \"tanding\" making it hard to see the seam."
+    },
+    "sizing": {
+      "skipped": false,
+      "rating": 2,
+      "notes": ""
+    },
+    "baseline": {
+      "skipped": false,
+      "rating": 3,
+      "notes": ""
+    },
+    "spacing": {
+      "skipped": false,
+      "preferred": "B",
+      "notes": ""
+    },
+    "ink_weight": {
+      "skipped": false,
+      "preferred": null,
+      "notes": "identical, but definitely not perfect."
+    },
+    "composition": {
+      "skipped": false,
+      "rating": 3,
+      "defects": [
+        "size_inconsistent",
+        "baseline_drift",
+        "letter_malformed"
+      ],
+      "notes": "\"by\" is tiny."
+    },
+    "hard_words": {
+      "skipped": false,
+      "rating": 2,
+      "flagged_unreadable": [
+        "can't",
+        "impossible",
+        "book"
+      ],
+      "notes": ""
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9955275354732696,
+    "stroke_weight_consistency": 0.869246308741291,
+    "word_height_ratio": 0.8400000000000001,
+    "height_outlier_ratio": 1.0357142857142858,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.405551388642351,
+    "baseline_alignment": 0.8162742979547992,
+    "composition_score": 0.4386750009407947,
+    "layout_regularity": 0.7098176291449315,
+    "ocr_accuracy": 0.9459809757236229,
+    "ocr_min": 0.4,
+    "ocr_per_word": [
+      1.0,
+      0.4,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8888888888888888,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.47058823529411764,
+      1.0,
+      1.0,
+      0.5714285714285714,
+      0.9,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8333333333333334,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.875,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.9
+    ],
+    "blank_word_ratio": 1.0,
+    "height_outlier_score": 0.9285714285714284,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "word_readability_rate": 0.95,
+    "overall": 0.7367262113277017
+  }
+}

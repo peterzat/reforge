@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "timestamp": "2026-10-13T17:09:05",
+  "commit": "f4896ef",
+  "dirty": false,
+  "evaluations": {
+    "sizing_policy_ab": {
+      "question": "Which page reads more like one person's natural handwritten note? (word size consistency, baseline, legibility)",
+      "design": "Blind pairwise A/B, order randomized per seed (random.Random(20261013)). Both arms share identical cached generate_word() outputs for the demo text at seeds 42/137/2718 (quality preset) and all 2026-10-13 compose/sizing bug fixes; they differ only in SIZING_POLICY (total_height vs zone).",
+      "steps": [
+        {
+          "step": 1,
+          "seed": 42,
+          "A": "total_height",
+          "B": "zone",
+          "human_choice": "B",
+          "human_prefers": "zone",
+          "judge_choice": "B",
+          "judge_prefers": "zone"
+        },
+        {
+          "step": 2,
+          "seed": 137,
+          "A": "zone",
+          "B": "total_height",
+          "human_choice": "A",
+          "human_prefers": "zone",
+          "judge_choice": "A",
+          "judge_prefers": "zone"
+        },
+        {
+          "step": 3,
+          "seed": 2718,
+          "A": "total_height",
+          "B": "zone",
+          "human_choice": "B",
+          "human_prefers": "zone",
+          "judge_choice": "B",
+          "judge_prefers": "zone"
+        }
+      ],
+      "human_prefers_zone": 3,
+      "judge": "fresh-context Claude Opus 5.5 subagent, fixed rubric (size consistency, baseline, legibility, overall), images only",
+      "judge_human_agreement": 3,
+      "notes": "User: \"those qpeek comparisons were clear and obvious to select - I think this is the first time I could make such a straightforward choice\"."
+    }
+  },
+  "cv_metrics": {}
+}

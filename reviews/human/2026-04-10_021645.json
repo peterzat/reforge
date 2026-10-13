@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-10T02:16:45",
+  "commit": "958f1cd",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:3014e4824c2c77720c4c1f8d9d4e92c5ff940c27c33c6185765a31d6774681c9",
+    "reforge/compose/layout.py": "sha256:958e2f856417273946401ff1b51458766724d051f9b584572179c2dcdd46bb9e",
+    "reforge/compose/render.py": "sha256:a89a20761e6d9135981b0376f6c5b4c341e38de08e2c28289fe403bc89c01332",
+    "reforge/quality/harmonize.py": "sha256:0ef98219a026eef6bb600fd1b6a45a4442047f6b3c4b83bd4d1d26843900511b",
+    "reforge/quality/font_scale.py": "sha256:4f8477fdce27978264cd2795af0a142a834014f9a199e11d335771ff6d519168",
+    "reforge/quality/score.py": "sha256:c54b1e5a7694d96920c8105d7f64ae60e7024b6302b3f1b400573edc17e998c4",
+    "reforge/config.py": "sha256:037cc996cf25d463d13802efffe20f218676dfc09f4f1aa97abe0845fcc6e8dc",
+    "reforge/evaluate/visual.py": "sha256:4fe9a5f0cde4da50f5e3b9fff5b1753716ca1d585fba976dda17f3a4a5379026",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "baseline": {
+      "skipped": false,
+      "rating": 1,
+      "notes": ""
+    },
+    "candidate": {
+      "skipped": false,
+      "pick": "A",
+      "agrees_with_metric": true,
+      "notes": ""
+    }
+  },
+  "cv_metrics": {}
+}

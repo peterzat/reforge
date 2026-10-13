@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-03T02:20:27",
+  "commit": "7c8dc12",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:f8ed30ed0ac18eabf14490e05cfec76a43c6b8a18cdd6f2b781fa980066b11b0",
+    "reforge/compose/layout.py": "sha256:9f3d883c6fdb8011f5081c98991a1092a7edb7cf359b6b8124bc8778e582b6ec",
+    "reforge/compose/render.py": "sha256:6b946af3b84dbd30a119aa1f6a6258139ba187d34b56c3ed47cb5b8fe2b1bb3a",
+    "reforge/quality/harmonize.py": "sha256:20673ccdd23354204d965a63eb10acb6e2769e1da086a51b17a13834a5030b67",
+    "reforge/quality/font_scale.py": "sha256:1e0b0f78cc86f9795691f89cf0c7aa82786f4d284765fb7bdc8921929b0cd4ed",
+    "reforge/quality/score.py": "sha256:fc2370372ef7fece024cbbddcd0330f5486bd22f6c690a6632c913aab1732444",
+    "reforge/config.py": "sha256:b3cbe3fd8a81ba625c6aa403523a570eb3edb065b034480105b4d6dfd01dc53f",
+    "reforge/evaluate/visual.py": "sha256:882496d9e746a3e7b1fe1c6f48c60022784b0f7341107163cabc2ddcedba7262",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "spacing": {
+      "skipped": false,
+      "preferred": "B",
+      "notes": "B is better by a tiny bit, but it's barely noticeable.  both are very bad (far too widely spaced out)."
+    }
+  },
+  "cv_metrics": {}
+}

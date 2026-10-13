@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-03T01:27:36",
+  "commit": "7c8dc12",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:f8ed30ed0ac18eabf14490e05cfec76a43c6b8a18cdd6f2b781fa980066b11b0",
+    "reforge/compose/layout.py": "sha256:9f3d883c6fdb8011f5081c98991a1092a7edb7cf359b6b8124bc8778e582b6ec",
+    "reforge/compose/render.py": "sha256:6b946af3b84dbd30a119aa1f6a6258139ba187d34b56c3ed47cb5b8fe2b1bb3a",
+    "reforge/quality/harmonize.py": "sha256:20673ccdd23354204d965a63eb10acb6e2769e1da086a51b17a13834a5030b67",
+    "reforge/quality/font_scale.py": "sha256:1e0b0f78cc86f9795691f89cf0c7aa82786f4d284765fb7bdc8921929b0cd4ed",
+    "reforge/quality/score.py": "sha256:fc2370372ef7fece024cbbddcd0330f5486bd22f6c690a6632c913aab1732444",
+    "reforge/config.py": "sha256:aedd083c7a5f28575506db2fb97f9ddeb7f04ef706e53171a32ece93b5643414",
+    "reforge/evaluate/visual.py": "sha256:882496d9e746a3e7b1fe1c6f48c60022784b0f7341107163cabc2ddcedba7262",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "hard_words": {
+      "skipped": false,
+      "rating": 1,
+      "flagged_unreadable": [
+        "can't",
+        "than",
+        "impossible",
+        "book",
+        "don't"
+      ],
+      "notes": "some gray boxes, \"an\" was readable but marginal."
+    },
+    "composition": {
+      "skipped": false,
+      "rating": 3,
+      "defects": [
+        "spacing_loose",
+        "size_inconsistent",
+        "ink_weight_uneven",
+        "letter_malformed"
+      ],
+      "notes": "several words are unreadable"
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9983706788287395,
+    "stroke_weight_consistency": 0.8783790040056132,
+    "word_height_ratio": 0.9230769230769231,
+    "height_outlier_ratio": 1.0,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.382452497242287,
+    "baseline_alignment": 0.5577045360215325,
+    "composition_score": 0.36466827417457087,
+    "layout_regularity": 0.7254985795409807,
+    "ocr_accuracy": 0.8356800144300145,
+    "ocr_min": 0.0,
+    "ocr_per_word": [
+      0.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.5,
+      0.4,
+      1.0,
+      0.8888888888888888,
+      1.0,
+      0.375,
+      0.5,
+      1.0,
+      1.0,
+      0.6428571428571428,
+      1.0,
+      1.0,
+      1.0,
+      0.9,
+      1.0,
+      0.5,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8333333333333334,
+      0.8,
+      0.875,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.6666666666666667,
+      0.5454545454545454,
+      1.0,
+      0.5,
+      1.0,
+      1.0,
+      1.0,
+      0.5
+    ],
+    "blank_word_ratio": 0.975,
+    "height_outlier_score": 1.0,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "overall": 0.45
+  }
+}

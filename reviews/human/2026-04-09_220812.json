@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-09T22:08:12",
+  "commit": "8390624",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:92f54e12cb9e8ff2357f6f85b3a3556cfa13ad6c3eb36696f0f77b06a3cb0e32",
+    "reforge/compose/layout.py": "sha256:958e2f856417273946401ff1b51458766724d051f9b584572179c2dcdd46bb9e",
+    "reforge/compose/render.py": "sha256:a89a20761e6d9135981b0376f6c5b4c341e38de08e2c28289fe403bc89c01332",
+    "reforge/quality/harmonize.py": "sha256:20673ccdd23354204d965a63eb10acb6e2769e1da086a51b17a13834a5030b67",
+    "reforge/quality/font_scale.py": "sha256:4f8477fdce27978264cd2795af0a142a834014f9a199e11d335771ff6d519168",
+    "reforge/quality/score.py": "sha256:fc2370372ef7fece024cbbddcd0330f5486bd22f6c690a6632c913aab1732444",
+    "reforge/config.py": "sha256:037cc996cf25d463d13802efffe20f218676dfc09f4f1aa97abe0845fcc6e8dc",
+    "reforge/evaluate/visual.py": "sha256:4fe9a5f0cde4da50f5e3b9fff5b1753716ca1d585fba976dda17f3a4a5379026",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "candidate": {
+      "skipped": false,
+      "pick": "C",
+      "agrees_with_metric": false,
+      "notes": "C by far better than E, second closest is A"
+    },
+    "stitch": {
+      "skipped": false,
+      "pick": "4px",
+      "notes": "Hard to say, since \"standing\" is way higher than \"unders\", it looks like superscript!  I think everything except 4px is probably worse though, I believe it would overlap into the last letter of \"s\" (4px at least seems to be on the right place horizontally)."
+    },
+    "sizing": {
+      "skipped": false,
+      "rating": 2,
+      "notes": "\"I\" is a bit short (though it nearly touches the top of the white box in this review).  something looks much smaller than \"quick\"."
+    },
+    "baseline": {
+      "skipped": false,
+      "rating": 2,
+      "notes": "the \"j\" in jumping looks perfect, but the \"g\" in jumping looks a bit mangled.  \"gray\" looks mostly good, with the big exception that it sits much higher in the review output box than the previous words\"."
+    },
+    "spacing": {
+      "skipped": false,
+      "preferred": "B",
+      "notes": "morning sits way too high, windows sits a bit high.  bright, light, and through all sit on the same line."
+    },
+    "ink_weight": {
+      "skipped": false,
+      "preferred": "A",
+      "notes": "possibly identical.   \"jump high\" has a noticeably greater ink weight in both versions."
+    },
+    "composition": {
+      "skipped": false,
+      "rating": 2,
+      "defects": [
+        "size_inconsistent",
+        "baseline_drift",
+        "ink_weight_uneven",
+        "letter_malformed"
+      ],
+      "notes": "baseline possibly regressed.  \"by\" is higher than it should be, as is \"morning\", \"being\" and \"for\" are too low."
+    },
+    "hard_words": {
+      "skipped": false,
+      "rating": 3,
+      "flagged_unreadable": [
+        "an",
+        "don't"
+      ],
+      "notes": "gray boxes.  \"don't\" is technically readable but the apostrophe and \"t\" look zoomed-in (badly cropped).  \"book is readable, but the \"k\" looks weird and almost like two letters."
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9979195024869203,
+    "stroke_weight_consistency": 0.8606868286118565,
+    "word_height_ratio": 0.8400000000000001,
+    "height_outlier_ratio": 1.0357142857142858,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.4134047816108593,
+    "baseline_alignment": 0.5761500879742179,
+    "composition_score": 0.45097430388819576,
+    "layout_regularity": 0.7117403702060615,
+    "ocr_accuracy": 0.9326569264069263,
+    "ocr_min": 0.25,
+    "ocr_per_word": [
+      1.0,
+      0.5,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.25,
+      1.0,
+      1.0,
+      0.33333333333333337,
+      1.0,
+      1.0,
+      0.5714285714285714,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8333333333333334,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8181818181818181
+    ],
+    "blank_word_ratio": 1.0,
+    "height_outlier_score": 0.9285714285714284,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "word_readability_rate": 0.95,
+    "overall": 0.7236611637608719
+  }
+}

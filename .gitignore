@@ -17,3 +17,6 @@ TODO.md
 reviews/human/*
 !reviews/human/.gitkeep
 !reviews/human/FINDINGS.md
+# Review JSONs are ground truth: tracked, never deleted. Images stay local.
+!reviews/human/*.json
+!reviews/human/stale/

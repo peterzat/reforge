@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-17T14:13:20",
+  "commit": "fad07a2",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:2fb427b03c1c30e73d84768fa0ede59525f1e73bec8bb810229b70c231854189",
+    "reforge/compose/layout.py": "sha256:73e0f4e79a91b453d768dc6dd2c3a9502ab6276b7dc5890183f0d4de19dee831",
+    "reforge/compose/render.py": "sha256:3f9d9d54e27f86974479f8c1cc670bdef3d44da2eb501184a9e51cf20d26a86d",
+    "reforge/quality/harmonize.py": "sha256:a48b6b1d6029abb7fb0cba1bc0a6fdf9c87ce0059e95859f4e2f8e50094ba079",
+    "reforge/quality/font_scale.py": "sha256:0543a8b976e46d27140b22e486e2786e3d04768ef1faefa1660c7e822f5fa7d8",
+    "reforge/quality/score.py": "sha256:59659c1d9cc4d2ebd339668f4c301e8173e9294860eb97f41dc441fdc0479e1c",
+    "reforge/config.py": "sha256:b225c2765cb60d367883621683c9d3e19e2e02e9bbdd5f1fb8f6a9d105d7b1e9",
+    "reforge/evaluate/visual.py": "sha256:a27eb9e63f0910315d64346093be77eb9aaff7d2d51caee88ad62ffae66854c5",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "composition": {
+      "skipped": false,
+      "rating": 2,
+      "defects": [
+        "size_inconsistent",
+        "baseline_drift",
+        "letter_malformed"
+      ],
+      "notes": "key regressions:  1) \"can't\" looks like \"cantt\", 2) \"by\" is blurry and the bottom of the \"b\" and the descender in get \"y\" is significantly clipped (only the two peaks of the \"y\" are visible), 3) the punctuation is very bad - the apostrophe is tiny, commas and periods are in the middle of words, not at the bottom, the semicolon is tiny."
+    },
+    "punctuation": {
+      "skipped": false,
+      "rating": 2,
+      "flagged_unreadable": [
+        "can't",
+        "really?",
+        "great!",
+        "wait;",
+        "it's"
+      ],
+      "notes": "punctuation is tiny, and letters appear duplicated when apostrophe is added (\"itss\" instead of it's)."
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9895544088552972,
+    "stroke_weight_consistency": 0.7854267801736045,
+    "word_height_ratio": 0.8799999999999999,
+    "height_outlier_ratio": 1.018181818181818,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.4016994440412815,
+    "baseline_alignment": 0.7012301065649751,
+    "composition_score": 0.46792699128291687,
+    "layout_regularity": 0.7098176291449315,
+    "punctuation_visibility": 0.5,
+    "ocr_accuracy": 0.9031944444444445,
+    "ocr_min": 0.0,
+    "ocr_per_word": [
+      1.0,
+      0.5,
+      1.0,
+      0.875,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.5454545454545454,
+      1.0,
+      1.0,
+      1.0,
+      0.7777777777777778,
+      1.0,
+      0.4545454545454546,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.0,
+      0.8,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.8333333333333334,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      0.9,
+      1.0,
+      1.0,
+      0.875,
+      1.0,
+      0.6666666666666667,
+      1.0,
+      1.0,
+      1.0,
+      0.9
+    ],
+    "blank_word_ratio": 1.0,
+    "height_outlier_score": 0.9636363636363638,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "word_readability_rate": 0.95,
+    "overall": 0.7217056879991846
+  }
+}

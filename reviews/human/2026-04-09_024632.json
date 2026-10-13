@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "timestamp": "2026-04-09T02:46:32",
+  "commit": "485f4db",
+  "pipeline_checksums": {
+    "reforge/model/generator.py": "sha256:8cbb544695265f56334d7c23f65ea0baaf35811246c11fbd5f9fd946eb42cb23",
+    "reforge/compose/layout.py": "sha256:177808df26ebde71113befda19425dbd5c1d0b6294e1300a56384e13ef05a5d8",
+    "reforge/compose/render.py": "sha256:a89a20761e6d9135981b0376f6c5b4c341e38de08e2c28289fe403bc89c01332",
+    "reforge/quality/harmonize.py": "sha256:20673ccdd23354204d965a63eb10acb6e2769e1da086a51b17a13834a5030b67",
+    "reforge/quality/font_scale.py": "sha256:4f8477fdce27978264cd2795af0a142a834014f9a199e11d335771ff6d519168",
+    "reforge/quality/score.py": "sha256:fc2370372ef7fece024cbbddcd0330f5486bd22f6c690a6632c913aab1732444",
+    "reforge/config.py": "sha256:b3cbe3fd8a81ba625c6aa403523a570eb3edb065b034480105b4d6dfd01dc53f",
+    "reforge/evaluate/visual.py": "sha256:f83018d1906e78749aaca9338d575f13a02bdd8b9ef8a43fb04a9db72ca80332",
+    "reforge/evaluate/compare.py": "sha256:61913dca3040ff60cc8452d335012c25e28cf0c676e421564f15b93842c44ab8",
+    "reforge/evaluate/ocr.py": "sha256:3af4ea2d5c58da2e76f983951f9f7ac24594ccc9b43589f2aef33b007c311b20"
+  },
+  "evaluations": {
+    "sizing": {
+      "skipped": false,
+      "rating": 3,
+      "notes": "better, but \"something\" is noticeably smaller.  The uppercase I is larger than the lowercase 'q', but could still be larger, and the descender in \"q\" appears cut off."
+    },
+    "composition": {
+      "skipped": false,
+      "rating": 3,
+      "defects": [
+        "size_inconsistent",
+        "letter_malformed"
+      ],
+      "notes": "letters malformed in several words.  probably a better \"Defects\" list would ask \"malformed words\"."
+    }
+  },
+  "cv_metrics": {
+    "gray_boxes": 1.0,
+    "ink_contrast": 1.0,
+    "background_cleanliness": 0.9877497223329726,
+    "stroke_weight_consistency": 0.898184023574119,
+    "word_height_ratio": 0.8799999999999999,
+    "height_outlier_ratio": 1.0,
+    "slant_consistency": 0.0,
+    "style_fidelity": 0.3819862753751052,
+    "baseline_alignment": 0.6016931414990951,
+    "composition_score": 0.40534041898231954,
+    "layout_regularity": 0.7057759704144291,
+    "ocr_accuracy": 0.7932176157176157,
+    "ocr_min": 0.0,
+    "ocr_per_word": [
+      1.0,
+      0.4285714285714286,
+      1.0,
+      1.0,
+      0.5,
+      0.5,
+      1.0,
+      1.0,
+      0.23076923076923073,
+      1.0,
+      1.0,
+      0.6666666666666667,
+      0.4545454545454546,
+      1.0,
+      0.6923076923076923,
+      1.0,
+      1.0,
+      0.8333333333333334,
+      1.0,
+      0.0,
+      0.6,
+      1.0,
+      1.0,
+      0.75,
+      0.5,
+      0.6666666666666667,
+      1.0,
+      1.0,
+      0.5,
+      1.0,
+      0.7272727272727273,
+      1.0,
+      1.0,
+      0.75,
+      1.0,
+      1.0,
+      1.0,
+      0.2857142857142857,
+      1.0,
+      0.6428571428571428
+    ],
+    "blank_word_ratio": 1.0,
+    "height_outlier_score": 1.0,
+    "gates_passed": true,
+    "gate_details": {
+      "gray_boxes": true,
+      "ink_contrast": true,
+      "background_cleanliness": true
+    },
+    "word_readability_rate": 0.875,
+    "overall": 0.65569409090339
+  }
+}
