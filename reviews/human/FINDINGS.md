@@ -1,6 +1,6 @@
 # Human Review Findings
 
-<!-- FINDINGS_LAST_PROCESSED: 2026-04-20_005013 -->
+<!-- FINDINGS_LAST_PROCESSED: 2026-10-13_170905 -->
 
 Durable quality principles extracted from human evaluation reviews. Each finding
 includes the reviews that support it and any code changes it motivated.
@@ -11,9 +11,9 @@ includes the reviews that support it and any code changes it motivated.
 |--------|-------|
 | Active | 2 |
 | In Progress | 3 |
-| Resolved | 2 |
+| Resolved | 3 |
 | Acceptable | 0 |
-| Plateaued | 1 |
+| Plateaued | 0 |
 | Graduated | 4 |
 
 ## How this file works
@@ -74,6 +74,26 @@ pointers only.
 
 ## Methodology notes
 
+### 2026-10-13 audit: three instruments were measuring the wrong thing
+
+- **The x-height ruling below is withdrawn.** Both arms of the 2026-04-19
+  experiment carried a compose bug: `compose_words` snapped any word whose
+  baseline row index was >20% from the line median to the median, and word
+  canvases are scaled by different factors, so ~30% of correctly detected
+  words moved 10-18px. The words it raised are the ones review
+  `2026-04-19_215858` called superscript. The "eye compares top extents"
+  explanation was never tested in isolation. With the bug fixed and
+  generation held fixed, x-height-matched sizing won a blind A/B 3/3
+  (review `2026-10-13_170905`).
+- **The gating metric did not replicate.** `height_outlier_score`, selected at
+  N=16 (rho +0.30), has rho -0.22 on the 18 reviews collected after its
+  selection. See `docs/metric_correlation.md`.
+- **Blind pairwise A/B on cached generations gives clear answers.** The user
+  called the 2026-10-13 sizing A/B "the first time I could make such a
+  straightforward choice." A fresh-context Claude judge, given the same pairs
+  and a fixed rubric, matched the human on 3/3 (first calibration point).
+- Full write-up: `docs/audit-2026-10-13.md`.
+
 ### Rating-window hypothesis ruled out (2026-04-19)
 
 The composition 3/5 plateau is not an artifact of the rolling 5-review
@@ -85,7 +105,7 @@ every window we can measure. CLAUDE.md target stays at last-5; further lift
 must come from work that raises the composite impression, not from window
 tuning. Full analysis: `docs/rating_window_analysis.md`.
 
-### X-height-spread is the wrong lever for size_inconsistent (2026-04-19)
+### X-height-spread is the wrong lever for size_inconsistent (2026-04-19; withdrawn 2026-10-13, see above)
 
 Spec 2026-04-19 (body-zone sizing) attempted to close the persistent
 `size_inconsistent` composition defect by reducing `x_height_spread` on
@@ -145,6 +165,14 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   candidate-scores JSONL keyed by word+seed+timestamp). Candidate-eval human-pick
   join key work is the unblocker. Surfaced in spec 2026-04-19's next-turn proposal
   as direction (3).
+- **Audit 2026-10-13:** (1) with `REFORGE_LOG_CANDIDATES=1` (set by plain
+  `make test-human`), `generate_word`'s candidate logging crashed whenever
+  best-of-N picked candidate 2 or 3, which would have aborted the composition
+  eval of any full session since 2026-04-20 (fixed). (2) The candidate eval scores candidates with
+  `quality_score_breakdown(img)` defaults (no word length, stroke reference or
+  OCR blend), not the scorer production uses, so the "agreement rate" compares
+  the human against a scorer that does not pick production candidates. Fix
+  before using agreement data for reweighting.
 
 ### Hard words show gray box artifacts and poor apostrophes
 
@@ -160,6 +188,11 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
 - **Code changes:** isolated-cluster-filter fix; OCR rejection threshold 0.3 -> 0.4;
   contraction splitting bypasses DP for apostrophe rendering; `_match_chunk_to_reference`
   lifts right-chunk ink weight; duplicate-letter words promoted to curated.
+- **Code changes (2026-10-13):** contraction halves stitch on detected baselines
+  (the old padding doubled any bottom mismatch and put the `'d` of "they'd" on the
+  `y` descender tip); punctuated words split every trailing mark and recurse
+  through `generate_word`, so "don't." takes the contraction path, "Wait..." gets
+  three dots, and the base word gets the OCR retry loop. Awaiting review.
 - **Review 8 (`2026-04-19_181354`): rating 2/5 -> 3/5.** Spec 2026-04-19
   (Duplicate-letter hallucination class) added `mornings`, `something`, `really` to
   `hard_words.json::curated` alongside `impossible`. Seed-42 test-hard: all three
@@ -192,7 +225,20 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   to `r - 1`. Regression coverage in
   `tests/quick/test_baseline.py::TestBaselineOnRealisticWordShapes` and
   `TestComposedLineBaselineAlignment`.
-- **Active sub-issue:** `"by"` descender clipping persists (Review `2026-04-19_215858`
+- **Code change (6), 2026-10-13:** removed the 20%-from-median clamp (it compared
+  row indices across differently scaled canvases and moved ~30% of words) and made
+  `detect_baseline` word-aware (ink bottom for words with no descender-capable
+  letter; run-length "body below"; walk-back relative to the word's own peak).
+  Contact sheets of all 80 words of seeds 42/137 show every baseline correct by
+  eye, including `it`, `for` (were on their crossbars), `by` and `they'd` (were on
+  the descender tip). Explains the history above: "gray sits too high", "two is
+  super low", "for is way too low", "by is higher than it should be". Awaiting
+  a composition review.
+- **`"by"` sub-issue root cause (2026-10-13):** besides the baseline misread, the
+  chained sizing passes shrank "by" through a 15px-tall bottleneck and
+  re-inflated it, which is the "blurry ... significantly clipped" note in
+  `2026-04-17_141320`. Single-resample sizing renders it legible.
+- **Active sub-issue (pre-2026-10-13):** `"by"` descender clipping persists (Review `2026-04-19_215858`
   flagged `"by"` as "small+superscript"). Distinct from cross-line drift: per-word
   bounding box underestimates vertical extent so descender tails get chopped. Candidate
   causes: over-tight postprocess crop on short words, aggressive body-zone equalization
@@ -201,7 +247,12 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
 
 ### Word sizing is inconsistent (single-char uppercase)
 
-- **Status:** Plateaued (promoted 2026-04-10 per spec D2)
+- **Status:** In Progress (left Plateaued 2026-10-13 via a design-level change:
+  text-aware zone sizing). Zone sizing gives a capital `I` about twice the
+  lowercase body, the proportion the reviewer asked for. Needs a targeted
+  `sizing` eval; the earlier plateau evidence was gathered with the clamp bug and
+  the resize chain in place.
+- **Previous status:** Plateaued (promoted 2026-04-10 per spec D2)
 - **Reviews:** 7 (2026-04-03 through 2026-04-13)
 - **Principle:** Capital `I` fills the 64px canvas; lowercase body then appears tiny
   by comparison. Human wants "lowercase body roughly 1/2 the size of capital I".
@@ -257,7 +308,13 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
   `"by"` as "small+superscript". This was the review that established size_inconsistent
   is not an x-height-spread problem -- see the Cross-word size balance finding below
   and the methodology note at the top of this file.
-- **Remaining defects:** `baseline_drift` (active sub-issue on `"by"`),
+- **2026-10-13:** compose fixes (baseline placement, word-aware detection,
+  contraction stitch, punctuation routing) and zone sizing landed together; no
+  composition rating yet. The `size_inconsistent` and `baseline_drift` defects
+  flagged in most reviews had mechanical root causes (see Cross-word size balance
+  and Baseline alignment). Next `make test-human` composition session is the test
+  of the 4/5 target.
+- **Remaining defects (pre-2026-10-13):** `baseline_drift` (active sub-issue on `"by"`),
   `size_inconsistent` (Cross-word size balance finding), `letter_malformed`
   (intermittent).
 
@@ -281,7 +338,17 @@ per-word baseline offsets, or per-word size_inconsistent human-eval type):
 
 ### Cross-word size balance (size_inconsistent defect)
 
-- **Status:** In Progress
+- **Status:** Resolved (2026-10-13, targeted blind A/B `2026-10-13_170905`: zone
+  sizing preferred on 3/3 seeds; model judge agreed 3/3)
+- **Root causes (2026-10-13):** (1) DiffusionPen fills its 64px canvas for every
+  word, so equalizing total ink height gives all-body words ("was", "on", "so")
+  ~2x the x-height of ascender words; (2) the body-zone pass shrank those words
+  and the height passes re-inflated them, so it changed nothing but blur;
+  (3) the baseline clamp raised scaled-down words (the "superscript" read).
+- **Code changes (5-7), 2026-10-13:** single-resample sizing; clamp removal and
+  word-aware baselines; `SIZING_POLICY = "zone"` (x-height matching from a
+  letter-class prior blended with measurement). Gate now `x_height_consistency`.
+- **Previous status:** In Progress
 - **Reviews:** 8+ (2026-04-14 through 2026-04-19; aggregated across Composition
   finding evidence)
 - **Principle:** Short words (typically 2-3 char, especially those with descenders
