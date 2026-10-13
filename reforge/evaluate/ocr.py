@@ -29,25 +29,31 @@ def _load_trocr():
     return processor, model
 
 
-def ocr_read(img: np.ndarray) -> str:
+def ocr_read(img: np.ndarray, backend: str | None = None) -> str:
     """Read text from a grayscale word image.
 
     TrOCR-small by default. ``REFORGE_OCR_BACKEND=vlm`` reads with the local
     vision-language model instead (reforge.evaluate.vlm; needs a running
-    server). That backend is for development and evaluation runs: it reads
-    short words far more reliably than TrOCR, but it is not deterministic
-    across model versions and needs the GPU server, so gates and tests keep
-    the default.
+    server). The env var applies to evaluation callers only: generation
+    (best-of-N selection and the OCR retry loop) always passes
+    ``backend="trocr"``. The VLM backend is for development and evaluation
+    runs: it reads short words far more reliably than TrOCR, but it is not
+    deterministic across model versions and needs the GPU server, so gates
+    and tests keep the default.
 
     Args:
         img: Grayscale uint8 numpy array (single word image).
+        backend: "trocr" or "vlm" to force a reader; None reads the
+            ``REFORGE_OCR_BACKEND`` env var (default "trocr").
 
     Returns:
         Recognized text string.
     """
     import os
 
-    if os.environ.get("REFORGE_OCR_BACKEND", "trocr") == "vlm":
+    if backend is None:
+        backend = os.environ.get("REFORGE_OCR_BACKEND", "trocr")
+    if backend == "vlm":
         from reforge.evaluate.vlm import read_word
 
         return read_word(img)
@@ -70,18 +76,19 @@ def ocr_read(img: np.ndarray) -> str:
     return text.strip()
 
 
-def ocr_accuracy(img: np.ndarray, target: str) -> float:
+def ocr_accuracy(img: np.ndarray, target: str, backend: str | None = None) -> float:
     """Compute character-level accuracy between OCR output and target text.
 
     Args:
         img: Grayscale uint8 numpy array (single word image).
         target: Intended text for this word.
+        backend: Reader override passed to ``ocr_read`` (None = env var).
 
     Returns:
         Accuracy score in [0, 1] where 1.0 means perfect character match.
         Uses case-insensitive comparison and edit-distance-based scoring.
     """
-    recognized = ocr_read(img)
+    recognized = ocr_read(img, backend=backend)
     return _char_accuracy(recognized, target)
 
 

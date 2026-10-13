@@ -50,3 +50,33 @@ def test_ocr_backend_switch(monkeypatch):
     img = np.full((64, 128), 255, dtype=np.uint8)
     assert ocr.ocr_read(img) == "by"
     assert ocr.ocr_accuracy(img, "by") == 1.0
+
+
+@pytest.mark.quick
+def test_generation_ocr_ignores_vlm_backend_env(monkeypatch):
+    """Generation selects with TrOCR even when REFORGE_OCR_BACKEND=vlm is set."""
+    from types import SimpleNamespace
+
+    from reforge.evaluate import ocr, vlm
+    from reforge.model import generator
+
+    def _vlm_must_not_run(img):
+        raise AssertionError("generation called the VLM reader")
+
+    class _Processor:
+        def __call__(self, images, return_tensors):
+            return SimpleNamespace(pixel_values=None)
+
+        def batch_decode(self, ids, skip_special_tokens):
+            return ["by"]
+
+    class _Model:
+        def generate(self, pixel_values):
+            return None
+
+    monkeypatch.setattr(vlm, "read_word", _vlm_must_not_run)
+    monkeypatch.setattr(ocr, "_load_trocr", lambda: (_Processor(), _Model()))
+    monkeypatch.setenv("REFORGE_OCR_BACKEND", "vlm")
+    ocr_fn = generator._get_ocr_fn()
+    img = np.full((64, 128), 255, dtype=np.uint8)
+    assert ocr_fn(img, "by") == 1.0

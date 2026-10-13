@@ -1,242 +1,248 @@
-## Review -- 2026-10-13 (commit: 9630e08)
+## Review -- 2026-10-13 (commit: 90302fe)
 
-**Review scope:** Refresh review. Focus: 6 file(s) changed since prior review
-(commit d43de13): `reforge/quality/font_scale.py`,
-`tests/quick/test_xheight_normalization.py`, `docs/OUTPUT_HISTORY.md`,
-`docs/best-output.png`, and the archived output PNGs. 76 already-reviewed
-file(s) checked for interactions only.
+**Review scope:** Refresh review. Focus: 32 file(s) changed since prior review
+(commit 9630e08), i.e. all six unpushed commits (8fc2f82..90302fe). 1
+already-reviewed file (`.claude/settings.local.json`, uncommitted) checked for
+interactions only.
 
-**Summary:** Two commits since the prior review: `8b876bf` (zone sizing crops
-synthetic trailing-mark column runs before measuring x-height, plus four quick
-tests) and `9630e08` (demo output refreshed from the final code). The crop is
-sound: rendered marks never split into two column runs and always sit behind
-at least 2 white columns. The archived PNG and `best-output.png` are
-byte-identical, and OUTPUT_HISTORY has one new entry relative to
-`origin/main`. Tests at review start: `make test-quick` 332 passed;
-`make test-regression` 334 passed. One fix cycle was attempted and reverted
-(see Fixes Applied), so the code is unchanged and tests are stable at 332.
+**Summary:** Six commits: zone-sizing class changes ("f" descender, "i" dot
+weak ascender), trailing-mark cropping and a body-band cross-check in
+`detect_baseline`, a pixel-only sub-pixel `x_height_consistency` with an
+approved re-baseline, an opt-in VLM OCR backend, two placement diagnostics,
+offline-first TrOCR loading, replay and benchmark tooling, and docs plus a
+demo output refresh. Tests at review start: `make test-quick` 345 passed,
+`make test-regression` 347 passed. After one fix cycle: 346 and 348 passed
+(one new quick test). Three WARNs were fixed (uncommitted); one WARN stays
+open for a human decision. A GPU probe (origin/main vs HEAD detector, seeds
+42/137/2718) backs the open WARN.
 
 **External reviewers:**
 None configured.
 
 **Built-in review:**
-`/code-review high`: 10 findings, 10 kept after Step 6 (8 merged with Claude
-or carried findings).
+`/code-review high`: 10 findings, 10 kept after Step 6 (7 merged with Claude
+or /security findings).
 
 ### Findings
 
-[WARN, OPEN: requires manual intervention] reforge/quality/font_scale.py:98 --
-`zone_class` treats `f` only as a
-strong ascender, but a cursive `f` in this hand descends below the baseline
-(`layout.DESCENDER_CAPABLE` already says so). Short `f` words are sized with
-the (2, 0) ratio 2.26 when their ink is closer to the (2, 1) ratio 2.85, so
-"for", "of", "if", "off" come out undersized: the `size_inconsistent` defect
-in the other direction, on the policy adopted to fix it. (claude-code)
-  Evidence: GPU probe, hw-sample style, PRESET_FAST, seeds 42/137/2718,
-  production `postprocess_words`. Ink below the detected baseline is 25-34%
-  of ink height for "for" (3/3 seeds), "if" (3/3), "off" (3/3); a
-  side-by-side render confirms the `f` tail in "for", "of", "off". Measured
-  ink/x-height on the raw images: "for" 2.91-4.00, "of" 2.78-4.27, "off"
-  2.29-2.86 (median about 2.8). After sizing, compute_x_height of "for" is
-  8, 9, 10 px against target 12.39, while same-class control "had" is 13,
-  13, 13. Words of 3 or fewer letters use the prior alone (blend weight 0
-  in `estimate_x_height`), so nothing corrects it. `zone_class` is used by
-  the evaluator only to select (0, 0) words, and `f` words are never (0, 0),
-  so the metric definition is unaffected.
-  Suggested fix: in `zone_class`, set the descender flag for `f` as well
-  (for example, check `_DESCENDERS | {"f"}` or add `f` to `_DESCENDERS`),
-  keeping its ascender class at 2. Do not change `ZONE_HEIGHT_RATIOS`, the
-  evaluator (`reforge/evaluate/`), the gate word list, or any baseline file.
-  Add quick tests: `zone_class("for") == (2, 1)`, `zone_class("of") ==
-  (2, 1)`, `zone_class("off") == (2, 1)`, and existing classes unchanged.
-  Note the gate word "foxes" becomes (2, 1) and, at 5 letters (50% prior),
-  sizes about 12% larger; run `make test-quick` and `make test-regression`.
-  If the regression gate fails, revert the change and report back: do not
-  re-baseline (CLAUDE.md, "The evaluator is the human's").
-  Fix attempt (cycle 1, reverted): `_DESCENDERS = set("gjpqyf")` passed
-  `make test-quick` (333) but failed `make test-regression` on seed 137:
-  `x_height_consistency` 0.8855 < baseline 0.9536 (delta -0.0681, beyond
-  the 0.05 tolerance). Diagnostics also moved: seed 42 `overall`
-  0.7653 -> 0.6742 and `ocr_accuracy` 0.9000 -> 0.8286; seed 2718
-  `composition_score` 0.6514 -> 0.5696, `baseline_alignment` 0.6521 ->
-  0.7185. The likely driver is gate word "foxes" sizing ~12% larger and
-  shifting the long-group median of a metric that moves in whole-pixel
-  steps (see the next WARN). Options for the human: re-measure
-  `ZONE_HEIGHT_RATIOS` with `f` words classed as descenders and
-  re-baseline with approval; limit the `f` descender flag to words sized
-  from the prior alone (3 or fewer letters), which leaves "foxes"
-  unchanged (check this is not gate-gaming before adopting it); or accept
-  the undersizing of short `f` words.
+[WARN, FIXED] reforge/evaluate/ocr.py:50 -- `REFORGE_OCR_BACKEND=vlm` also
+switched production generation (best-of-N selection and the OCR retry loop
+via `generator._get_ocr_fn()`), the configuration the experiment log recorded
+as falsified. (also claude-code; related /security NOTE on the push gate)
+  Fixed: `ocr_read` / `ocr_accuracy` take an optional `backend`;
+  `_get_ocr_fn()` pins `backend="trocr"`; new quick test
+  `test_generation_ocr_ignores_vlm_backend_env`. Evaluation callers still
+  follow the env var (see the post-fix NOTE on `pipeline.py:324`).
 
-[WARN, OPEN: human decision] reforge/evaluate/visual.py:567 --
-`x_height_consistency` still cannot see mis-sizing of short all-body words,
-and it moves in whole-pixel steps at the gate's tolerance. DO NOT AUTO-FIX:
-changing the gating metric or its baseline requires explicit human approval
-(CLAUDE.md "The evaluator is the human's"). (carried; also claude-code;
-related /security NOTE)
-  Evidence: the all-body half of the metric is `ink_h / 1.21`, the same
-  ratio zone sizing uses (blend weight 0 for 3 or fewer letters), so that
-  half equals the target by construction. Score quantized: baseline 0.9536
-  on all seeds; a 1px change in either median moves it 0.05-0.07. The
-  constant has no ask rule and a 20% oversize passes at value 1.29.
-  Suggested fix (human decision): measure the all-body group with a
-  pixel-based x-height that does not use a sizing ratio, or calibrate the
-  ratio on a held-out hand; use means or sub-pixel measurement; move the
-  constant into the protected `regression_gate.py`. Re-baseline with
-  approval.
+[WARN, FIXED] CLAUDE.md:26 -- The gate description said "baseline 0.954 on all
+seeds"; 8fc2f82 re-baselined to 0.978 / 0.957 / 0.941. (also claude-code)
+  Fixed: per-seed baselines and the reason stated in that sentence only.
 
-[NOTE] reforge/evaluate/visual.py:597 -- After `8b876bf`, sizing and the
-evaluator measure punctuated all-body words differently. Sizing crops
-synthetic trailing marks (`_drop_trailing_mark_runs`); `check_x_height_
-consistency` uses `compute_ink_height(img)` on the full image, so "so?",
-"now!", "so," are read 20-40% oversized by the metric after being sized
-correctly. Gate words have no punctuation, so the gate is unaffected; the
-demo's only all-body punctuated word is "noon." (period, no extent above or
-below), so demo numbers are unaffected today. It skews `overall` and the run
-manifest on other text. Evaluator change, human decision. (also claude-code)
-  Suggested fix (human decision): apply the same crop in the metric's
-  all-body branch.
+[WARN, FIXED] reforge/evaluate/visual.py:126 -- `check_baseline_consistency`
+reuses compose's `detect_baseline` on the same crops, so it measures only
+placement arithmetic (on real pages, the +/-1px compose jitter) and is blind
+to detection errors, while `docs/cv-instruments.md` presented it as the
+baseline placement instrument. (also claude-code)
+  Fixed (documentation only): the docstring and the cv-instruments row state
+  the limitation and point to the golden test and contact sheets for
+  detection errors. The metric's computation is unchanged.
 
-[NOTE] reforge/compose/layout.py:125 -- The ink-bottom early return is skipped
-for any word containing `,` or `;` (both in `DESCENDER_CAPABLE`). A word
-without descender letters then runs the strict density scan, which brings
-back the crossbar misdetection the early return fixed for "it". Confirmed by
-probe on the `test_it_with_crossbar_returns_ink_bottom` fixture with the real
-`_attach_trailing_marks`: bare "it" -> 27 (ink bottom); "it," -> 23 against
-the word's ink bottom at 36 in the composite (13 px high, at the crossbar);
-"it;" -> 36, "it." -> 31, "it?" -> 32 (correct). Compose would place "it,"
-raised. Already-reviewed file with no interaction with the new changes, so
-NOTE under the refresh rule, but it is a real defect worth a follow-up.
-(claude-code)
-  Suggested fix: when the only descender-capable characters are trailing
-  synthetic marks, run the early-return check on the base word (strip
-  trailing marks first) and take the baseline as the base word's ink bottom.
+[WARN, OPEN: human decision, DO NOT AUTO-FIX] reforge/compose/layout.py:228 --
+The body-band cross-check is trusted whenever it disagrees with the scan,
+including its documented failure (the band ends high on a thin round bottom
+under a dense f crossbar). The original synthetic "for" fixture now fails and
+was replaced in the same commit. (also claude-code)
+  Evidence: the pre-change fixture of
+  `test_for_lower_body_rows_below_absolute_threshold` (f stem, dense
+  crossbar, thin o bottom) returns 14 on HEAD vs 20 on origin/main; the test
+  expects 20 +/- 1. 8fc2f82 replaced that fixture with a measured density
+  profile that passes, without mention in the commit message (global
+  CLAUDE.md: do not modify tests to accommodate a regression). GPU probe
+  (hw-sample, PRESET_FAST, seeds 42/137/2718, origin/main vs HEAD detector):
+  at raw 64px scale, which `_attach_mark_to_word` (generator.py:1407) and
+  `stitch_contraction` (generator.py:506) use, the band puts the baseline
+  mid-"o" for 2718 "for" (46 -> 36) and "off" (44 -> 34); rendered marks are
+  visibly raised on 2 of 15 f-word cases ("for." seed 137, "of," seed 2718).
+  The same probe shows the change is a clear net gain elsewhere:
+  descender-word marks ("gym.", "pay,") moved from the descender tip to the
+  baseline on 6 of 6 cases, and at zone-sized scale (compose placement)
+  every differing word (gym, jog, pay, say, away, up, going, off, for) was
+  correct on HEAD and wrong on origin/main. The golden fixture covers sized
+  crops only. Not auto-fixed: reverting would bring back the 16/30
+  short-word failures, and a better heuristic needs contact-sheet validation
+  at both scales.
+  Suggested fix (human decision): keep the cross-check but make the band
+  robust to a crossbar-dominated peak (for example, take the peak from the
+  lower half of the ink, or do not let the band override the scan's
+  walk-back row when the only descender-capable letter is "f"); restore the
+  original synthetic "for" fixture as an additional test rather than a
+  replacement; add raw-scale f-word and mark cases to the golden fixture.
 
-[NOTE] reforge/quality/font_scale.py:128 -- `_drop_trailing_mark_runs`
-assumes each mark yields one ink column run at `< 180`. Probe over `. , ; ! ?`,
-body heights 4-44, ink 20-179, font and Bezier renderers: marks never split
-into two runs and always have at least 2 white columns on the left, so the
-crop boundary is robust. In 69 of 3,280 cases (font path, ink >= 170, body
-height <= 13) the mark has no pixel below 180, and the crop then removes the
-base word's last column run instead. Production ink medians are far darker
-(postprocess blanks gray not adjacent to ink < 128), and the mark itself is
-invisible in that case. Low confidence that this occurs.
-  Suggested fix: none needed now; if it matters, skip the crop when the
-  removed run is wider than the expected mark width.
+[NOTE] reforge/pipeline.py:324 -- Post-fix: the end-of-run scoring in
+`pipeline.run()` still follows `REFORGE_OCR_BACKEND` (by design for
+evaluation callers). With the variable exported and no server, `vlm.ask`
+raises `URLError` after the PNG is saved and before the run manifest is
+written, and the manifest never records which reader produced its OCR
+metrics. (/security post-fix)
+  Suggested fix: record the OCR backend in the manifest, and have
+  `_compute_ocr_scores` return None (OCR unavailable) on `URLError`.
 
-[NOTE] reforge/quality/font_scale.py:114 -- `_TRAILING_MARKS` is a hand-copied
-literal of `generator.SYNTHETIC_MARKS`, kept local to avoid importing torch.
+[NOTE] reforge/quality/ink_metrics.py:65 -- `drop_trailing_mark_runs` now
+drives compose placement (`detect_baseline`) and the gate metric, not only the
+sizing estimate. If a mark merges with the last letter after the
+down-resample, the crop removes a real letter's column run. (also
+claude-code; carried low-ink NOTE)
+  Evidence: on the 12 real zone-sized punctuated crops in
+  `tests/quick/fixtures/descender_baselines.npz` the crop removed 5-9 px
+  (the mark) every time and the baseline matched the label; no merge was
+  observed. Separately, `detect_baseline` recurses with
+  `word.rstrip(TRAILING_MARKS)` while the crop counts marks on
+  `word.strip()`, so a word with trailing whitespace is cropped repeatedly;
+  pipeline words never carry whitespace. The prior low-ink case (69 of
+  3,280 synthetic cases, mark has no pixel below 180) still applies.
+  Suggested fix: skip the crop when the removed run is wider than a mark
+  could be (about 0.5 x-height); recurse with `word.strip().rstrip(...)`.
+
+[NOTE] experiments/replay_cache.py:77 -- `generate` does not set
+`torch.set_float32_matmul_precision("high")` (or `np.random.seed`) as
+`pipeline.run` does, so a cache is not pixel-identical to `reforge.py --seed`
+despite "Seeding matches pipeline.run". It also duplicates ~40 lines of
+`run()` setup. Both A/B arms read the same cache, so A/B validity is
+unaffected. (also claude-code)
+  Suggested fix: set TF32 in `generate`, or factor `run()`'s model/style
+  setup into a helper both use.
+
+[NOTE] reforge/evaluate/visual.py:181 -- `check_word_gap_ratio` hard-codes
+compose's 2px right pad; when a word's ink is within 2px of its canvas edge
+the gap is overstated by up to 2px. `_placed_word_crops` already knows the
+exact last ink column. (also claude-code)
+  Suggested fix: return the right padding from `_placed_word_crops` as it
+  does the left.
+
+[NOTE] reforge/evaluate/visual.py:688 -- `check_x_height_consistency` selects
+its all-body group with `font_scale.zone_class`, the sizing policy's
+classifier (changed in this push), while the docstring says "Nothing here is
+shared with the sizing policy". A future `zone_class` change silently changes
+which words the gate measures. Gate words ("was", "so", "on") are unaffected
+today. Evaluator change, human decision. (claude-code)
+  Suggested fix (human decision): a local letter-set classifier in the
+  evaluator, or correct the docstring.
+
+[NOTE] 8fc2f82 -- One commit bundles zone-sizing class changes, the baseline
+detector change and the gate-metric replacement with a single re-baseline, so
+no gate run shows the "f" sizing change (which failed the old gate on seed
+137) under a stable metric. All three were user-approved follow-ups (audit
+round 2); noted for attribution, no history rewrite proposed.
+
+[NOTE] reforge/quality/ink_metrics.py:62 -- `TRAILING_MARKS` is a hand-copied
+literal of `generator.SYNTHETIC_MARKS` (moved here from font_scale.py).
 (carried)
-  Suggested fix: move `SYNTHETIC_MARKS` to `config.py` and import it in both
-  modules.
+  Suggested fix: move `SYNTHETIC_MARKS` to `config.py` and import it in both.
 
-[NOTE] reforge/model/generator.py:1319 -- `strip_trailing_punctuation` and
-`strip_and_reattach_punctuation` (line 1448) are dead in production, still
-tested, and keep the old one-mark, Bezier, raw-`compute_x_height` semantics.
-(carried; also claude-code)
-  Suggested fix: delete both helpers and their tests, or point the tests at
-  `_attach_trailing_marks`.
+[NOTE] reforge/model/generator.py:1325 -- `strip_trailing_punctuation` and
+`strip_and_reattach_punctuation` are dead in production, still tested.
+(carried)
 
 [NOTE] reforge/pipeline.py:271 -- `run(seed=...)` calls `np.random.seed(seed)`,
-which resets the caller's global numpy RNG; nothing in `reforge/` draws from
-it. The per-word `torch.manual_seed` is also not restored. (carried; also
-claude-code)
-  Suggested fix: remove the numpy seed call.
+resetting the caller's global numpy RNG; nothing in `reforge/` draws from it.
+(carried)
 
 [NOTE] reforge/pipeline.py:75 -- `json.dump(default=float)` writes `np.bool_`
-values as 1.0/0.0 in the run manifest. (carried)
-  Suggested fix: a `default` that maps numpy scalars via `.item()`.
+as 1.0/0.0 in the run manifest. (carried)
 
-[NOTE] tests/medium/test_quality_regression.py:113 -- The gate seeds torch
-once for the whole word list and runs without TF32, where `run()` seeds per
-word and sets matmul precision "high". (carried; also claude-code)
-  Suggested fix: reuse `run()`'s per-word seeding and numerics scope in the
-  gate, or say in the comment that generation differs.
+[NOTE] tests/medium/test_quality_regression.py:113 -- The gate seeds torch once
+for the whole word list and runs without TF32, unlike `run()`. (carried)
 
-[NOTE] tests/medium/test_quality_thresholds.py:189 -- Medium tests, experiment
-harnesses and scripts still hand-wire `normalize_font_size` +
-`harmonize_words` (heights=True), the legacy chain production no longer runs:
-`test_quality_thresholds.py`, `test_generation.py`, `test_ocr_quality.py`,
-`test_hard_words.py`, `test_duplicate_letter_hallucinations.py`,
-`experiments/ab_harness.py:98`, `experiments/sweep_*.py`,
-`scripts/measure_word_sizing.py`. CLAUDE.md forbids this. (carried; also
-claude-code)
-  Suggested fix: move OCR, hard-word, generation tests and the A/B harness
-  to `postprocess_words`.
+[NOTE] tests/medium/test_quality_thresholds.py:189 -- Medium tests, the A/B
+harness and sweeps still hand-wire `normalize_font_size` + `harmonize_words`
+instead of `postprocess_words`. (carried)
 
-[NOTE] scripts/archive-output.sh:95 -- The archived metrics list records the
-demoted `height_outlier_score` but not `x_height_consistency`, the gating
-metric. (carried; also claude-code)
-  Suggested fix: add `x_height_consistency` to `tracked`.
+[NOTE] scripts/archive-output.sh:95 -- The archived metrics list records
+`height_outlier_score` but not the gating `x_height_consistency` (the new
+OUTPUT_HISTORY entry shows this). (carried)
 
-[NOTE] reforge/pipeline.py:73 -- `_write_manifest` writes `<output stem>.json`
-next to any output and silently overwrites an existing file of that name.
-(carried)
-  Suggested fix: document it in `--output` help, or use `<stem>.manifest.json`.
+[NOTE] reforge/pipeline.py:59 -- `_write_manifest` silently overwrites
+`<output stem>.json`. (carried)
 
 [NOTE] tests/quick/test_run_manifest.py:36 -- `test_cli_accepts_seed` assigns
-`sys.argv` directly (the `monkeypatch` fixture is unused) and loads
-`reforge.py` by a cwd-relative path. (carried; also claude-code)
-  Suggested fix: `monkeypatch.setattr(sys, "argv", [...])` and resolve
-  `reforge.py` from `__file__`.
+`sys.argv` directly and loads `reforge.py` by a cwd-relative path. (carried)
 
-[NOTE] reforge/compose/render.py:141 -- With the 20% clamp removed, per-word
-y offsets are bounded only by baseline-row differences within a line, while
-lines advance by max canvas height plus 12px; the `min_top` shift covers line
-0 only. A word with an unusual baseline row could intrude into an adjacent
-line. Not reproduced. (carried; also claude-code)
-  Suggested fix: a two-line compose test with extreme baseline rows.
+[NOTE] reforge/compose/render.py:141 -- Per-word y offsets are bounded only by
+baseline-row differences; a word with an unusual baseline row could intrude
+into an adjacent line. Not reproduced. (carried)
 
-[NOTE] reforge/quality/font_scale.py:259 -- `_reinforce_thin_strokes` still
-applies only to single-character words, while zone sizing shrinks short
-all-body words to ~0.2x in one INTER_AREA step. (carried)
-  Suggested fix: measure stroke width of zone-sized short words before
-  extending reinforcement.
+[NOTE] reforge/quality/font_scale.py:63 -- `_reinforce_thin_strokes` applies
+only to single-character words while zone sizing shrinks short all-body
+words to ~0.2x. (carried)
 
-[NOTE] reforge/model/generator.py:1341 -- `split_trailing_marks` returns a
-mark-only token ("...", "?!") unsplit, so it goes to DiffusionPen, which
-renders trailing marks invisibly. (carried)
-  Suggested fix: render mark-only tokens synthetically at a body height from
-  `ZONE_X_HEIGHT_TARGET`.
+[NOTE] reforge/model/generator.py:1338 -- `split_trailing_marks` returns a
+mark-only token ("...", "?!") unsplit, so DiffusionPen renders it invisibly.
+(carried)
 
 [NOTE] scripts/human_eval.py:927 -- `_worktree_dirty` runs `git status`
-without `cwd=PROJECT_ROOT` and duplicates `pipeline._git_state()`. (carried)
-  Suggested fix: use `pipeline._git_state()["dirty"]`.
+without `cwd=PROJECT_ROOT`. (carried)
 
-Security NOTEs (from /security, 0 BLOCK / 0 WARN / 5 NOTE, all carried; the
-scan of the 5 changed paths found nothing new):
+Security NOTEs (from /security, 0 BLOCK / 0 WARN / 7 NOTE; post-fix re-check
+found nothing new):
 
-[NOTE] reforge/evaluate/visual.py:567 -- `ALL_BODY_INK_PER_X_HEIGHT` half-sets
-the only gating metric but has no ask rule (see the WARN above).
+[NOTE] experiments/replay_cache.py:103, experiments/cv_bench/canaries.py:45 --
+Caches load with `allow_pickle=True`; a crafted `.npz` runs code. Store the
+word list as JSON text instead. Local caches only today.
 
-[NOTE] .claude/settings.json:4 -- Evaluator ask rules are bypassable via
-interpreter writes and do not cover most gate-defining files.
+[NOTE] experiments/cv_bench/canaries.py:126 -- `key.json` is written next to
+the pair images the blind judge reads, contrary to the docstring ("kept apart
+from the judge").
 
-[NOTE] tests/medium/test_quality_regression.py:248 -- The push gate fails
-open on a missing baseline/reference or hidden CUDA.
+[NOTE] reforge/evaluate/visual.py:650 -- The new gate constants
+(`BODY_BAND_FRAC`, `LONG_BAND_FRAC`, `BODY_BAND_CALIBRATION`) have no ask
+rule and are not listed in CLAUDE.md:102; changing `BODY_BAND_FRAC` to 0.45
+flips the gate while all quick tests pass.
 
-[NOTE] reforge/model/generator.py:1170 -- User words that fail OCR are
-recorded in the tracked `reforge/data/hard_words.json`.
+[NOTE] tests/medium/test_quality_regression.py:249 -- The push gate fails open
+on a missing baseline/reference, hidden CUDA or an unreadable reference
+image, and inherits `REFORGE_OCR_BACKEND` (with a running VLM server the OCR
+floor is scored by the VLM). Pinning the gate's reader is a human decision.
 
-[NOTE] .claude/settings.local.json:56 -- Personal permissions file is tracked
-in the public repo (outside this diff).
+[NOTE] .claude/settings.local.json:56 -- Personal permissions file tracked in
+the public repo; the uncommitted line-75 rule adds nothing beyond line 42's
+`Bash(.venv/bin/python:*)` but would be published if committed. (also
+claude-code)
+
+[NOTE] .claude/settings.json:4 -- Evaluator ask rules are narrow. (carried)
+
+[NOTE] reforge/model/generator.py:1239 -- User words that fail OCR are recorded
+in the tracked `reforge/data/hard_words.json`.
+
+Resolved since the prior review: the "f" sizing WARN (`_DESCENDERS` now
+includes "f", re-baseline approved), the `x_height_consistency` WARN
+(pixel-only, sub-pixel, means), the punctuated all-body metric NOTE, and the
+"it," baseline NOTE.
 
 ### Fixes Applied
 
-None. `/codefix` applied the suggested `zone_class` change for the `f` WARN,
-it failed the regression gate on seed 137, and it was reverted without
-re-baselining. The working tree's code matches the review start (verified:
-no surface files changed since the pre-fix snapshot), so no post-fix
-security re-check was needed.
+All uncommitted in the working tree; commit them before pushing.
+
+- [WARN] reforge/evaluate/ocr.py:32, reforge/model/generator.py:1179 --
+  optional `backend` on `ocr_read` / `ocr_accuracy`; generation's
+  `_get_ocr_fn()` pins TrOCR; quick test
+  `tests/quick/test_vlm_client.py::test_generation_ocr_ignores_vlm_backend_env`.
+  (also claude-code)
+- [WARN] CLAUDE.md:26 -- gate baselines updated to 0.978 / 0.957 / 0.941.
+  (also claude-code)
+- [WARN] reforge/evaluate/visual.py:126, docs/cv-instruments.md:17 --
+  `baseline_consistency` limitation documented. (also claude-code)
+
+Post-fix: `make test-quick` 346 passed, `make test-regression` 348 passed;
+/security post-fix re-check found nothing new.
 
 ### Accepted Risks
 
 None.
 
 ---
-*Prior review (2026-10-13, commit d43de13): full review of the audit work
-(18 commits); 1 WARN fixed (punctuated all-body words undersized by tall
-trailing marks, fixed as `8b876bf`), 1 WARN open for human decision
-(x_height_consistency), 18 NOTEs, 0 BLOCK.*
+*Prior review (2026-10-13, commit 9630e08): refresh review of the trailing-mark
+sizing crop; 0 BLOCK, 2 WARN open (short "f" words undersized; the gate metric
+blind to all-body mis-sizing), 21 NOTEs; one fix attempt reverted after
+failing the gate.*
 
-<!-- REVIEW_META: {"date":"2026-10-13","commit":"9630e08","reviewed_up_to":"9630e0810cc045e4531c19cd469130eb7f3bbcee","base":"origin/main","tier":"refresh","block":0,"warn":2,"note":21} -->
+<!-- REVIEW_META: {"date":"2026-10-13","commit":"90302fe","reviewed_up_to":"90302fe7cffcede172ef1af386e55a0ddde6f433","base":"origin/main","tier":"refresh","block":0,"warn":4,"note":26} -->

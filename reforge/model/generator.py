@@ -1177,10 +1177,16 @@ def generate_word(
 
 
 def _get_ocr_fn():
-    """Return ocr_accuracy function if available, else None."""
+    """Return ocr_accuracy pinned to TrOCR if available, else None.
+
+    Generation always selects with TrOCR; REFORGE_OCR_BACKEND applies to
+    evaluation callers only.
+    """
     try:
+        import functools
+
         from reforge.evaluate.ocr import ocr_accuracy
-        return ocr_accuracy
+        return functools.partial(ocr_accuracy, backend="trocr")
     except ImportError:
         return None
 

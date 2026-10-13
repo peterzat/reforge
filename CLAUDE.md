@@ -23,7 +23,7 @@ The target is "the best achievable wrapper around frozen DiffusionPen," not "ind
 
 **Gate** (must hold on every seed 42/137/2718 in `make test-regression`):
 
-- `x_height_consistency` must not drop more than 0.05 below its per-seed baseline (baseline 0.954 on all seeds, 2026-10-13). It measures the `size_inconsistent` defect directly (all-body words like `was`/`on`/`so` against the x-height of long words). The user preferred the sizing policy it rewards on 3/3 seeds in a blind A/B (`reviews/human/2026-10-13_170905.json`). It is a regression floor for a human-validated property, not a proxy for overall preference.
+- `x_height_consistency` must not drop more than 0.05 below its per-seed baseline (baselines 0.978 / 0.957 / 0.941 for seeds 42 / 137 / 2718, re-baselined 2026-10-13 when the metric moved to pixel-only sub-pixel measurement). It measures the `size_inconsistent` defect directly (all-body words like `was`/`on`/`so` against the x-height of long words). The user preferred the sizing policy it rewards on 3/3 seeds in a blind A/B (`reviews/human/2026-10-13_170905.json`). It is a regression floor for a human-validated property, not a proxy for overall preference.
 - OCR floor: every word of 3+ letters reads at >= 0.30 (TrOCR hallucinates on 1-2 letter words).
 - SSIM >= 0.80 against `tests/medium/reference_output.png`.
 

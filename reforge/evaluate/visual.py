@@ -135,6 +135,13 @@ def check_baseline_consistency(
     retired check_baseline_alignment, which measured word-canvas bottoms.
     Catches placement bugs such as the 2026-10-13 row-index clamp. Positions
     and word images must be in compose order (positions are pre-upscale).
+
+    It reuses compose's detect_baseline, so it measures placement arithmetic
+    (offsets, jitter, clamps) and is blind to detection errors: a detector
+    error moves the placement and the measurement together. Detection errors
+    are covered by the golden test
+    (tests/quick/test_baseline.py::test_golden_descender_baselines) and
+    contact sheets.
     """
     from reforge.compose.layout import detect_baseline
     from reforge.config import ZONE_X_HEIGHT_TARGET

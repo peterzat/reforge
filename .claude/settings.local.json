@@ -71,7 +71,9 @@
       "Bash(curl -sI \"https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf\")",
       "Bash(curl -sI \"https://fonts.google.com/download?family=Caveat\")",
       "Bash(curl -sSL --fail \"https://github.com/google/fonts/raw/main/ofl/caveat/Caveat%5Bwght%5D.ttf\" -o fonts/Caveat-VariableFont_wght.ttf)",
-      "Bash(pkill -f \"qpeek\")"
+      "Bash(pkill -f \"qpeek\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(timeout 600 .venv/bin/python -m pytest tests/medium/test_quality_regression.py -q -s -p no:cacheprovider)"
     ]
   }
 }
