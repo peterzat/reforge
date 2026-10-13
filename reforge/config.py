@@ -70,7 +70,7 @@ SHORT_WORD_HEIGHT_TARGET = 26  # pixels, for 1-2 char words
 # x-heights match, using the word's letters to predict how many x-heights
 # tall its ink is (ZONE_HEIGHT_RATIOS), blended with the measured ratio for
 # longer words where the x-height measurement is reliable.
-SIZING_POLICY = "total_height"  # "zone" pending human A/B (audit 2026-10-13)
+SIZING_POLICY = "zone"  # human blind A/B 2026-10-13: zone preferred on 3/3 seeds
 # Target x-height in pixels. 28 / 2.26 keeps strong-ascender words ("the")
 # at the 28px total height the total_height policy gives 3+ char words.
 ZONE_X_HEIGHT_TARGET = 28 / 2.26
@@ -142,24 +142,24 @@ STITCH_OVERLAP_PX = 8
 # while still penalizing candidates with gray boxes or other visual defects.
 OCR_SELECTION_WEIGHT = 0.4
 
-# Primary metrics for the quality regression gate (spec 2026-04-10 B1).
-# Selected by Spearman correlation with human composition ratings across
-# reviews/human/*.json. Bar: positive rho, |rho| >= 0.2, p < 0.3 (scipy two-
-# sided). See docs/metric_correlation.md for the full analysis and rationale.
+# Primary metrics for the quality regression gate.
 #
 # Only these metrics gate the regression test. All other TRACKED_METRICS are
 # diagnostics: logged to the ledger and printed on regression, but not fatal.
-# The existing ocr_min floor (0.3) still gates independently as a readability
-# guardrail; it is not a correlation-derived primary metric.
+# An OCR floor (0.3 on words of 3+ letters) gates independently as a
+# readability guardrail.
 #
-# The selection is deliberately narrow. Only one metric cleared the bar at
-# N=16: `height_outlier_score` (rho = +0.302, p = 0.255). `baseline_alignment`
-# was a near-miss (rho = +0.273, p = 0.307) and is tracked as a diagnostic.
-# This narrowness is itself a finding: the current CV metric set barely
-# contains any signal that positively tracks human composition rating on this
-# dataset. Fixing that is a future spec, not this one.
+# History. Spec 2026-04-10 B1 picked `height_outlier_score` by Spearman
+# correlation with composition ratings at N=16 (rho +0.30, p 0.26). At N=34
+# it did not replicate (rho -0.22 on the 18 held-out reviews; see
+# docs/metric_correlation.md), and it rewards equal *total* word height,
+# the mechanism behind the size_inconsistent defect. Audit 2026-10-13
+# replaced it with `x_height_consistency`, which measures that defect
+# directly; the user preferred the policy it rewards on 3/3 seeds in a blind
+# A/B (reviews/human/2026-10-13_170905.json). It is a regression floor for a
+# human-validated property, not a claimed proxy for overall preference.
 PRIMARY_METRICS = [
-    "height_outlier_score",
+    "x_height_consistency",
 ]
 
 # Quality scoring weights (per-word candidate selection in quality/score.py)
@@ -183,11 +183,13 @@ QUALITY_GATES = {
 # Style fidelity added after C2 variance test showed std=0 across 5 runs.
 # Reduced baseline_alignment (saturates at 1.0) and composition_score to
 # make room. OCR and stroke consistency remain the dominant signals.
+# Audit 2026-10-13: word_height_ratio and height_outlier_score (0.15 each)
+# rewarded equal total word height, which zone sizing deliberately gives up;
+# their weight moves to x_height_consistency. Both stay reported.
 QUALITY_CONTINUOUS_WEIGHTS = {
     "stroke_weight_consistency": 0.20,
-    "word_height_ratio": 0.15,
+    "x_height_consistency": 0.30,  # redistributed when unavailable
     "composition_score": 0.15,
-    "height_outlier_score": 0.15,  # derived from height_outlier_ratio
     "baseline_alignment": 0.05,
     "ocr_accuracy": 0.20,          # redistributed when unavailable
     "style_fidelity": 0.10,        # redistributed when unavailable

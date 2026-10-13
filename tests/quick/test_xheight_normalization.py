@@ -205,3 +205,30 @@ class TestZoneSizing:
         from reforge.quality.font_scale import plan_word_scales
         with pytest.raises(ValueError):
             plan_word_scales([self._canvas_word(body=40)], ["so"], policy="bogus")
+
+
+@pytest.mark.quick
+class TestXHeightConsistencyMetric:
+    """evaluate.visual.check_x_height_consistency (gating metric, 2026-10-13)."""
+
+    def _block(self, h, top, bottom, width=120):
+        img = np.full((h, width), 255, dtype=np.uint8)
+        img[top:bottom, 10:width - 10] = 30
+        return img
+
+    def test_matching_body_sizes_score_near_one(self):
+        from reforge.evaluate.visual import check_x_height_consistency
+        was = self._block(20, 2, 17)                 # all-body: ink 15 -> body 12.4
+        foxes = self._block(40, 10, 22)              # dense band 12
+        assert check_x_height_consistency([was, foxes], ["was", "foxes"]) > 0.95
+
+    def test_shouted_short_word_scores_low(self):
+        from reforge.evaluate.visual import check_x_height_consistency
+        was = self._block(32, 2, 28)                 # ink 26 -> body 21.5
+        foxes = self._block(40, 10, 22)
+        assert check_x_height_consistency([was, foxes], ["was", "foxes"]) < 0.6
+
+    def test_none_without_both_groups(self):
+        from reforge.evaluate.visual import check_x_height_consistency
+        assert check_x_height_consistency([self._block(40, 10, 22)], ["foxes"]) is None
+        assert check_x_height_consistency([self._block(20, 2, 17)], ["was"]) is None

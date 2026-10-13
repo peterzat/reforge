@@ -20,6 +20,7 @@ TOLERANCE = 0.05
 
 def _baseline():
     return {
+        "x_height_consistency": 0.95,
         "height_outlier_score": 0.90,
         "baseline_alignment": 0.85,
         "composition_score": 0.40,
@@ -35,25 +36,20 @@ def _passing_scores():
 
 @pytest.mark.quick
 class TestPrimaryMetricsConfig:
-    def test_primary_metrics_from_correlation_analysis(self):
-        """PRIMARY_METRICS must be derived from the correlation analysis in
-        docs/metric_correlation.md. The selection bar: positive rho, |rho| >= 0.2,
-        p < 0.3 (scipy two-sided), at most 3 metrics. Changing this list should
-        require a deliberate update to docs/metric_correlation.md.
+    def test_primary_metrics_pinned(self):
+        """PRIMARY_METRICS is pinned so a code change cannot silently widen,
+        narrow or swap the gate. Changing it is a human decision recorded in
+        reforge/config.py and docs/metric_correlation.md.
 
-        At N=16 only height_outlier_score cleared the bar. baseline_alignment
-        was a near-miss (p = 0.307) and is a tracked diagnostic, not a primary
-        gate. This test pins the selection so a code change cannot silently
-        widen or narrow it without a corresponding spec decision.
+        2026-10-13: height_outlier_score (selected at N=16, did not replicate
+        at N=34) was replaced by x_height_consistency, which measures the
+        size_inconsistent defect directly; the user approved the switch after
+        preferring the policy it rewards on 3/3 seeds in a blind A/B.
         """
-        assert isinstance(PRIMARY_METRICS, list)
-        assert len(PRIMARY_METRICS) >= 1
-        assert len(PRIMARY_METRICS) <= 3
-        assert "height_outlier_score" in PRIMARY_METRICS
-        # baseline_alignment is explicitly NOT in the list: p = 0.307 > 0.3.
-        # If future data pushes it under the bar, update docs/metric_correlation.md
-        # and this test together.
+        assert PRIMARY_METRICS == ["x_height_consistency"]
+        # Known-broken or non-replicating instruments must not gate.
         assert "baseline_alignment" not in PRIMARY_METRICS
+        assert "height_outlier_score" not in PRIMARY_METRICS
 
 
 @pytest.mark.quick
@@ -61,7 +57,7 @@ class TestGateFiresOnPrimaryRegression:
     def test_primary_metric_mutated_down_fires_gate(self):
         """Dropping a primary metric below tolerance must produce a regression."""
         scores = _passing_scores()
-        scores["height_outlier_score"] = 0.80  # was 0.90, drop of 0.10 > tolerance
+        scores["x_height_consistency"] = 0.85  # was 0.95, drop of 0.10 > tolerance
 
         regressions, _, _ = check_metric_regressions(
             scores, _baseline(),
@@ -70,7 +66,7 @@ class TestGateFiresOnPrimaryRegression:
             tolerance=TOLERANCE,
         )
         assert len(regressions) == 1
-        assert "height_outlier_score" in regressions[0]
+        assert "x_height_consistency" in regressions[0]
 
     def test_diagnostic_only_regression_does_not_fire_primary_gate(self):
         """baseline_alignment is a near-miss diagnostic, not a primary metric.
@@ -90,7 +86,7 @@ class TestGateFiresOnPrimaryRegression:
     def test_within_tolerance_does_not_fire(self):
         """A regression smaller than tolerance is not a gate failure."""
         scores = _passing_scores()
-        scores["height_outlier_score"] = 0.87  # delta 0.03, within tolerance
+        scores["x_height_consistency"] = 0.92  # delta 0.03, within tolerance
 
         regressions, _, _ = check_metric_regressions(
             scores, _baseline(),
@@ -110,6 +106,30 @@ class TestGateFiresOnPrimaryRegression:
         assert regressions == []
         # No change -> no improvements
         assert improvements == []
+
+
+@pytest.mark.quick
+class TestStrictMissingMetric:
+    def test_missing_primary_in_baseline_fails_when_strict(self):
+        """A stale baseline that predates a primary metric must not pass."""
+        baseline = _baseline()
+        del baseline["x_height_consistency"]
+        regressions, _, _ = check_metric_regressions(
+            _passing_scores(), baseline,
+            metrics_higher=PRIMARY_METRICS, metrics_lower=[],
+            tolerance=TOLERANCE, strict=True,
+        )
+        assert regressions == ["x_height_consistency: missing from baseline"]
+
+    def test_missing_metric_skipped_when_not_strict(self):
+        scores = _passing_scores()
+        del scores["x_height_consistency"]
+        regressions, _, _ = check_metric_regressions(
+            scores, _baseline(),
+            metrics_higher=PRIMARY_METRICS, metrics_lower=[],
+            tolerance=TOLERANCE,
+        )
+        assert regressions == []
 
 
 @pytest.mark.quick
@@ -186,3 +206,17 @@ class TestOcrMinGate:
         ok, val = check_ocr_min_gate({}, floor=0.3)
         assert ok is True
         assert val is None
+
+    def test_short_words_excluded_when_words_given(self):
+        """TrOCR hallucinates on 1-2 letter words; with the word list the
+        floor only counts words of 3+ letters."""
+        scores = {"ocr_min": 0.25, "ocr_per_word": [1.0, 0.25, 0.8]}
+        ok, val = check_ocr_min_gate(scores, floor=0.3, words=["Quick", "by", "was"])
+        assert ok is True
+        assert val == 0.8
+
+    def test_long_word_below_floor_still_fails(self):
+        scores = {"ocr_min": 0.2, "ocr_per_word": [0.2, 1.0]}
+        ok, val = check_ocr_min_gate(scores, floor=0.3, words=["foxes", "it"])
+        assert ok is False
+        assert val == 0.2

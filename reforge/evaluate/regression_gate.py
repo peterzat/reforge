@@ -21,6 +21,7 @@ def check_metric_regressions(
     metrics_higher: Iterable[str],
     metrics_lower: Iterable[str],
     tolerance: float,
+    strict: bool = False,
 ) -> tuple[list[str], list[str], list[str]]:
     """Compare scores to baseline and categorize by direction.
 
@@ -31,6 +32,9 @@ def check_metric_regressions(
         metrics_lower: Names of metrics where lower is better (inverted).
         tolerance: Delta tolerance. A metric is a regression only if it
             moves against its preferred direction by more than this.
+        strict: Treat a metric missing from scores or baseline as a
+            regression. Use for gating metrics: otherwise a renamed metric or
+            a stale baseline file silently gates on nothing.
 
     Returns:
         Tuple of (regressions, improvements, stable). Each is a list of
@@ -40,13 +44,18 @@ def check_metric_regressions(
     improvements: list[str] = []
     stable: list[str] = []
 
+    def _missing(metric):
+        where = [n for n, d in (("scores", scores), ("baseline", baseline_metrics))
+                 if not isinstance(d.get(metric), (int, float))]
+        if where and strict:
+            regressions.append(f"{metric}: missing from {' and '.join(where)}")
+        return bool(where)
+
     for metric in metrics_higher:
-        if metric not in scores or metric not in baseline_metrics:
+        if _missing(metric):
             continue
         current = scores[metric]
         recorded = baseline_metrics[metric]
-        if not isinstance(current, (int, float)) or not isinstance(recorded, (int, float)):
-            continue
         delta = current - recorded
         if delta < -tolerance:
             regressions.append(
@@ -58,12 +67,10 @@ def check_metric_regressions(
             stable.append(metric)
 
     for metric in metrics_lower:
-        if metric not in scores or metric not in baseline_metrics:
+        if _missing(metric):
             continue
         current = scores[metric]
         recorded = baseline_metrics[metric]
-        if not isinstance(current, (int, float)) or not isinstance(recorded, (int, float)):
-            continue
         delta = current - recorded
         if delta > tolerance:
             regressions.append(
@@ -77,12 +84,32 @@ def check_metric_regressions(
     return regressions, improvements, stable
 
 
-def check_ocr_min_gate(scores: dict, floor: float = 0.3) -> tuple[bool, float | None]:
+# TrOCR's language model hallucinates on 1-2 letter inputs ("by" read as
+# "by being", a clear "a" scored 0.0), so the floor only counts words with
+# at least this many letters when the word list is known.
+OCR_FLOOR_MIN_LETTERS = 3
+
+
+def check_ocr_min_gate(
+    scores: dict, floor: float = 0.3, words: list[str] | None = None,
+) -> tuple[bool, float | None]:
     """Return (passed, observed_min).
 
     Fails (False) when the worst-word OCR score is below the floor, which
-    catches unreadable outputs that primary-metric deltas can miss.
+    catches unreadable outputs that primary-metric deltas can miss. With
+    ``words`` (aligned to ``scores["ocr_per_word"]``), words shorter than
+    OCR_FLOOR_MIN_LETTERS letters are excluded.
     """
+    per_word = scores.get("ocr_per_word")
+    if words is not None and per_word is not None:
+        kept = [
+            a for a, w in zip(per_word, words)
+            if len(w.strip(".,;:!?\"'")) >= OCR_FLOOR_MIN_LETTERS
+        ]
+        if not kept:
+            return True, None
+        ocr_min = min(kept)
+        return ocr_min >= floor, float(ocr_min)
     ocr_min = scores.get("ocr_min")
     if ocr_min is None:
         return True, None

@@ -49,7 +49,11 @@ SSIM_THRESHOLD = 0.80
 SEEDS = [42, 137, 2718]
 # The canonical single-seed used for pixel-level reference and legacy comparisons.
 REFERENCE_SEED = 42
-TEST_WORDS = ["Quick", "brown", "foxes", "jump", "high"]
+# The five style-reference words plus short words of each letter class.
+# Until 2026-10-13 the gate generated only the style words (all 4-5 chars),
+# so it could not see the short-word sizing and baseline defects reviewers
+# kept flagging: all-body "was"/"so"/"on", descender "by", sparse "it".
+TEST_WORDS = ["Quick", "brown", "foxes", "jump", "high", "was", "so", "on", "by", "it"]
 
 from reforge.config import PRESET_FAST, PRIMARY_METRICS
 NUM_STEPS = PRESET_FAST["steps"]
@@ -69,6 +73,7 @@ TRACKED_METRICS = [
     "style_fidelity",
     "baseline_alignment",
     "height_outlier_score",
+    "x_height_consistency",
 ]
 
 # Metrics where lower is better (regression = value increases)
@@ -97,23 +102,30 @@ def _generate_for_seed(
 
     from reforge.evaluate.visual import overall_quality_score
     from reforge.model.generator import generate_word
-    from reforge.quality.font_scale import normalize_font_size
-    from reforge.quality.harmonize import harmonize_words
+    from reforge.pipeline import postprocess_words
 
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    # Deterministic kernels regardless of what earlier tests in this process
+    # set (pipeline.run restores its own settings, but be explicit here).
+    saved = (torch.backends.cudnn.benchmark, torch.backends.cudnn.deterministic)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    try:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        raw = [
+            generate_word(
+                w, unet, vae, tokenizer, style_features,
+                uncond_context=uncond_context,
+                num_steps=NUM_STEPS, guidance_scale=GUIDANCE_SCALE,
+                num_candidates=1, device=device,
+            )
+            for w in TEST_WORDS
+        ]
+    finally:
+        torch.backends.cudnn.benchmark, torch.backends.cudnn.deterministic = saved
 
-    imgs = []
-    for w in TEST_WORDS:
-        img = generate_word(
-            w, unet, vae, tokenizer, style_features,
-            uncond_context=uncond_context,
-            num_steps=NUM_STEPS, guidance_scale=GUIDANCE_SCALE,
-            num_candidates=1, device=device,
-        )
-        imgs.append(normalize_font_size(img, w))
-
-    imgs = harmonize_words(imgs)
+    # Same stage graph as production (pipeline.run), not a hand-wired copy.
+    imgs = postprocess_words(raw, TEST_WORDS)
 
     from reforge.compose.render import compose_words
 
@@ -244,9 +256,17 @@ class TestQualityRegression:
                         print(f"  {k}: {scores[k]:.4f}")
             return
 
-        # OCR min gate: any word with OCR < 0.3 on any seed is an immediate failure
+        if baseline.get("words") != TEST_WORDS:
+            pytest.fail(
+                f"Baseline was recorded for words {baseline.get('words')}, test "
+                f"generates {TEST_WORDS}. Re-baseline deliberately: pytest "
+                f"tests/medium/test_quality_regression.py --update-baseline "
+                f"--update-reference -x -s"
+            )
+
+        # OCR min gate: any 3+ letter word with OCR < 0.3 on any seed fails
         for seed, scores in per_seed_scores.items():
-            ok, ocr_min = check_ocr_min_gate(scores, floor=0.3)
+            ok, ocr_min = check_ocr_min_gate(scores, floor=0.3, words=TEST_WORDS)
             if not ok:
                 per_word = scores.get("ocr_per_word", [])
                 pytest.fail(
@@ -273,6 +293,7 @@ class TestQualityRegression:
                 metrics_higher=primary_higher,
                 metrics_lower=primary_lower,
                 tolerance=REGRESSION_TOLERANCE,
+                strict=True,
             )
             for r in primary_regs:
                 all_primary_regressions.append(f"seed={seed}: {r}")
@@ -336,7 +357,7 @@ class TestQualityRegression:
             print("\nImprovements observed (baseline NOT updated automatically):")
             for i in all_improvements:
                 print(f"  + {i}")
-            print("\nRun `pytest --update-baseline -x -s` to promote these.")
+            print("\nRun `pytest tests/medium/test_quality_regression.py --update-baseline -x -s` to promote these.")
 
     def test_pixel_level_regression(
         self, request, unet, vae, tokenizer, style_features, uncond_context, device,

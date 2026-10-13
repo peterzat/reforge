@@ -558,6 +558,43 @@ def check_composition_score(
     return score
 
 
+def check_x_height_consistency(
+    word_imgs: list[np.ndarray], words: list[str],
+) -> float | None:
+    """Do short all-body words share an x-height with long words? 1.0 = yes.
+
+    Targets the size_inconsistent defect: short words without ascenders or
+    descenders ("was", "on", "so") rendered at ~2x the body size of their
+    neighbors. Pixel x-height estimates are unreliable on short words
+    (compute_x_height reads "it" as 5px of a 25px word), so the comparison
+    uses two measurable quantities:
+
+    - all-body words: ink height / ZONE_HEIGHT_RATIOS[(0, 0)] (their ink is
+      body plus round-letter overshoot);
+    - words of 5+ letters: compute_x_height (dense body band).
+
+    Returns min(r, 1/r) for r = median of the first / median of the second,
+    or None when either group is empty.
+    """
+    from reforge.config import ZONE_HEIGHT_RATIOS
+    from reforge.quality.font_scale import zone_class
+    from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
+
+    body, long_ = [], []
+    for img, word in zip(word_imgs, words):
+        if img is None or word is None:
+            continue
+        letters = word.strip().strip(".,;:!?\"'")
+        if zone_class(word) == (0, 0):
+            body.append(compute_ink_height(img) / ZONE_HEIGHT_RATIOS[(0, 0)])
+        elif len(letters) >= 5:
+            long_.append(compute_x_height(img))
+    if not body or not long_:
+        return None
+    r = float(np.median(body)) / max(float(np.median(long_)), 1.0)
+    return min(r, 1.0 / r) if r > 0 else 0.0
+
+
 def compute_height_outlier_ratio(word_imgs: list[np.ndarray]) -> float:
     """Compute worst-case word ink height / median ink height.
 
@@ -629,6 +666,11 @@ def overall_quality_score(
             scores["punctuation_visibility"] = check_punctuation_visibility(
                 img, words, word_positions
             )
+
+    if word_imgs is not None and words is not None:
+        xhc = check_x_height_consistency(word_imgs, words)
+        if xhc is not None:
+            scores["x_height_consistency"] = xhc
 
     # OCR accuracy: dominant factor when available
     if word_imgs is not None and words is not None:
