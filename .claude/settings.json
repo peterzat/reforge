@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "ask": [
+      "Edit(**/tests/medium/quality_baseline.json)",
+      "Edit(**/reforge/evaluate/regression_gate.py)",
+      "Bash(*--update-baseline*)",
+      "Bash(*--update-reference*)"
+    ]
+  }
+}
