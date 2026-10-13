@@ -13,7 +13,7 @@ See [README](../README.md) for current output and project overview.
 
 | Field | Value |
 |-------|-------|
-| Git state | `3b55d09 (uncommitted changes)` |
+| Git state | `50d6591 (uncommitted changes: FINDINGS.md draft)` |
 | Commit message | Protect the evaluator in code; publish the audit write-up |
 | Style input | `styles/hw-sample.png` |
 | Metrics | seed=42, sizing=zone, overall=0.711, height_outlier_score=0.071, baseline_alignment=0.356, stroke_weight_consistency=0.879, ocr_accuracy=0.908, ocr_min=0.000, word_readability_rate=0.925, style_fidelity=0.387 |
