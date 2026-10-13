@@ -558,6 +558,15 @@ def check_composition_score(
     return score
 
 
+# Evaluator constant for check_x_height_consistency: ink height of an
+# all-body word ("was", "on") in x-heights, measured on demo-text output
+# 2026-10-13. Deliberately NOT read from config.ZONE_HEIGHT_RATIOS: the
+# sizing policy uses that table to size the same words, and a metric that
+# shares the constant cannot see the policy getting it wrong (code review
+# 2026-10-13). Changing this is an evaluator change (human approval).
+ALL_BODY_INK_PER_X_HEIGHT = 1.21
+
+
 def check_x_height_consistency(
     word_imgs: list[np.ndarray], words: list[str],
 ) -> float | None:
@@ -569,14 +578,13 @@ def check_x_height_consistency(
     (compute_x_height reads "it" as 5px of a 25px word), so the comparison
     uses two measurable quantities:
 
-    - all-body words: ink height / ZONE_HEIGHT_RATIOS[(0, 0)] (their ink is
+    - all-body words: ink height / ALL_BODY_INK_PER_X_HEIGHT (their ink is
       body plus round-letter overshoot);
     - words of 5+ letters: compute_x_height (dense body band).
 
     Returns min(r, 1/r) for r = median of the first / median of the second,
     or None when either group is empty.
     """
-    from reforge.config import ZONE_HEIGHT_RATIOS
     from reforge.quality.font_scale import zone_class
     from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
 
@@ -586,7 +594,7 @@ def check_x_height_consistency(
             continue
         letters = word.strip().strip(".,;:!?\"'")
         if zone_class(word) == (0, 0):
-            body.append(compute_ink_height(img) / ZONE_HEIGHT_RATIOS[(0, 0)])
+            body.append(compute_ink_height(img) / ALL_BODY_INK_PER_X_HEIGHT)
         elif len(letters) >= 5:
             long_.append(compute_x_height(img))
     if not body or not long_:

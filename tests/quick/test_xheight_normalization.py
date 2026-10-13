@@ -232,3 +232,21 @@ class TestXHeightConsistencyMetric:
         from reforge.evaluate.visual import check_x_height_consistency
         assert check_x_height_consistency([self._block(40, 10, 22)], ["foxes"]) is None
         assert check_x_height_consistency([self._block(20, 2, 17)], ["was"]) is None
+
+    def test_metric_is_independent_of_sizing_constants(self, monkeypatch):
+        """Code review 2026-10-13: the metric used ZONE_HEIGHT_RATIOS[(0, 0)],
+        the same constant zone sizing uses, so mis-sizing all-body words via
+        that constant scored a perfect 1.0. The evaluator must keep its own."""
+        from reforge import config
+        from reforge.evaluate.visual import check_x_height_consistency
+        from reforge.quality.font_scale import size_words
+        z = TestZoneSizing()
+        imgs = [z._canvas_word(body=50, overshoot=5), z._canvas_word(asc_rows=34, body=26)]
+        words = ["was", "those"]
+        good = check_x_height_consistency(size_words(imgs, words, policy="zone"), words)
+        ratios = dict(config.ZONE_HEIGHT_RATIOS)
+        ratios[(0, 0)] = 2.0   # all-body words sized ~1.65x too large
+        monkeypatch.setattr(config, "ZONE_HEIGHT_RATIOS", ratios)
+        bad = check_x_height_consistency(size_words(imgs, words, policy="zone"), words)
+        assert good > 0.9, good
+        assert bad < 0.7, bad
