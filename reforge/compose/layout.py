@@ -84,6 +84,11 @@ def compute_margins(page_width: int, page_height: int) -> tuple[int, int]:
 
 DESCENDER_LETTERS = set("gjpqy")
 
+# Characters that can put ink below the baseline: the true descender letters,
+# a cursive "f" (it descends in hw-sample output), and the synthetic comma and
+# semicolon tails. Words with none of these sit on their ink bottom.
+DESCENDER_CAPABLE = DESCENDER_LETTERS | set("f,;")
+
 
 def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     """Detect the baseline of a word image.
@@ -96,6 +101,11 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     the scan uses a relaxed "body below" threshold: thin descender strokes
     (density < 25%) are not treated as body text, which prevents descenders
     from pulling the detected baseline too low.
+
+    When *word* is provided and has no descender-capable character (see
+    ``DESCENDER_CAPABLE``), the baseline is the ink bottom. The density scan
+    otherwise finds spurious drops in such words (the thin stems under the
+    crossbar of "it") and puts the baseline mid-body (audit 2026-10-13).
     """
     ink_mask = img < 180
     row_density = np.mean(ink_mask, axis=1)
@@ -110,6 +120,9 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     ink_height = last_ink - first_ink + 1
 
     if ink_height < 3:
+        return last_ink
+
+    if word is not None and not any(c in DESCENDER_CAPABLE for c in word.lower()):
         return last_ink
 
     has_descender = (
@@ -134,14 +147,26 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     else:
         drop_threshold = BASELINE_DENSITY_DROP
 
+    # Walk-back target: the last row that is still body. Relative to the
+    # word's own peak so lower body rows of thin or narrow words (0.2-0.3
+    # density in "for") are not skipped in favor of a crossbar row.
+    walkback_threshold = min(
+        BASELINE_BODY_DENSITY, 0.5 * float(np.max(row_density[first_ink:last_ink + 1]))
+    )
+    # Body below a drop must be a run of rows, not the one-row bottom curl of
+    # a descender in a narrow word ("by" cropped to ~20px wide).
+    min_body_run = max(2, int(round(ink_height * BASELINE_MIN_DIP_RATIO)))
+
     # Scan down from midpoint looking for density drop
     baseline = last_ink
     for r in range(mid, last_ink + 1):
         if row_density[r] < drop_threshold:
             # Check if there are body rows below this
             has_body_below = False
+            run = 0
             for rb in range(r + 1, last_ink + 1):
-                if row_density[rb] >= body_threshold:
+                run = run + 1 if row_density[rb] >= body_threshold else 0
+                if run >= min_body_run:
                     has_body_below = True
                     break
 
@@ -152,7 +177,7 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
                     # Walk back to last body-density row.
                     found = False
                     for rb in range(r, mid - 1, -1):
-                        if row_density[rb] >= BASELINE_BODY_DENSITY:
+                        if row_density[rb] >= walkback_threshold:
                             baseline = rb
                             found = True
                             break

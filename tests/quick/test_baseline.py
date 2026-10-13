@@ -239,3 +239,98 @@ class TestBaselineAlignment:
         ]
         score = check_baseline_alignment(img, positions)
         assert score < 1.0
+
+
+@pytest.mark.quick
+class TestComposeAcrossCanvasHeights:
+    """Audit 2026-10-13: sizing rescales each word canvas by a different
+    factor, so baseline row indices are not comparable across words. The
+    removed 20%-from-median clamp snapped a correctly detected word on a
+    short canvas to the median row, raising it off the line."""
+
+    def _block_word(self, h, top, bottom, w=60):
+        img = np.full((h, w), 255, dtype=np.uint8)
+        img[top:bottom, 5:w - 5] = 30
+        return img
+
+    def _ink_bottom_on_canvas(self, arr, pos):
+        crop = arr[pos["y"]:pos["y"] + pos["height"], pos["x"]:pos["x"] + pos["width"]]
+        rows = np.where(np.any(crop < 180, axis=1))[0]
+        return pos["y"] + int(rows[-1])
+
+    def test_short_canvas_word_sits_on_the_line(self):
+        from reforge.compose.render import compose_words
+        words = ["the", "was", "noon", "on"]
+        imgs = [
+            self._block_word(64, 20, 47),   # baseline row 46
+            self._block_word(64, 20, 47),
+            self._block_word(64, 20, 47),
+            self._block_word(30, 5, 24),    # shrunk canvas, baseline row 23
+        ]
+        composed, positions = compose_words(
+            imgs, words, page_width=2400, upscale_factor=1, return_positions=True,
+        )
+        arr = np.array(composed)
+        bottoms = [self._ink_bottom_on_canvas(arr, p) for p in positions]
+        assert max(bottoms) - min(bottoms) <= 2, bottoms  # +/-1 px jitter
+
+    def test_first_line_word_with_low_baseline_is_not_dropped(self):
+        from reforge.compose.render import compose_words
+        words = ["one", "two", "three"]
+        imgs = [
+            self._block_word(40, 10, 30),
+            self._block_word(40, 10, 30),
+            self._block_word(40, 15, 35),   # baseline 5 rows (17%) lower: under the old clamp
+        ]
+        composed, positions = compose_words(
+            imgs, words, page_width=2400, upscale_factor=1, return_positions=True,
+        )
+        arr = np.array(composed)
+        assert len(positions) == 3
+        for p in positions:
+            crop = arr[p["y"]:p["y"] + p["height"], p["x"]:p["x"] + p["width"]]
+            assert np.any(crop < 180), f"word at {p} has no ink on the page"
+
+
+@pytest.mark.quick
+class TestBaselineFailureModesFromRealOutput:
+    """Profiles measured on demo-text output (audit 2026-10-13)."""
+
+    def test_it_with_crossbar_returns_ink_bottom(self):
+        """'it': thin stems under a dense crossbar used to read as a drop,
+        putting the baseline at the crossbar (mid-body)."""
+        from reforge.compose.layout import detect_baseline
+        img = np.full((35, 26), 255, dtype=np.uint8)
+        img[0:28, 16:17] = 30        # t stem (1px)
+        img[13:15, 10:24] = 30       # t crossbar at mid-height (dense rows)
+        img[15:28, 4:5] = 30         # i stem (1px): rows below read as a drop
+        img[9:11, 4:5] = 30          # i dot
+        assert detect_baseline(img, word="it") == 27
+
+    def test_narrow_by_with_tail_curl_returns_body_bottom(self):
+        """'by' cropped to ~20px wide: the one-row bottom curl of the y tail
+        used to count as body below, so no drop was ever accepted."""
+        from reforge.compose.layout import detect_baseline
+        img = np.full((33, 21), 255, dtype=np.uint8)
+        img[0:16, 1:3] = 30           # b ascender + stem
+        img[9:16, 1:12] = 30          # b bowl + y arms: body rows 9-15
+        img[9:16, 14:20] = 30
+        img[16:25, 18:19] = 30        # y tail (density ~0.05)
+        img[24:26, 12:19] = 30        # tail curl: dense for 2 rows in a narrow crop
+        bl = detect_baseline(img, word="by")
+        assert abs(bl - 15) <= 1, bl
+
+    def test_for_lower_body_rows_below_absolute_threshold(self):
+        """'for': lower body rows at 0.2-0.3 density were skipped by the
+        absolute 0.35 walk-back, landing on the crossbar row."""
+        from reforge.compose.layout import detect_baseline
+        img = np.full((35, 51), 255, dtype=np.uint8)
+        img[0:28, 6:8] = 30           # f stem with descender to row 27
+        img[12:14, 2:18] = 30         # f crossbar + top of o/r (dense)
+        img[12:21, 20:22] = 30        # o left side
+        img[12:21, 30:32] = 30        # o right side
+        img[19:21, 20:32] = 30        # o bottom stroke
+        img[12:21, 38:40] = 30        # r stem
+        img[12:14, 38:48] = 30        # r arm
+        bl = detect_baseline(img, word="for")
+        assert abs(bl - 20) <= 1, bl

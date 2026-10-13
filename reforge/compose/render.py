@@ -131,30 +131,21 @@ def compose_words(
             lines[line_num] = []
         lines[line_num].append(pos)
 
-    # Ruled-line model (F1): for each line, the ruled baseline is computed
-    # from the median of per-word baselines. Using median instead of max
-    # makes baseline robust to individual words with bad detection (e.g.
-    # descender-heavy words where the density scan misfires). Outlier
-    # baselines (> 20% from median) are clamped to the median.
+    # Ruled-line model (F1): each word's detected baseline row is placed on
+    # the line's ruled baseline (the median per-word baseline row, used as
+    # the line's reference offset). There is no outlier clamp: word canvases
+    # are scaled by different factors, so their baseline row indices are not
+    # comparable, and the old 20%-from-median clamp misplaced ~30% of words
+    # by 5-9px while missing the real detection errors (audit 2026-10-13).
+    # Detection errors are handled in detect_baseline instead.
     line_baselines = {}
     for line_num, line_positions in lines.items():
-        word_baselines = []
-        for pos in line_positions:
-            idx = pos["word_idx"]
-            if idx in baselines:
-                word_baselines.append(baselines[idx])
-        if not word_baselines:
-            line_baselines[line_num] = 0
-            continue
-        median_bl = int(np.median(word_baselines))
-        # Clamp outliers: snap baselines > 20% from median to the median
-        for pos in line_positions:
-            idx = pos["word_idx"]
-            if idx in baselines:
-                deviation = abs(baselines[idx] - median_bl)
-                if median_bl > 0 and deviation / median_bl > 0.20:
-                    baselines[idx] = median_bl
-        line_baselines[line_num] = median_bl
+        word_baselines = [
+            baselines[pos["word_idx"]]
+            for pos in line_positions
+            if pos["word_idx"] in baselines
+        ]
+        line_baselines[line_num] = int(np.median(word_baselines)) if word_baselines else 0
 
     # Pre-compute y-offsets using ruled-line model (F1) + micro-jitter (F3)
     jitter_rng = np.random.RandomState(42)
@@ -170,6 +161,18 @@ def compose_words(
         offset = shared_bl - word_bl
         offset += int(jitter_rng.randint(-1, 2))  # F3: +/- 1px jitter
         y_offsets[idx] = offset
+
+    # Words whose baseline sits lower in their canvas than the line's
+    # reference get a negative offset; on the first line that can put the
+    # top above row 0, where the word used to be skipped entirely. Shift
+    # everything down so the highest word top is at row 0.
+    min_top = min(
+        (pos["y"] + y_offsets[pos["word_idx"]] for pos in positions if pos["word_idx"] in y_offsets),
+        default=0,
+    )
+    if min_top < 0:
+        for idx in y_offsets:
+            y_offsets[idx] -= min_top
 
     # Compute canvas height
     max_y = 0
