@@ -1,252 +1,223 @@
-## Review -- 2026-10-13 (commit: 5b1c24a)
+## Review -- 2026-10-13 (commit: d43de13)
 
-**Review scope:** Refresh review against `origin/main`. The prior review
-(`ab25600`, light tier) is an ancestor of `origin/main`, so the focus set is
-the entire unpushed diff: 14 commits, 82 files (code, tests, CLAUDE.md, docs,
-40 newly tracked human review JSONs). All files reviewed at full depth.
+**Review scope:** Full review against `origin/main`. The prior review's
+`reviewed_up_to` (`5b1c24a`) is no longer an ancestor of HEAD (the README
+fixup rebase rewrote it), so refresh conditions did not hold. 18 commits,
+82 files.
 
 **Summary:** Audit 2026-10-13 work: zone sizing with a single resample,
 word-aware baseline detection and clampless placement, contraction stitch on
 detected baselines, punctuated words routed through the full generation path,
-seeded runs with a run manifest, gate switched from `height_outlier_score` to
-`x_height_consistency`, CLAUDE.md split into rules plus `docs/` references.
-Tests at review start: `make test-quick` 327 passed; `make test-regression`
-329 passed (quick + regression gate). After the fix cycle: `make test-quick`
-327 passed, `make test-regression` 329 passed (stable). One fix cycle;
-post-fix /security re-check of `reforge/pipeline.py` and
-`scripts/human_eval.py` found nothing new (0 BLOCK / 0 WARN / 4 NOTE overall).
+seeded runs with a run manifest, gate switched to `x_height_consistency`,
+CLAUDE.md split into rules plus `docs/`. Tests at review start:
+`make test-quick` 328 passed; `make test-regression` 330 passed. After one
+fix cycle: `make test-quick` 332 passed, `make test-regression` 334 passed
+(4 new tests, no regressions). Post-fix /security re-check of the two changed
+files found nothing new (0 BLOCK / 0 WARN / 5 NOTE overall).
 
 **External reviewers:**
 None configured.
 
 **Built-in review:**
-`/code-review high`: 10 findings, 8 kept after Step 6 (2 refuted by probe;
-3 merged with Claude findings).
+`/code-review high`: 10 findings, 9 kept after Step 6 (1 refuted by probe;
+5 merged with Claude findings).
 
 ### Findings
 
-[BLOCK, FIXED in working tree] README.md:1 -- README.md is corrupted: 225 lines / 16.8 KB became
-37,045 lines / 14.3 MB in commit `aefea28`. (also claude-code; also flagged
-by /security as a non-security issue)
-  Evidence: The new "Quality regression test" paragraph plus "\n\n" (a
-  778-char block) was inserted before and after every character of the
-  intended README, the signature of `str.replace("", new)`. Splitting the
-  file on that block yields 18,407 single-character fragments whose
-  concatenation is the intended pre-replace README (18,406 chars). That text
-  still contains the old regression paragraph (line 191) and all the other
-  intended edits from `aefea28` (section 6 "Sizing and harmonization",
-  baseline bullets, "Metrics, and their limits", test-tier table).
-  Suggested fix (deterministic recovery, verified):
-  ```python
-  cur = open("README.md").read()
-  S = cur[:cur.index("#**Quality")]       # inserted block: new paragraph + "\n\n"
-  rec = "".join(cur.split(S))              # intended README before the bad replace
-  old_para = next(l for l in rec.splitlines()
-                  if l.startswith("**Quality regression test**"))
-  fixed = rec.replace(old_para, S.rstrip("\n"), 1)
-  open("README.md", "w").write(fixed)
-  ```
-  Then check: about 18.4 KB, exactly one "**Quality regression test**" line
-  (the new text: "Generates the five style words plus short words..."), and
-  `git diff aefea28~1 -- README.md` shows only the intended section edits.
-  History note for the user: a fix committed on top still pushes the 14 MB
-  blob in `aefea28`. To keep it out of public history, fold the fix into
-  `aefea28` (fixup + autosquash rebase onto `origin/main`) before pushing.
-  That is a history rewrite of local commits and is left to the user.
+[WARN, FIXED] reforge/quality/font_scale.py:113 -- Zone sizing undersizes words
+without ascenders that end in `!` or `?`: "so?", "now!", "was?" come out at
+0.77-0.81x the x-height of the same word without the mark.
+  Evidence: `generate_word` attaches synthetic marks before
+  `postprocess_words` sizes the word. `zone_class` strips trailing marks, so
+  "so?" is class (0, 0) with prior 1.21, but `compute_ink_height` in
+  `estimate_x_height` (line 124) measures the attached mark too. `!` and `?`
+  are rendered 1.4-1.6x the base word's x-height on the word's baseline
+  (`_render_trailing_mark_or_fallback`, body_h 12-30), so they stick up above
+  an all-body word and raise its ink height by ~1.3x. Probe with the real
+  `_attach_trailing_marks` and `plan_zone_scales` on a 30px all-body word:
+  "so" scale 0.500; "so?" 0.405 (0.81x); "so!", "now!", "was!", "so?!" 0.384
+  (0.77x). `.`, `,` and `;` leave ink height and scale unchanged; weak and
+  strong ascender words ("it?", "three?") are unaffected (0.98-1.00x).
+  This is the `size_inconsistent` defect in the other direction, on the policy
+  that was adopted to fix it. No test covers punctuated words under zone
+  sizing, and the gate words have no punctuation. `x_height_consistency`
+  barely moves (0.983 to 0.954 in the probe) because it also measures ink
+  height including the mark.
+  Suggested fix: make `estimate_x_height` measure the base word's ink height
+  when the word ends in synthetic marks (`SYNTHETIC_MARKS`), for example by
+  dropping the rightmost `len(marks)` ink column runs (marks are attached
+  after a tight crop plus a 1px gap, so each mark is its own column run)
+  before calling `compute_ink_height` / `compute_x_height`. Keep the
+  behavior unchanged for words without trailing marks (gate words, base
+  words passed from `_attach_trailing_marks`). Add quick tests: "so?",
+  "now!" and a descender word such as "gray?" get a zone scale within 3% of
+  the unpunctuated word, built with the real `_attach_trailing_marks`.
 
-[WARN, OPEN: human decision] reforge/evaluate/visual.py:589 -- The gating metric
-`x_height_consistency` cannot detect the defect it gates for all-body words.
-DO NOT AUTO-FIX: changing the gating metric or its baseline requires explicit
-human approval (CLAUDE.md "The evaluator is the human's").
-  Evidence: zone sizing scales an all-body word so `ink_h / ZONE_HEIGHT_RATIOS[(0, 0)]`
-  equals `ZONE_X_HEIGHT_TARGET` (3-letter words get blend weight 0, so the
-  estimate is the prior alone; `font_scale.py:124-129`). The metric then
-  measures those words as `ink_h / ZONE_HEIGHT_RATIOS[(0, 0)]`
-  (`visual.py:589`), the same constant, so the numerator is fixed by
-  construction. Probes with the real functions:
-  - Raw all-body words 18px, 30px and 45px tall (a 2.5x spread, which is the
-    `size_inconsistent` defect) all size to 15-16px ink, and the metric does
-    not change.
-  - Setting `ZONE_HEIGHT_RATIOS[(0, 0)] = 2.0` makes all-body words 25-26px
-    against a 13px long-word x-height (about 2x, exactly the defect) and the
-    metric reports 1.0000. `config.py` is not covered by the
-    `.claude/settings.json` ask rules, so this edit is unprotected.
-  - The metric is also quantized by integer pixel heights: the baseline is
-    0.9536 on all three seeds (15/1.21/13). A 1px shift in the median
-    long-word x-height (13 to 14) gives 0.885, which fails the 0.05
-    tolerance; 13 to 12 gives 0.968, which passes.
-  In effect the gate checks long-word `compute_x_height` against the
-  target, and that a policy other than zone is not in use.
-  Suggested fix (human decision): measure all-body words with an instrument
-  independent of the sizing constants, for example a frozen measured ratio
-  defined in `visual.py` (not imported from config), or a pixel x-height
-  with a minimum-word-width guard; add a quick test that perturbing
-  `ZONE_HEIGHT_RATIOS[(0, 0)]` moves the metric; consider a half-pixel
-  tolerance or a larger long-word set to reduce quantization. Re-baseline
-  with approval. Until then, CLAUDE.md's "measures the size_inconsistent
-  defect directly" overstates what the gate can see.
+[WARN, OPEN: human decision] reforge/evaluate/visual.py:567 --
+`x_height_consistency` still cannot see mis-sizing of short all-body words,
+and it moves in whole-pixel steps at the gate's tolerance. DO NOT AUTO-FIX:
+changing the gating metric or its baseline requires explicit human approval
+(CLAUDE.md "The evaluator is the human's"). (also claude-code; related
+/security NOTE)
+  Evidence: `cd7ee60` gave the evaluator its own `ALL_BODY_INK_PER_X_HEIGHT`,
+  so editing `config.ZONE_HEIGHT_RATIOS` now moves the metric (fixed part of
+  the prior WARN). The value is still the same measurement (1.21) the sizing
+  policy uses. Zone sizing scales every all-body word of 3 or fewer letters
+  so that `ink_h / 1.21 == ZONE_X_HEIGHT_TARGET` (blend weight 0 in
+  `estimate_x_height`), and the metric's body group is `ink_h / 1.21`, so
+  that half of the ratio equals the target by construction, whatever the
+  generated pixels look like. If 1.21 is wrong for a hand, sizing and metric
+  are wrong together. The long-word side uses `compute_x_height`, which zone
+  sizing already weights 50-75% for 5+ letter words. The score is quantized:
+  baseline 0.9536 on all seeds, and a 1px change in either median moves it
+  0.05-0.07. /security adds that the constant is unprotected: no ask rule
+  covers `visual.py`, value 1.29 passes a 20% oversize, and the new tripwire
+  test still passes at 1.45.
+  Suggested fix (human decision): measure the all-body group with a
+  pixel-based x-height that does not use a sizing ratio (with a
+  minimum-width guard), or calibrate the ratio on a held-out hand; use means
+  or sub-pixel measurements to reduce quantization; move the constant into
+  the protected `regression_gate.py`. Re-baseline with approval.
 
-[WARN, FIXED] scripts/human_eval.py:406 -- The `sizing`, `baseline`, `spacing` and
-`ink_weight` human evals still hand-wire the legacy sizing chain, so human
-reviewers rate a stage graph production no longer runs. (also claude-code,
-which raised the same pattern in unmodified tests and experiments)
-  Evidence: `_generate_words` (line 226) applies `normalize_font_size` per
-  word, then each eval calls `harmonize_words(word_images)` with the default
-  `heights=True` (lines 418, 441, 465, 516). That is the `total_height`
-  policy with chained resamples. Production now runs
-  `pipeline.postprocess_words` (zone sizing, one resample,
-  `harmonize_words(heights=False)`). The `sizing` eval exists to judge
-  short vs. long word size consistency, the property this push changed.
-  CLAUDE.md added in this diff: "Do NOT hand-wire the sizing/harmonization
-  passes in tests or evals; call `pipeline.postprocess_words`."
-  Suggested fix: have these evals generate raw word images (no
-  `normalize_font_size`) and call `postprocess_words(images, words)`. For
-  `ink_weight`, keep the `STROKE_WEIGHT_SHIFT_STRENGTH` patch around the
-  `postprocess_words` call. Leave `_generate_words` callers outside these
-  four evals unchanged unless they also feed composition.
+[NOTE] reforge/quality/font_scale.py:114 -- `_TRAILING_MARKS` (added by the
+fix above) is a hand-copied literal of `generator.SYNTHETIC_MARKS`, kept local
+to avoid importing torch. If the two drift, punctuated words are measured with
+or without their marks inconsistently. Also raised by /security post-fix as a
+non-security observation.
+  Suggested fix: move `SYNTHETIC_MARKS` to `config.py` and import it in both
+  modules.
 
-[WARN, FIXED] reforge/pipeline.py:266 -- `--seed` values outside [0, 2**32) crash
-after model loading and leak the global torch numerics this change set out
-to scope. (also claude-code)
-  Evidence: `np.random.seed(seed)` runs after
-  `torch.set_float32_matmul_precision("high")` and the cuDNN flag changes
-  (lines 257-264) but before the `try:`. `np.random.seed(-1)` raises
-  ValueError, so the `finally` that restores the settings never runs. The
-  global numpy RNG is not used anywhere in `reforge/` (layout and render use
-  their own `RandomState`), so the call only adds the crash path.
-  `reforge.py` accepts any int for `--seed`. Very large seeds also overflow
-  `torch.manual_seed(seed * 1_000_003 + word_idx)`.
-  Suggested fix: validate the seed at the top of `run()` (before model
-  loading) and reject values outside [0, 2**32); move any remaining seeding
-  inside the `try`. Optionally constrain `--seed` in `reforge.py`.
+[NOTE] reforge/model/generator.py:1319 -- `strip_trailing_punctuation` and
+`strip_and_reattach_punctuation` (line 1448) are dead in production and still
+tested. They keep the old one-mark, Bezier, raw-`compute_x_height` semantics
+("what?!" -> ("what?", "!")) while production uses `split_trailing_marks` /
+`_attach_trailing_marks`, so `test_synthetic_marks.py` tests partly cover a
+path production no longer runs. (claude-code)
+  Suggested fix: delete both helpers and their tests, or point the tests at
+  `_attach_trailing_marks`.
 
-[WARN, OPEN: user action] README.md (history, commit `aefea28`) -- The
-working-tree README is repaired, but the 14.3 MB corrupted blob is still in
-commit `aefea28`. Committing the fix on top and pushing publishes that blob
-in the public repo's history permanently.
-  Evidence: `git show aefea28:README.md | wc -c` is 14,339,052 bytes;
-  `aefea28` is unpushed (`origin/main..HEAD`).
-  Suggested fix: commit the README repair as a fixup of `aefea28`
-  (`git commit --fixup=aefea28 README.md`) and autosquash-rebase onto
-  `origin/main`, then push. This rewrites local, unpushed commits only.
-  The push marker stays valid because the final tree is unchanged.
+[NOTE] reforge/pipeline.py:271 -- `run(seed=...)` calls `np.random.seed(seed)`,
+which resets the caller's global numpy RNG. Nothing in `reforge/` draws from
+the global numpy RNG (layout and render use their own `RandomState`), so the
+call only adds the side effect. (claude-code)
+  Suggested fix: remove it.
+
+[NOTE] reforge/pipeline.py:75 -- `json.dump(default=float)` writes `np.bool_`
+values as 1.0/0.0. `gate_details` holds `np.bool_` whenever the metric is a
+numpy float, so the manifest records `"ink_contrast": 1.0` instead of `true`
+(confirmed by probe). (claude-code)
+  Suggested fix: a `default` that maps `np.bool_` to `bool` and other numpy
+  scalars via `.item()`.
+
+[NOTE] tests/medium/test_quality_regression.py:113 -- The gate seeds torch
+once for the whole word list and runs without TF32, where `run()` seeds per
+word (`seed * 1_000_003 + idx`) and sets matmul precision "high". The
+"same stage graph as production" comment holds for post-processing only; a
+TF32-only regression, or an extra RNG draw in an early word, behaves
+differently in the gate. (claude-code)
+  Suggested fix: reuse `run()`'s per-word seeding and numerics scope in the
+  gate, or say in the comment that generation differs.
+
+[NOTE] tests/medium/test_quality_thresholds.py:189 -- Unmodified medium tests
+and experiment harnesses still hand-wire `normalize_font_size` +
+`harmonize_words` (heights=True), the legacy chain production no longer runs:
+`test_quality_thresholds.py:189,270,307`, `test_generation.py:141`,
+`test_ocr_quality.py:33`, `test_hard_words.py:59`,
+`test_duplicate_letter_hallucinations.py:49`, `experiments/sweep_*.py`,
+`experiments/ab_harness.py`. CLAUDE.md now forbids this. Some are component
+tests of the legacy functions and are fine. (carried; also claude-code)
+  Suggested fix: move OCR, hard-word and generation tests to
+  `postprocess_words`.
 
 [NOTE] scripts/archive-output.sh:95 -- The archived metrics list records the
 demoted `height_outlier_score` but not `x_height_consistency`, the gating
-metric. (also claude-code)
+metric. (carried; also claude-code)
   Suggested fix: add `x_height_consistency` to `tracked`.
 
-[NOTE] reforge/pipeline.py:73 -- `_write_manifest` writes
-`<output stem>.json` next to any output and silently overwrites an existing
-file of that name (`--output config.png` replaces `config.json`). Also
-raised by /security as a non-security observation.
-  Suggested fix: document it in `--output` help, or use a less collision-prone
-  name such as `<stem>.manifest.json`.
+[NOTE] reforge/pipeline.py:73 -- `_write_manifest` writes `<output stem>.json`
+next to any output and silently overwrites an existing file of that name
+(`--output config.png` replaces `config.json`). (carried)
+  Suggested fix: document it in `--output` help, or use `<stem>.manifest.json`.
 
 [NOTE] tests/quick/test_run_manifest.py:36 -- `test_cli_accepts_seed`
-assigns `sys.argv` directly (the `monkeypatch` fixture is requested but not
-used for it), so the value leaks to later tests, and it loads `reforge.py`
-by a cwd-relative path.
+assigns `sys.argv` directly (the `monkeypatch` fixture is unused), so the
+value leaks to later tests, and it loads `reforge.py` by a cwd-relative path.
+(carried; also claude-code)
   Suggested fix: `monkeypatch.setattr(sys, "argv", [...])` and resolve
-  `reforge.py` from the test file's location.
+  `reforge.py` from `__file__`.
 
 [NOTE] reforge/compose/render.py:141 -- With the 20% clamp removed, per-word
 y offsets are bounded only by baseline-row differences within a line, while
-`compute_word_positions` advances lines by max canvas height plus 12px.
-A word with an unusually low detected baseline could intrude into the
-previous line's band. Not reproduced; the archived demo shows no overlap.
-(claude-code, medium-low confidence)
-  Suggested fix: add a test that composes a two-line page with extreme
-  baseline rows and asserts no ink overlap between lines.
+lines advance by max canvas height plus 12px. A word with an unusually low
+detected baseline could intrude into the previous line. Not reproduced.
+(carried)
+  Suggested fix: a two-line compose test with extreme baseline rows.
 
-[NOTE] reforge/quality/font_scale.py:236 -- Zone sizing shrinks all-body
-words to about 0.23x in one INTER_AREA step, but `_reinforce_thin_strokes`
-still applies only to single-character words. Short words may come out
-lighter and thinner; `stroke_weight_consistency` dropped from 0.91 to
-0.79-0.85 in the new baseline, which is consistent with this. The human A/B
-still preferred zone 3/3. (claude-code, medium confidence)
-  Suggested fix: measure stroke width of zone-sized short words against
-  neighbors before deciding whether to extend reinforcement.
+[NOTE] reforge/quality/font_scale.py:236 -- `_reinforce_thin_strokes` still
+applies only to single-character words, while zone sizing shrinks short
+all-body words to ~0.2x in one INTER_AREA step. (carried)
+  Suggested fix: measure stroke width of zone-sized short words before
+  extending reinforcement.
 
 [NOTE] reforge/model/generator.py:1341 -- `split_trailing_marks` returns a
-token made only of marks ("...", "?!") unsplit, so it goes to DiffusionPen,
-which renders trailing marks invisibly. The old `strip_trailing_punctuation`
-path produced at least one synthetic mark for such tokens. Intentional per
-the docstring and test, but the result is likely a blank word.
-(claude-code, medium confidence)
-  Suggested fix: render mark-only tokens synthetically at a default body
-  height derived from `ZONE_X_HEIGHT_TARGET`.
+mark-only token ("...", "?!") unsplit, so it goes to DiffusionPen, which
+renders trailing marks invisibly. (carried)
+  Suggested fix: render mark-only tokens synthetically at a body height from
+  `ZONE_X_HEIGHT_TARGET`.
 
-[NOTE] scripts/human_eval.py:939 -- `_worktree_dirty` runs `git status`
-without `cwd=PROJECT_ROOT`, unlike the script's other git calls (lines 111,
-873). The script already assumes cwd is the repo root (`REVIEW_DIR` is
-relative), so impact is limited. (claude-code, low confidence)
-  Suggested fix: pass `cwd=PROJECT_ROOT`.
+[NOTE] scripts/human_eval.py:927 -- `_worktree_dirty` runs `git status`
+without `cwd=PROJECT_ROOT`, and it duplicates `pipeline._git_state()` added
+in the same diff (same command and error handling), so review JSONs and run
+manifests can drift on what "dirty" means. (carried; also claude-code)
+  Suggested fix: use `pipeline._git_state()["dirty"]`.
 
-[NOTE] tests/medium/test_ab_harness.py:164 -- Unmodified medium tests
-(`test_ab_harness.py`, `test_generation.py`, `test_quality_thresholds.py`)
-and `experiments/sweep_*.py`, `experiments/ab_harness.py`,
-`scripts/measure_word_sizing.py` still use the legacy
-`normalize_font_size` + `harmonize_words` chain. Some are component tests of
-`harmonize_words` and are fine; the experiment harnesses would A/B a stage
-graph production no longer runs. (claude-code)
-  Suggested fix: move experiment harnesses to `postprocess_words` when next
-  used.
+Security NOTEs (from /security, 0 BLOCK / 0 WARN / 5 NOTE):
 
-Security NOTEs (from /security, 0 BLOCK / 0 WARN / 4 NOTE):
+[NOTE] reforge/evaluate/visual.py:567 -- `ALL_BODY_INK_PER_X_HEIGHT` half-sets
+the only gating metric but has no ask rule (see the WARN above).
 
-[NOTE] .claude/settings.json:4 -- The evaluator ask rules cover only built-in
-edits to `quality_baseline.json` and `regression_gate.py` plus the two
-`--update-*` flags. Python writes via the allowed `.venv/bin/python` bypass
-them, and `PRIMARY_METRICS`, tolerance, SSIM threshold, the word list,
-`reference_output.png`, `tests/medium/conftest.py` and the metric code in
-`visual.py` have no rule. (Relates to the gate WARN above:
-`ZONE_HEIGHT_RATIOS` is also part of the evaluator.)
+[NOTE] .claude/settings.json:4 -- Evaluator ask rules are bypassable via
+interpreter writes and do not cover most gate-defining files. (carried)
 
 [NOTE] tests/medium/test_quality_regression.py:248 -- The push gate fails
-open: a missing baseline or reference is recorded fresh and passes, and
-`CUDA_VISIBLE_DEVICES= git push` skips the class with exit 0.
+open on a missing baseline/reference or hidden CUDA. (carried)
 
-[NOTE] reforge/model/generator.py:1170 -- Words from user text that fail OCR
-retries are appended with a timestamp to the tracked
-`reforge/data/hard_words.json`; punctuated words now reach that path too.
+[NOTE] reforge/model/generator.py:1170 -- User words that fail OCR are
+recorded in the tracked `reforge/data/hard_words.json`. (carried)
 
 [NOTE] .claude/settings.local.json:56 -- Personal permissions file is tracked
-in the public repo (pre-existing, outside this diff).
+in the public repo. (carried, outside this diff)
 
-Prior-review NOTEs: all three resolved. `layout.py` walkback now uses a
-peak-relative `walkback_threshold`; `docs/output-history/20260419-161539.png`
-still exists, so the `test_contraction_sizing.py:8` pointer resolves;
-SECURITY.md now cites `scripts/human_eval.py:558`, which is correct.
-
-Built-in findings refuted by probe (dropped): the claims that a trailing
-`,`/`;` tail inflates ink height under zone sizing (`font_scale.py:101`) and
-misplaces a following mark (`generator.py:1361`). Attaching `,` `;` and `,.`
-to body words 12-60px tall left ink height unchanged in every case; the
-synthetic comma does not extend below the word's ink bottom.
+Built-in finding refuted by probe (dropped): `generator.py:1361`, that a
+second mark after `,` or `;` ("so,.", "so;!") is placed below the baseline
+because `detect_baseline` on the composite returns the comma tail. With the
+real renderer the final mark's bottom lands on the word's baseline (offset 0)
+in both cases; the synthetic tails do not extend below the word's ink
+bottom.
 
 ### Fixes Applied
 
-- [BLOCK] README.md:1 -- Recovered the intended README with the documented
-  split-and-rejoin procedure and swapped in the new regression paragraph.
-  18,503 bytes, one "Quality regression test" line; `git diff aefea28~1 --
-  README.md` shows only the intended edits (31+/25-).
-- [WARN] reforge/pipeline.py:139 -- `run()` rejects seeds outside [0, 2**32)
-  before model loading; `np.random.seed` moved inside the `try` so the
-  `finally` always restores torch numerics. Verified: seeds -1, 2**32 raise
-  ValueError with global settings untouched.
-- [WARN] scripts/human_eval.py:226 -- `_generate_words` returns raw images;
-  the sizing, baseline, spacing and ink_weight evals call
-  `postprocess_words` (ink_weight keeps its strength patch around it).
+- [WARN] reforge/quality/font_scale.py:113 -- Added
+  `_drop_trailing_mark_runs()`, called at the top of `estimate_x_height`:
+  for a word ending in synthetic marks it crops off the rightmost ink column
+  run per mark, so only the base word is measured. Words without trailing
+  marks and mark-only tokens are unchanged, so the gate words and the
+  `_attach_trailing_marks` call are unaffected. Verified: "so?", "so!",
+  "now!", "so?!" now size at 1.00x of the bare word (was 0.77-0.81x); every
+  rendered mark (`. , ; ! ?`, body heights 6-40) is a single column run, so
+  the crop removes exactly the marks. New parametrized quick test
+  `TestZoneSizing::test_trailing_marks_do_not_change_zone_scale` ("so?",
+  "now!", "so?!", "gray?"); the three no-ascender cases fail without the fix.
 
 ### Accepted Risks
 
 None.
 
 ---
-*Prior review (2026-04-20, commit ab25600): light review of docs/image
-archival; 0 BLOCK / 0 WARN / 5 NOTE (output-history docstring pointer,
-bundled add/remove, baseline-derived archive metrics, SECURITY.md line
-pointer, layout.py walkback threshold).*
+*Prior review (2026-10-13, commit 5b1c24a): refresh review of the same audit
+work before the rebase; 1 BLOCK (corrupted README, fixed and folded into the
+original commit), 2 WARN fixed (seed range, human evals on production
+sizing), 1 WARN open for human decision (x_height_consistency), 1 WARN user
+action (README blob in history, resolved by the rebase), 12 NOTEs.*
 
-<!-- REVIEW_META: {"date":"2026-10-13","commit":"5b1c24a","reviewed_up_to":"5b1c24a121d39d94e2e878ef9513741f5935228e","base":"origin/main","tier":"refresh","block":0,"warn":2,"note":12} -->
+<!-- REVIEW_META: {"date":"2026-10-13","commit":"d43de13","reviewed_up_to":"d43de134964b854b2118f478368aa47f6d7df6be","base":"origin/main","tier":"full","block":0,"warn":2,"note":18} -->

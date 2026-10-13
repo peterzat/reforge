@@ -201,6 +201,22 @@ class TestZoneSizing:
         t = [compute_x_height(i) for i in size_words(imgs, words, policy="total_height")]
         assert t[0] > 1.6 * t[1], t
 
+    @pytest.mark.parametrize("word,base,desc", [
+        ("so?", "so", 0), ("now!", "now", 0), ("so?!", "so", 0),
+        ("gray?", "gray", 12),
+    ])
+    def test_trailing_marks_do_not_change_zone_scale(self, word, base, desc):
+        """Tall '!'/'?' attached to an all-body word must not inflate its
+        measured ink height: the punctuated word sizes like the bare word."""
+        from reforge.model.generator import _attach_trailing_marks
+        from reforge.quality.font_scale import plan_zone_scales
+        bare = self._canvas_word(body=30, width=120)
+        if desc:
+            bare[32:32 + desc, 40:44] = 30
+        punct = _attach_trailing_marks(bare, base, word[len(base):])
+        s_bare, s_punct = plan_zone_scales([bare, punct], [base, word])
+        assert abs(s_punct / s_bare - 1.0) <= 0.03, (s_bare, s_punct)
+
     def test_unknown_policy_raises(self):
         from reforge.quality.font_scale import plan_word_scales
         with pytest.raises(ValueError):

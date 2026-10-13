@@ -110,6 +110,28 @@ def zone_class(word: str) -> tuple[int, int]:
     return asc, int(any(c in _DESCENDERS for c in core))
 
 
+# Mirrors model.generator.SYNTHETIC_MARKS (not imported: generator pulls torch).
+_TRAILING_MARKS = ",.?!;"
+
+
+def _drop_trailing_mark_runs(img: np.ndarray, word: str) -> np.ndarray:
+    """Crop off synthetic trailing marks so only the base word is measured.
+
+    Marks are attached after a tight crop plus a 1px gap, so each one is its
+    own ink column run at the right edge. "!" and "?" stand taller than an
+    all-body word and would otherwise inflate its ink height.
+    """
+    stripped = word.strip()
+    n_marks = len(stripped) - len(stripped.rstrip(_TRAILING_MARKS))
+    if n_marks == 0 or n_marks == len(stripped):
+        return img
+    cols = np.any(img < 180, axis=0).astype(np.int8)
+    starts = np.flatnonzero(np.diff(np.concatenate(([0], cols))) == 1)
+    if len(starts) <= n_marks:
+        return img
+    return img[:, :starts[-n_marks]]
+
+
 def estimate_x_height(img: np.ndarray, word: str) -> float:
     """x-height of a word image in pixels, robust on short words.
 
@@ -121,6 +143,7 @@ def estimate_x_height(img: np.ndarray, word: str) -> float:
     """
     from reforge.config import ZONE_HEIGHT_RATIOS
 
+    img = _drop_trailing_mark_runs(img, word)
     ink_h = compute_ink_height(img)
     prior = ZONE_HEIGHT_RATIOS[zone_class(word)]
     measured = float(np.clip(ink_h / max(compute_x_height(img), 1), 1.0, 3.5))
