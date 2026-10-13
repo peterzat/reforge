@@ -48,6 +48,20 @@ B1_RHO_MIN = 0.2
 B1_P_MAX = 0.3
 B1_MAX_PRIMARY = 3
 
+# Reviews whose filename stem sorts at or after this were collected after the
+# current PRIMARY_METRICS were selected (docs generated 2026-04-10T14:18Z), so
+# they are held out from that selection and test whether it replicates.
+SELECTION_CUTOFF = "2026-04-10_141808"
+
+# Metrics whose implementation does not measure what the name claims (audit
+# 2026-10-13). Their correlations are reported but should not be trusted.
+KNOWN_BROKEN_INSTRUMENTS = {
+    "baseline_alignment": "measures word-canvas bottoms, not ink baselines "
+                          "(evaluate/visual.py check_baseline_alignment ignores img)",
+    "style_fidelity": "one third of it is _xheight_ratio, which is ~1.0 for "
+                      "nearly every word",
+}
+
 
 def load_reviews(reviews_dir):
     """Return a list of (filename, review_dict) tuples, sorted by filename."""
@@ -294,7 +308,22 @@ def format_candidate_block(agreement):
     )
 
 
-def render_markdown(records, agreement, reviews_dir, dataset_size):
+def replication_records(reviews, cutoff=SELECTION_CUTOFF):
+    """Correlations on reviews before / at-or-after ``cutoff`` (by filename)."""
+    before = [(n, r) for n, r in reviews if os.path.splitext(n)[0] < cutoff]
+    after = [(n, r) for n, r in reviews if os.path.splitext(n)[0] >= cutoff]
+    return {"before": compute_correlations(before), "after": compute_correlations(after)}
+
+
+def _gating_metrics():
+    try:
+        from reforge.config import PRIMARY_METRICS
+        return list(PRIMARY_METRICS)
+    except ImportError:
+        return []
+
+
+def render_markdown(records, agreement, reviews_dir, dataset_size, replication=None):
     """Render a committable markdown report with timestamp, tables, and analysis.
 
     The markdown is intended to be regenerated in-place: running this script
@@ -358,7 +387,12 @@ def render_markdown(records, agreement, reviews_dir, dataset_size):
     )
     lines.append("")
     if selected:
-        lines.append("**Selected (these gate the regression test):**")
+        lines.append(
+            "**Clear the selection bar.** This list does not change what gates: "
+            "the regression test gates on `PRIMARY_METRICS` in "
+            f"`reforge/config.py` (currently {', '.join(f'`{m}`' for m in _gating_metrics()) or 'none'}). "
+            "Promote or demote via an explicit spec update."
+        )
         lines.append("")
         for r in selected:
             lines.append(
@@ -402,6 +436,32 @@ def render_markdown(records, agreement, reviews_dir, dataset_size):
                 "the p-bar after more review data, promote via an explicit "
                 "spec update."
             )
+
+    if replication is not None:
+        lines.append("")
+        lines.append(f"## Held-out replication (reviews before vs. from `{SELECTION_CUTOFF}`)")
+        lines.append("")
+        lines.append(
+            "The gating metrics were selected on the reviews before the cutoff. "
+            "Reviews from the cutoff on are held out: a metric that tracks human "
+            "preference should keep a positive rho there."
+        )
+        lines.append("")
+        lines.append("| metric | rho before | n | rho held out | n |")
+        lines.append("| --- | ---: | ---: | ---: | ---: |")
+        by = {k: {r["metric"]: r for r in v} for k, v in replication.items()}
+        names = sorted(set(by["before"]) | set(by["after"]))
+        names.sort(key=lambda m: (m not in _gating_metrics(), m))
+        for m in names:
+            cells = []
+            for k in ("before", "after"):
+                r = by[k].get(m)
+                if r is None or r["rho"] is None:
+                    cells += ["--", str(r["n"]) if r else "0"]
+                else:
+                    cells += [f"{r['rho']:+.3f}", str(r["n"])]
+            tag = " (gating)" if m in _gating_metrics() else ""
+            lines.append(f"| `{m}`{tag} | {cells[0]} | {cells[1]} | {cells[2]} | {cells[3]} |")
 
     # Negative correlations are a diagnosis, not noise. Call them out.
     negatives = [r for r in non_const if r["rho"] is not None and r["rho"] <= -B1_RHO_MIN]
@@ -503,6 +563,20 @@ def _methodology_notes(dataset_size, agreement):
             "and a candidate-disagreement gate can be considered."
         )
     lines.append(
+        "- Multiple comparisons: about 16 metrics are tested against the same "
+        "ratings. Under the null, p < 0.3 passes about 30% of them, so the "
+        "selection bar alone expects ~5 false positives. Require held-out "
+        "replication (table above) before a metric gates."
+    )
+    lines.append(
+        "- Instrument drift: each review's `cv_metrics` were computed by the "
+        "metric code at that review's commit, and early reviews were unseeded "
+        "(seeding began 2026-04-17). Correlations pool different instrument "
+        "versions."
+    )
+    for name, why in KNOWN_BROKEN_INSTRUMENTS.items():
+        lines.append(f"- Known-broken instrument `{name}`: {why}.")
+    lines.append(
         "- Negative correlations (when present) are logged above as "
         "diagnostics. They are NOT used to flip metric directions; the "
         "correlation is too weak and confounded by dataset contamination "
@@ -538,7 +612,10 @@ def main(argv=None):
     print(format_candidate_block(agreement))
 
     if args.output:
-        md = render_markdown(records, agreement, args.reviews_dir, dataset_size)
+        md = render_markdown(
+            records, agreement, args.reviews_dir, dataset_size,
+            replication=replication_records(reviews),
+        )
         os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         with open(args.output, "w") as f:
             f.write(md)

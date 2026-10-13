@@ -1,11 +1,17 @@
-"""Prune stale human review JSON files.
+"""Move stale human review JSON files out of the active review set.
 
 A review is stale when any tracked pipeline file has changed since the
 review was created (detected via SHA256 checksums stored in the review).
 
+Reviews are ground truth and are never deleted: --apply moves them to
+reviews/human/stale/ (tracked in git). Note that nearly every pipeline change
+makes every review stale by this definition, and scripts that read
+reviews/human/*.json (metric_correlation.py, findings_sweep.py) do not look in
+stale/, so --apply also removes reviews from those analyses.
+
 Usage:
     python scripts/prune_reviews.py          # dry-run (default)
-    python scripts/prune_reviews.py --apply  # actually delete
+    python scripts/prune_reviews.py --apply  # move to reviews/human/stale/
 """
 
 import argparse
@@ -25,7 +31,7 @@ def main():
     parser = argparse.ArgumentParser(description="Prune stale human reviews")
     parser.add_argument(
         "--apply", action="store_true",
-        help="Actually delete stale reviews (default is dry-run)",
+        help="Move stale reviews to reviews/human/stale/ (default is dry-run)",
     )
     args = parser.parse_args()
 
@@ -83,15 +89,17 @@ def main():
 
         n_changed = len(changed)
         if args.apply:
-            os.remove(path)
-            print(f"Deleted: {filename} ({n_changed} file(s) changed){warn}")
+            stale_dir = os.path.join(REVIEW_DIR, "stale")
+            os.makedirs(stale_dir, exist_ok=True)
+            os.replace(path, os.path.join(stale_dir, filename))
+            print(f"Moved to stale/: {filename} ({n_changed} file(s) changed){warn}")
         else:
-            print(f"Would delete: {filename} ({n_changed} file(s) changed){warn}")
+            print(f"Would move to stale/: {filename} ({n_changed} file(s) changed){warn}")
 
     if not args.apply:
-        print(f"\nDry run. Use --apply to delete {len(stale)} stale review(s).")
+        print(f"\nDry run. Use --apply to move {len(stale)} stale review(s) to stale/.")
     else:
-        print(f"\nDeleted {len(stale)} stale review(s).")
+        print(f"\nMoved {len(stale)} stale review(s) to {REVIEW_DIR}/stale/.")
 
 
 if __name__ == "__main__":
