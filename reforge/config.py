@@ -75,8 +75,9 @@ SIZING_POLICY = "zone"  # human blind A/B 2026-10-13: zone preferred on 3/3 seed
 # at the 28px total height the total_height policy gives 3+ char words.
 ZONE_X_HEIGHT_TARGET = 28 / 2.26
 # ink height / x-height by (ascender, descender) class, measured on demo-text
-# output (seeds 42/137/2718). Ascender: 0 none, 1 weak ("t" only; a short
-# ascender in this hand), 2 strong (bdfhkl, capitals, digits, apostrophe).
+# output (seeds 42/137/2718). Ascender: 0 none, 1 weak ("t" or an "i" dot;
+# short in this hand), 2 strong (bdfhkl, capitals, digits, apostrophe).
+# Descender: gjpqy and "f" (its tail descends in this hand).
 ZONE_HEIGHT_RATIOS = {
     (0, 0): 1.21, (1, 0): 1.55, (2, 0): 2.26,
     (0, 1): 2.78, (1, 1): 2.50, (2, 1): 2.85,

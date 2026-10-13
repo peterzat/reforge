@@ -179,6 +179,12 @@ class TestZoneSizing:
         assert zone_class("was") == (0, 0)
         assert zone_class("two,") == (1, 0)
         assert zone_class("the") == (2, 0)
+
+    def test_i_dot_is_a_weak_ascender(self):
+        from reforge.quality.font_scale import zone_class
+        assert zone_class("is") == (1, 0)
+        assert zone_class("rain") == (1, 0)
+        assert zone_class("was") == (0, 0)
         assert zone_class("gray") == (0, 1)
         assert zone_class("by") == (2, 1)
         assert zone_class("I") == (2, 0)
@@ -234,13 +240,13 @@ class TestXHeightConsistencyMetric:
 
     def test_matching_body_sizes_score_near_one(self):
         from reforge.evaluate.visual import check_x_height_consistency
-        was = self._block(20, 2, 17)                 # all-body: ink 15 -> body 12.4
-        foxes = self._block(40, 10, 22)              # dense band 12
+        was = self._block(20, 4, 17)                 # all-body: band(0.25) 13.5
+        foxes = self._block(40, 10, 22)              # band(0.5) 12.0; 13.5/12/1.10 ~ 1.02
         assert check_x_height_consistency([was, foxes], ["was", "foxes"]) > 0.95
 
     def test_shouted_short_word_scores_low(self):
         from reforge.evaluate.visual import check_x_height_consistency
-        was = self._block(32, 2, 28)                 # ink 26 -> body 21.5
+        was = self._block(32, 4, 26)                 # body band 22: shouted
         foxes = self._block(40, 10, 22)
         assert check_x_height_consistency([was, foxes], ["was", "foxes"]) < 0.6
 
@@ -266,3 +272,40 @@ class TestXHeightConsistencyMetric:
         bad = check_x_height_consistency(size_words(imgs, words, policy="zone"), words)
         assert good > 0.9, good
         assert bad < 0.7, bad
+
+
+@pytest.mark.quick
+class TestXHeightMetricResolution:
+    """2026-10-13 gate approval: the metric must be continuous, independent
+    of sizing constants, and blind to trailing marks."""
+
+    def test_moves_continuously(self):
+        """A sub-pixel change in a long word's body band moves the score;
+        the old median-of-integers version moved in 0.05-0.07 steps."""
+        from reforge.evaluate.visual import check_x_height_consistency
+        was = np.full((20, 120), 255, np.uint8); was[4:16, 10:110] = 30
+        a = np.full((40, 120), 255, np.uint8); a[10:22, 10:110] = 30
+        b = a.copy(); b[22, 10:50] = 30       # partly inked extra row, below threshold
+        s_a = check_x_height_consistency([was, a], ["was", "foxes"])
+        s_b = check_x_height_consistency([was, b], ["was", "foxes"])
+        assert 0.0 < abs(s_a - s_b) < 0.05, (s_a, s_b)
+
+    def test_trailing_marks_do_not_change_the_score(self):
+        from reforge.evaluate.visual import check_x_height_consistency
+        was = np.full((24, 140), 255, np.uint8); was[4:16, 10:100] = 30
+        was_q = was.copy(); was_q[0:16, 110:116] = 30   # tall "?" after a gap
+        foxes = np.full((40, 120), 255, np.uint8); foxes[10:22, 10:110] = 30
+        plain = check_x_height_consistency([was, foxes], ["so", "foxes"])
+        marked = check_x_height_consistency([was_q, foxes], ["so?", "foxes"])
+        assert marked == pytest.approx(plain)
+
+
+@pytest.mark.quick
+class TestFAsDescender:
+    def test_f_words_are_both_classes(self):
+        from reforge.quality.font_scale import zone_class
+        assert zone_class("for") == (2, 1)
+        assert zone_class("of") == (2, 1)
+        assert zone_class("off") == (2, 1)
+        assert zone_class("foxes") == (2, 1)
+        assert zone_class("the") == (2, 0)

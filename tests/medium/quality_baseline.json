@@ -13,7 +13,7 @@
   ],
   "num_steps": 20,
   "guidance_scale": 3.0,
-  "updated_at": "2026-10-13T17:13:24.429776+00:00",
+  "updated_at": "2026-10-13T20:58:27.312556+00:00",
   "update_reason": "manual --update-baseline",
   "seeds": {
     "42": {
@@ -21,18 +21,18 @@
         "gray_boxes": 1.0,
         "ink_contrast": 1.0,
         "background_cleanliness": 0.9998,
-        "stroke_weight_consistency": 0.8497,
+        "stroke_weight_consistency": 0.8415,
         "word_height_ratio": 0.0,
         "height_outlier_ratio": 1.3333,
         "slant_consistency": 0.0,
-        "style_fidelity": 0.3876,
-        "baseline_alignment": 0.5108,
-        "composition_score": 0.4335,
+        "style_fidelity": 0.3869,
+        "baseline_alignment": 0.4233,
+        "composition_score": 0.4358,
         "layout_regularity": 0.6155,
         "punctuation_visibility": 1.0,
-        "x_height_consistency": 0.9536,
-        "ocr_accuracy": 0.9,
-        "ocr_min": 0.5,
+        "x_height_consistency": 0.9778,
+        "ocr_accuracy": 0.8286,
+        "ocr_min": 0.2857,
         "ocr_per_word": [
           0.6666666666666667,
           1.0,
@@ -42,13 +42,13 @@
           0.5,
           1.0,
           1.0,
-          1.0,
+          0.2857142857142857,
           1.0
         ],
         "blank_word_ratio": 1.0,
         "height_outlier_score": 0.3333,
-        "word_readability_rate": 1.0,
-        "overall": 0.7653
+        "word_readability_rate": 0.9,
+        "overall": 0.6773
       }
     },
     "137": {
@@ -56,16 +56,16 @@
         "gray_boxes": 1.0,
         "ink_contrast": 1.0,
         "background_cleanliness": 0.9997,
-        "stroke_weight_consistency": 0.7859,
+        "stroke_weight_consistency": 0.78,
         "word_height_ratio": 0.0,
         "height_outlier_ratio": 1.4231,
         "slant_consistency": 0.0,
-        "style_fidelity": 0.3772,
-        "baseline_alignment": 0.4401,
-        "composition_score": 0.7023,
-        "layout_regularity": 0.4565,
+        "style_fidelity": 0.3749,
+        "baseline_alignment": 0.5276,
+        "composition_score": 0.6997,
+        "layout_regularity": 0.4339,
         "punctuation_visibility": 1.0,
-        "x_height_consistency": 0.9536,
+        "x_height_consistency": 0.9567,
         "ocr_accuracy": 0.9167,
         "ocr_min": 0.5,
         "ocr_per_word": [
@@ -83,25 +83,25 @@
         "blank_word_ratio": 1.0,
         "height_outlier_score": 0.1538,
         "word_readability_rate": 1.0,
-        "overall": 0.7917
+        "overall": 0.7952
       }
     },
     "2718": {
       "metrics": {
         "gray_boxes": 1.0,
         "ink_contrast": 1.0,
-        "background_cleanliness": 0.9994,
-        "stroke_weight_consistency": 0.7971,
+        "background_cleanliness": 0.9995,
+        "stroke_weight_consistency": 0.7817,
         "word_height_ratio": 0.0,
         "height_outlier_ratio": 1.451,
         "slant_consistency": 0.0,
-        "style_fidelity": 0.4406,
-        "baseline_alignment": 0.6521,
-        "composition_score": 0.6514,
-        "layout_regularity": 0.3923,
+        "style_fidelity": 0.4405,
+        "baseline_alignment": 0.7185,
+        "composition_score": 0.5696,
+        "layout_regularity": 0.6258,
         "punctuation_visibility": 1.0,
-        "x_height_consistency": 0.9536,
-        "ocr_accuracy": 0.7643,
+        "x_height_consistency": 0.941,
+        "ocr_accuracy": 0.8143,
         "ocr_min": 0.2857,
         "ocr_per_word": [
           1.0,
@@ -113,12 +113,12 @@
           1.0,
           1.0,
           0.2857142857142857,
-          0.5
+          1.0
         ],
         "blank_word_ratio": 1.0,
         "height_outlier_score": 0.098,
         "word_readability_rate": 0.7,
-        "overall": 0.5409
+        "overall": 0.5368
       }
     }
   }

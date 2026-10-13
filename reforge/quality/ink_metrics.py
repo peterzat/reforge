@@ -56,3 +56,50 @@ def compute_x_height(img: np.ndarray) -> int:
     x_height = body_bottom - body_top + 1
 
     return max(1, x_height)
+
+
+# Mirrors model.generator.SYNTHETIC_MARKS (not imported: generator pulls torch).
+TRAILING_MARKS = ",.?!;"
+
+
+def drop_trailing_mark_runs(img: np.ndarray, word: str) -> np.ndarray:
+    """Crop off synthetic trailing marks so only the base word remains.
+
+    Marks are attached after a tight crop plus a 1px gap, so each one is its
+    own ink column run at the right edge. Row coordinates are unchanged, so
+    rows measured on the result (baselines, x-height) apply to ``img``.
+    Returns ``img`` unchanged when the word has no trailing marks or the
+    image does not have enough column runs to separate them.
+    """
+    stripped = word.strip()
+    n_marks = len(stripped) - len(stripped.rstrip(TRAILING_MARKS))
+    if n_marks == 0 or n_marks == len(stripped):
+        return img
+    cols = np.any(img < 180, axis=0).astype(np.int8)
+    starts = np.flatnonzero(np.diff(np.concatenate(([0], cols))) == 1)
+    if len(starts) <= n_marks:
+        return img
+    return img[:, :starts[-n_marks]]
+
+
+def compute_x_height_subpixel(img: np.ndarray, frac: float = 0.5) -> float:
+    """Body-band height with sub-pixel edges.
+
+    Same band as compute_x_height (rows whose ink density is at least
+    ``frac`` of the peak), but each edge is placed where the density profile
+    crosses the threshold, interpolated between rows. Measurements move
+    continuously with the image instead of in whole-pixel steps.
+    """
+    d = np.mean(img < 180, axis=1)
+    if d.size == 0 or d.max() <= 0:
+        return 0.0
+    t = d.max() * frac
+    idx = np.flatnonzero(d >= t)
+    top, bot = int(idx[0]), int(idx[-1])
+
+    def _overshoot(inside: int, outside: int) -> float:
+        return (d[inside] - t) / max(d[inside] - d[outside], 1e-9)
+
+    top_edge = top - (_overshoot(top, top - 1) if top > 0 else 0.0)
+    bot_edge = bot + (_overshoot(bot, bot + 1) if bot + 1 < len(d) else 0.0)
+    return float(bot_edge - top_edge)

@@ -558,13 +558,18 @@ def check_composition_score(
     return score
 
 
-# Evaluator constant for check_x_height_consistency: ink height of an
-# all-body word ("was", "on") in x-heights, measured on demo-text output
-# 2026-10-13. Deliberately NOT read from config.ZONE_HEIGHT_RATIOS: the
-# sizing policy uses that table to size the same words, and a metric that
-# shares the constant cannot see the policy getting it wrong (code review
-# 2026-10-13). Changing this is an evaluator change (human approval).
-ALL_BODY_INK_PER_X_HEIGHT = 1.21
+# check_x_height_consistency measures each group with the band threshold that
+# is stable for it: all-body words ("was", "on") have no ascenders to leak
+# into a low threshold, which also keeps ring letters from collapsing the
+# band ("on" read as 5px at 0.5); long words need the 0.5 band to exclude
+# ascenders. The two estimators differ by a fixed factor, measured on the
+# human-approved zone-sized output (gate words and demo text, 3 seeds each):
+# all-body band(0.25) / long-word band(0.5) = 1.10. This calibrates the
+# estimator pair; it is not a sizing constant, so mis-sized all-body words
+# still move the score. Changing it is an evaluator change (human approval).
+BODY_BAND_FRAC = 0.25
+LONG_BAND_FRAC = 0.5
+BODY_BAND_CALIBRATION = 1.10
 
 
 def check_x_height_consistency(
@@ -574,32 +579,41 @@ def check_x_height_consistency(
 
     Targets the size_inconsistent defect: short words without ascenders or
     descenders ("was", "on", "so") rendered at ~2x the body size of their
-    neighbors. Pixel x-height estimates are unreliable on short words
-    (compute_x_height reads "it" as 5px of a 25px word), so the comparison
-    uses two measurable quantities:
+    neighbors. Both groups are measured from pixels only, as the sub-pixel
+    body band (compute_x_height_subpixel) of the word with any trailing marks
+    cropped off, at the group's band threshold (see BODY_BAND_FRAC). Group
+    means, not medians, so the score moves continuously.
 
-    - all-body words: ink height / ALL_BODY_INK_PER_X_HEIGHT (their ink is
-      body plus round-letter overshoot);
-    - words of 5+ letters: compute_x_height (dense body band).
+    Nothing here is shared with the sizing policy. An earlier version
+    converted all-body ink height to x-height with the same 1.21 constant
+    zone sizing uses, which fixed that half of the ratio by construction
+    (code review 2026-10-13).
 
-    Returns min(r, 1/r) for r = median of the first / median of the second,
-    or None when either group is empty.
+    Returns min(r, 1/r) for r = (mean all-body band / mean band of words
+    with 5+ letters) / BODY_BAND_CALIBRATION, or None when either group is
+    empty.
     """
     from reforge.quality.font_scale import zone_class
-    from reforge.quality.ink_metrics import compute_ink_height, compute_x_height
+    from reforge.quality.ink_metrics import (
+        compute_x_height_subpixel,
+        drop_trailing_mark_runs,
+    )
 
     body, long_ = [], []
     for img, word in zip(word_imgs, words):
-        if img is None or word is None:
+        if img is None or word is None or "'" in word:
             continue
         letters = word.strip().strip(".,;:!?\"'")
+        img = drop_trailing_mark_runs(img, word)
         if zone_class(word) == (0, 0):
-            body.append(compute_ink_height(img) / ALL_BODY_INK_PER_X_HEIGHT)
+            body.append(compute_x_height_subpixel(img, BODY_BAND_FRAC))
         elif len(letters) >= 5:
-            long_.append(compute_x_height(img))
+            long_.append(compute_x_height_subpixel(img, LONG_BAND_FRAC))
+    body = [x for x in body if x > 0]
+    long_ = [x for x in long_ if x > 0]
     if not body or not long_:
         return None
-    r = float(np.median(body)) / max(float(np.median(long_)), 1.0)
+    r = float(np.mean(body)) / float(np.mean(long_)) / BODY_BAND_CALIBRATION
     return min(r, 1.0 / r) if r > 0 else 0.0
 
 

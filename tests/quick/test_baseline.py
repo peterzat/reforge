@@ -322,15 +322,69 @@ class TestBaselineFailureModesFromRealOutput:
 
     def test_for_lower_body_rows_below_absolute_threshold(self):
         """'for': lower body rows at 0.2-0.3 density were skipped by the
-        absolute 0.35 walk-back, landing on the crossbar row."""
+        absolute 0.35 walk-back, landing on the crossbar row. Row densities
+        are the measured profile of the real word (seed 137 demo text)."""
         from reforge.compose.layout import detect_baseline
-        img = np.full((35, 51), 255, dtype=np.uint8)
-        img[0:28, 6:8] = 30           # f stem with descender to row 27
-        img[12:14, 2:18] = 30         # f crossbar + top of o/r (dense)
-        img[12:21, 20:22] = 30        # o left side
-        img[12:21, 30:32] = 30        # o right side
-        img[19:21, 20:32] = 30        # o bottom stroke
-        img[12:21, 38:40] = 30        # r stem
-        img[12:14, 38:48] = 30        # r arm
+        density = [0.08, 0.10, 0.08, 0.08, 0.06, 0.06, 0.08, 0.06, 0.08, 0.06,
+                   0.08, 0.31, 0.43, 0.39, 0.37, 0.31, 0.33, 0.27, 0.18, 0.27,
+                   0.22, 0.10, 0.10, 0.06, 0.04, 0.04, 0.04, 0.04]
+        w = 51
+        img = np.full((35, w), 255, dtype=np.uint8)
+        for r, dens in enumerate(density):
+            img[r, :int(round(dens * w))] = 30
         bl = detect_baseline(img, word="for")
         assert abs(bl - 20) <= 1, bl
+
+
+@pytest.mark.quick
+class TestTrailingMarkBaseline:
+    """Code review 2026-10-13: a trailing comma made "it," descender-capable,
+    and the scan put its baseline on the t crossbar, 13px too high."""
+
+    def _it(self, comma: bool):
+        img = np.full((35, 40), 255, dtype=np.uint8)
+        img[0:28, 16:17] = 30        # t stem (1px)
+        img[13:15, 10:24] = 30       # t crossbar at mid-height
+        img[15:28, 4:5] = 30         # i stem
+        img[9:11, 4:5] = 30          # i dot
+        if comma:
+            img[24:32, 28:30] = 30   # comma after a gap, tail below baseline
+        return img
+
+    def test_it_comma_matches_bare_it(self):
+        from reforge.compose.layout import detect_baseline
+        assert detect_baseline(self._it(False), "it") == 27
+        assert detect_baseline(self._it(True), "it,") == 27
+
+    def test_descender_word_with_comma_keeps_body_baseline(self):
+        from reforge.compose.layout import detect_baseline
+        img = np.full((64, 140), 255, dtype=np.uint8)
+        img[20:40, 4:100] = 40           # body, baseline row 39
+        img[40:56, 50:54] = 40           # y descender
+        img[36:48, 110:113] = 40         # comma after a gap
+        assert abs(detect_baseline(img, "gray,") - 39) <= 1
+
+
+@pytest.mark.quick
+def test_golden_descender_baselines():
+    """81 real zone-sized descender-word crops (demo text and a short-word
+    batch, seeds 42/137/2718) with baselines checked by eye on contact
+    sheets (audit 2026-10-13). The scan-only detector missed 16 of the 30
+    short words by 5-18px. A change that moves any of these must be a
+    deliberate re-labeling, not drift."""
+    import json
+    import os
+
+    from reforge.compose.layout import detect_baseline
+
+    here = os.path.join(os.path.dirname(__file__), "fixtures")
+    crops = np.load(os.path.join(here, "descender_baselines.npz"))
+    labels = json.load(open(os.path.join(here, "descender_baselines.json")))["labels"]
+    assert len(labels) == 81
+    misses = []
+    for key, label in labels.items():
+        word = key.split("_", 2)[2]
+        got = detect_baseline(crops[key], word)
+        if abs(got - label) > 1:
+            misses.append((key, label, got))
+    assert not misses, misses

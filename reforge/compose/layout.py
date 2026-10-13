@@ -23,6 +23,7 @@ from reforge.config import (
     TARGET_WORDS_PER_LINE,
     WORD_SPACING,
 )
+from reforge.quality.ink_metrics import TRAILING_MARKS, drop_trailing_mark_runs
 
 
 def compute_page_width(
@@ -90,6 +91,24 @@ DESCENDER_LETTERS = set("gjpqy")
 DESCENDER_CAPABLE = DESCENDER_LETTERS | set("f,;")
 
 
+def _body_band_bottom(row_density: np.ndarray, first_ink: int, last_ink: int) -> int:
+    """Bottom row of the dense body band of a word image.
+
+    Smooths the row-density profile over 3 rows (thin lower-body rows such
+    as the bottom of an "o" would otherwise end the band early), then walks
+    down from the densest row while density stays at least half the peak.
+    Descender strokes cover a minority of columns, so their rows fall below
+    the threshold.
+    """
+    d = np.convolve(row_density.astype(np.float64), np.ones(3) / 3.0, mode="same")
+    peak = first_ink + int(np.argmax(d[first_ink:last_ink + 1]))
+    threshold = d[peak] * 0.5
+    r = peak
+    while r + 1 <= last_ink and d[r + 1] >= threshold:
+        r += 1
+    return r
+
+
 def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     """Detect the baseline of a word image.
 
@@ -122,8 +141,15 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
     if ink_height < 3:
         return last_ink
 
-    if word is not None and not any(c in DESCENDER_CAPABLE for c in word.lower()):
-        return last_ink
+    if word is not None:
+        # Measure the bare word: a trailing comma's tail made "it," look
+        # descender-capable, and the scan then put its baseline on the t
+        # crossbar (code review 2026-10-13). Cropping columns keeps rows.
+        core = drop_trailing_mark_runs(img, word)
+        if core is not img:
+            return detect_baseline(core, word.rstrip(TRAILING_MARKS))
+        if not any(c in DESCENDER_CAPABLE for c in word.lower()):
+            return last_ink
 
     has_descender = (
         word is not None and any(c in DESCENDER_LETTERS for c in word.lower())
@@ -189,6 +215,19 @@ def detect_baseline(img: np.ndarray, word: str | None = None) -> int:
                         # the conservative last_ink default.
                         baseline = max(mid, r - 1)
                     break
+
+    if word is not None:
+        # Known descender-capable word: cross-check the scan against the
+        # bottom of the dense body band. The two fail in opposite
+        # directions (audit 2026-10-13, 30 short + 54 long descender words
+        # over 3 seeds): the scan lands at or in the descender when it is a
+        # large share of a narrow word's ink ("gym", "jog", "up", "of" off
+        # by 5-18px), while the band bottom sits a few px high when a round
+        # letter's bottom stroke is thin (the "o" of "for"). Keep the scan
+        # when they agree, otherwise trust the band.
+        band = _body_band_bottom(row_density, first_ink, last_ink)
+        if abs(baseline - band) > max(3, round(ink_height * 0.12)):
+            return band
 
     return baseline
 
