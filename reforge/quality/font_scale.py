@@ -93,6 +93,91 @@ def normalize_font_sizes(
     return [normalize_font_size(img, word) for img, word in zip(word_images, words)]
 
 
+def plan_word_scales(word_images: list[np.ndarray], words: list[str]) -> list[float]:
+    """Compose the sizing passes into one scale factor per word.
+
+    Runs the same decisions as ``normalize_font_size`` ->
+    ``equalize_body_zones`` -> ``harmonize_heights`` ->
+    ``harmonize_heights_pass2``, but on measurements taken once from the
+    unscaled images (ink height and x-height scale linearly with the image).
+
+    Applying those passes image-by-image resampled each word up to four
+    times. Short all-body words were shrunk to ~0.2x by the body-zone pass
+    and re-inflated to ~0.4x by the height passes, losing their dark ink at
+    the bottleneck; thin strokes that fell below the ink threshold also
+    corrupted the next pass's measurements (audit 2026-10-13).
+    """
+    from reforge.config import (
+        HEIGHT_OUTLIER_THRESHOLD,
+        HEIGHT_OUTLIER_THRESHOLD_PASS2,
+        HEIGHT_UNDERSIZE_THRESHOLD,
+        HEIGHT_UNDERSIZE_THRESHOLD_PASS2,
+    )
+
+    n = len(word_images)
+    ink_h = np.array([compute_ink_height(img) for img in word_images], dtype=np.float64)
+    x_h = np.array([compute_x_height(img) for img in word_images], dtype=np.float64)
+    scales = np.ones(n, dtype=np.float64)
+
+    # normalize_font_size
+    for i, word in enumerate(words):
+        target = (
+            SHORT_WORD_HEIGHT_TARGET
+            if len(word.strip()) <= 2
+            else int(SHORT_WORD_HEIGHT_TARGET * 1.08)
+        )
+        s = float(np.clip(target / ink_h[i], 0.3, 1.6))
+        scales[i] = 1.0 if abs(s - 1.0) < 0.05 else s
+
+    # equalize_body_zones (scale down body-zone outliers, up to 3 rounds)
+    if n >= 3:
+        for _ in range(3):
+            eff = np.where(
+                (x_h * scales < 5) | (x_h >= ink_h), ink_h * scales, x_h * scales
+            )
+            median_xh = float(np.median(eff))
+            if median_xh <= 0:
+                break
+            upper = median_xh * 1.05
+            over = eff > upper
+            if not np.any(over):
+                break
+            scales[over] *= upper / eff[over]
+
+    # harmonize_heights, then harmonize_heights_pass2
+    for hi, lo in (
+        (HEIGHT_OUTLIER_THRESHOLD, HEIGHT_UNDERSIZE_THRESHOLD),
+        (HEIGHT_OUTLIER_THRESHOLD_PASS2, HEIGHT_UNDERSIZE_THRESHOLD_PASS2),
+    ):
+        if n == 0:
+            break
+        h = ink_h * scales
+        median_h = float(np.median(h))
+        upper, lower = median_h * hi, median_h * lo
+        scales = np.where(h > upper, scales * upper / h, scales)
+        scales = np.where(h < lower, scales * lower / h, scales)
+
+    return [float(s) for s in scales]
+
+
+def size_words(word_images: list[np.ndarray], words: list[str]) -> list[np.ndarray]:
+    """Resize each word once by its planned scale (see ``plan_word_scales``)."""
+    scales = plan_word_scales(word_images, words)
+    result = []
+    for img, word, s in zip(word_images, words, scales):
+        if abs(s - 1.0) < 1e-6:
+            result.append(img)
+            continue
+        new_h = max(1, int(round(img.shape[0] * s)))
+        new_w = max(1, int(round(img.shape[1] * s)))
+        interp = cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC
+        out = cv2.resize(img, (new_w, new_h), interpolation=interp)
+        if len(word.strip()) == 1 and s < 0.6:
+            out = _reinforce_thin_strokes(out)
+        result.append(out)
+    return result
+
+
 def _effective_x_height(img: np.ndarray) -> int:
     """X-height with degenerate fallback, for body-zone comparison."""
     ink_h = compute_ink_height(img)

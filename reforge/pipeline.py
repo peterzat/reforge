@@ -37,6 +37,28 @@ def _log(msg: str, verbose: bool, end: str = "\n") -> None:
         sys.stderr.flush()
 
 
+def postprocess_words(images: list, words: list) -> list:
+    """Cross-word sizing and harmonization between generation and compose.
+
+    One resample per word (font normalization, body-zone equalization and
+    both height-harmonization passes folded into a single scale), then
+    stroke width and ink weight harmonization. ``None`` entries (paragraph
+    breaks) pass through unchanged. This is the single definition of the
+    stage graph; tests and evals should call it rather than re-wiring the
+    individual passes.
+    """
+    from reforge.quality.font_scale import size_words
+    from reforge.quality.harmonize import harmonize_words
+
+    idx = [i for i, img in enumerate(images) if img is not None]
+    sized = size_words([images[i] for i in idx], [words[i] for i in idx])
+    harmonized = harmonize_words(sized, heights=False)
+    out = list(images)
+    for i, img in zip(idx, harmonized):
+        out[i] = img
+    return out
+
+
 def run(
     style_path: str | None = None,
     style_image_paths: list[str] | None = None,
@@ -214,35 +236,8 @@ def run(
     gen_time = time.monotonic() - t_gen
     _log(f"\r  [{n_words}/{n_words}] done ({_fmt_time(gen_time)})" + " " * 20, verbose)
 
-    # --- Font normalization ---
-    from reforge.quality.font_scale import equalize_body_zones, normalize_font_size
-
-    for i, (img, word) in enumerate(zip(generated_images, flat_words)):
-        if img is not None and word is not None:
-            generated_images[i] = normalize_font_size(img, word)
-
-    # --- X-height equalization ---
-    # After ink-height normalization, words without ascenders (e.g. "gray")
-    # can appear disproportionately large because their entire height is body
-    # zone. This pass scales down body-zone outliers.
-    real_for_xh = [img for img in generated_images if img is not None]
-    equalized = equalize_body_zones(real_for_xh)
-    eq_idx = 0
-    for i in range(len(generated_images)):
-        if generated_images[i] is not None:
-            generated_images[i] = equalized[eq_idx]
-            eq_idx += 1
-
-    # --- Harmonize ---
-    from reforge.quality.harmonize import harmonize_words
-
-    real_images = [img for img in generated_images if img is not None]
-    harmonized = harmonize_words(real_images)
-    real_idx = 0
-    for i in range(len(generated_images)):
-        if generated_images[i] is not None:
-            generated_images[i] = harmonized[real_idx]
-            real_idx += 1
+    # --- Size + harmonize ---
+    generated_images = postprocess_words(generated_images, flat_words)
 
     # --- Compose ---
     from reforge.compose.render import compose_words

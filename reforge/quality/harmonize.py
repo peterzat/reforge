@@ -194,15 +194,21 @@ def harmonize_heights_pass2(word_images: list[np.ndarray]) -> list[np.ndarray]:
     return result
 
 
-def harmonize_words(word_images: list[np.ndarray]) -> list[np.ndarray]:
+def harmonize_words(word_images: list[np.ndarray], heights: bool = True) -> list[np.ndarray]:
     """Apply height harmonization (two passes), then stroke weight.
 
     Pass 1: standard thresholds (110%/88%) on raw DiffusionPen output.
     Pass 2: tighter thresholds (105%/93%) on already-normalized output (E2).
     Stroke weight harmonization last to converge ink medians properly.
+
+    Pass ``heights=False`` when the words were already sized by
+    ``font_scale.size_words``, which folds both height passes into its
+    single resample.
     """
-    result = harmonize_heights(word_images)
-    result = harmonize_heights_pass2(result)
+    result = list(word_images)
+    if heights:
+        result = harmonize_heights(result)
+        result = harmonize_heights_pass2(result)
     result = harmonize_stroke_width(result)  # B2: after height, before brightness
     result = harmonize_stroke_weight(result)
     return result
