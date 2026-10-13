@@ -472,20 +472,22 @@ def _match_chunk_to_reference(
 def stitch_contraction(
     left_img: np.ndarray,
     right_img: np.ndarray,
+    left_text: str | None = None,
+    right_text: str | None = None,
 ) -> np.ndarray:
-    """Stitch a contraction as [left] [right], aligned by ink bottom (baseline).
+    """Stitch a contraction as [left] [right], aligned on the baseline.
 
     The right part is expected to already contain the apostrophe as part of
     its rendered image (spec 2026-04-18 Option W); no synthetic mark is
     inserted between the parts.
-    """
-    INK_THRESH = 180
 
-    def _ink_bottom(img):
-        ink_rows = np.any(img < INK_THRESH, axis=1)
-        if not np.any(ink_rows):
-            return 0
-        return img.shape[0] - 1 - int(np.argmax(ink_rows[::-1]))
+    Each part's baseline comes from ``detect_baseline`` (descender-aware when
+    the part's text is given), so a descender in one half (the ``y`` in
+    "they") does not pull the other half down to the descender tip.
+    """
+    from reforge.compose.layout import detect_baseline
+
+    INK_THRESH = 180
 
     def _tight_crop_h(img, pad_px=1):
         """Tight horizontal crop to ink bounds with configurable padding."""
@@ -500,23 +502,24 @@ def stitch_contraction(
     right_img = _tight_crop_h(right_img)
 
     parts = [left_img, right_img]
-    bottoms = [_ink_bottom(p) for p in parts]
+    baselines = [
+        detect_baseline(left_img, word=left_text),
+        detect_baseline(right_img, word=right_text),
+    ]
 
-    max_bottom = max(bottoms)
-    max_h = max(
-        p.shape[0] + (max_bottom - b) for p, b in zip(parts, bottoms)
-    )
+    # Shift each part down so both baseline rows land on the same output row.
+    target_row = max(baselines)
+    tops = [target_row - b for b in baselines]
+    max_h = max(t + p.shape[0] for t, p in zip(tops, parts))
 
     aligned = []
-    for p, b in zip(parts, bottoms):
-        bottom_pad = max_bottom - b
-        if bottom_pad > 0:
-            pad = np.full((bottom_pad, p.shape[1]), 255, dtype=np.uint8)
-            p = np.vstack([p, pad])
-        if p.shape[0] < max_h:
-            top_pad = np.full((max_h - p.shape[0], p.shape[1]), 255, dtype=np.uint8)
-            p = np.vstack([top_pad, p])
-        aligned.append(p)
+    for p, t in zip(parts, tops):
+        bottom = max_h - t - p.shape[0]
+        aligned.append(np.vstack([
+            np.full((t, p.shape[1]), 255, dtype=np.uint8),
+            p,
+            np.full((bottom, p.shape[1]), 255, dtype=np.uint8),
+        ]))
 
     gap = np.full((max_h, 1), 255, dtype=np.uint8)
     return np.hstack([aligned[0], gap, aligned[1]])
@@ -1300,7 +1303,7 @@ def _generate_contraction(
 
     right_img = _match_chunk_to_reference(right_img, left_img)
 
-    result = stitch_contraction(left_img, right_img)
+    result = stitch_contraction(left_img, right_img, left_text, right_text)
     log.debug(
         "contraction stitched: %s (%dx%d) + %s (%dx%d) -> %dx%d",
         left_text, left_img.shape[1], left_img.shape[0],

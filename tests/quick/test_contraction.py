@@ -106,13 +106,40 @@ class TestStitchContraction:
         result = stitch_contraction(left, right)
         assert result.shape[0] >= 30
         assert np.any(result < 180)
+        # The two halves' ink bottoms must land on the same output row. The
+        # pre-2026-10-13 padding doubled the mismatch instead (24 vs 27 came
+        # out 3 rows apart in the other direction).
+        lw = 32  # left ink cols 5..34, tight-cropped with 1px pad -> 32 cols
+        assert self._ink_bottom(result[:, :lw]) == self._ink_bottom(result[:, lw + 1:])
 
-    def test_signature_is_two_part_only(self):
+    def test_descender_in_left_part_does_not_sink_right_part(self):
+        """A 'y' descender in "they" must not pull "'d" down to its tip."""
+        from reforge.model.generator import stitch_contraction
+        h, w = 64, 80
+        left = np.full((h, w), 255, dtype=np.uint8)
+        left[20:40, 4:76] = 40          # body zone, baseline at row 39
+        left[40:56, 50:54] = 40         # thin descender tail to row 55
+        right = self._ink_rect(64, 24, 10, 40, 4, 20)  # "'d": bottom row 39
+        result = stitch_contraction(left, right, "they", "'d")
+        lw = 74  # left ink cols 4..75, tight-cropped with 1px pad -> 74 cols
+        right_bottom = self._ink_bottom(result[:, lw + 1:])
+        # The right half's ink bottom sits on the left half's body baseline,
+        # i.e. 16 rows above the left half's descender tip.
+        left_tip = self._ink_bottom(result[:, :lw])
+        assert left_tip - right_bottom == 16, (left_tip, right_bottom)
+
+    @staticmethod
+    def _ink_bottom(img):
+        rows = np.where(np.any(img < 180, axis=1))[0]
+        return int(rows[-1])
+
+    def test_signature_has_no_apostrophe_image(self):
         """stitch_contraction no longer accepts an apostrophe image parameter."""
         import inspect
         from reforge.model.generator import stitch_contraction
         params = list(inspect.signature(stitch_contraction).parameters)
-        assert params == ["left_img", "right_img"], params
+        assert params[:2] == ["left_img", "right_img"], params
+        assert not any("apostrophe" in p for p in params), params
 
 
 @pytest.mark.quick
