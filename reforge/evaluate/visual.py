@@ -105,6 +105,79 @@ def check_baseline_alignment(img: np.ndarray, word_positions: list[dict]) -> flo
     return float(np.mean(line_scores))
 
 
+def _placed_word_crops(word_imgs: list[np.ndarray]) -> list[tuple[np.ndarray, int]]:
+    """Each word image cropped the way compose_words crops it, plus the left
+    padding left of its first ink column (positions refer to these crops)."""
+    from reforge.config import COMPOSITOR_INK_THRESHOLD
+
+    out = []
+    for img in word_imgs:
+        cols = np.any(img < COMPOSITOR_INK_THRESHOLD, axis=0)
+        if not np.any(cols):
+            out.append((img, 0))
+            continue
+        first = int(np.argmax(cols))
+        last = len(cols) - 1 - int(np.argmax(cols[::-1]))
+        left, right = max(0, first - 2), min(img.shape[1] - 1, last + 2)
+        out.append((img[:, left:right + 1], first - left))
+    return out
+
+
+def check_baseline_consistency(
+    word_imgs: list[np.ndarray], word_positions: list[dict], words: list[str],
+) -> float | None:
+    """How well placed words sit on their line's baseline. 1.0 = exactly.
+
+    Re-detects each word's ink baseline (detect_baseline, golden-tested on
+    81 real crops) at its placed position and measures the mean absolute
+    offset from the line's median baseline, in units of half the target
+    x-height: a mean offset of half an x-height scores 0. Replaces the
+    retired check_baseline_alignment, which measured word-canvas bottoms.
+    Catches placement bugs such as the 2026-10-13 row-index clamp. Positions
+    and word images must be in compose order (positions are pre-upscale).
+    """
+    from reforge.compose.layout import detect_baseline
+    from reforge.config import ZONE_X_HEIGHT_TARGET
+
+    if not word_positions or len(word_positions) != len(word_imgs):
+        return None
+    lines: dict[int, list[float]] = {}
+    for (crop, _), pos, word in zip(_placed_word_crops(word_imgs), word_positions, words):
+        lines.setdefault(pos.get("line", 0), []).append(pos["y"] + detect_baseline(crop, word))
+    devs = [abs(b - float(np.median(bls))) for bls in lines.values() if len(bls) > 1 for b in bls]
+    if not devs:
+        return 1.0
+    return max(0.0, 1.0 - float(np.mean(devs)) / (0.5 * ZONE_X_HEIGHT_TARGET))
+
+
+def check_word_gap_ratio(
+    word_imgs: list[np.ndarray], word_positions: list[dict],
+) -> float | None:
+    """Median ink gap between adjacent same-line words, in target x-heights.
+
+    A measurement, not a pass/fail score: layout floors every advance at
+    4px, so words never touch, and whether a gap reads as a word break
+    depends on the letter gaps inside words. Tighter spacing lowers the
+    ratio (clean demo pages ~0.9, minimum-gap layout ~0.65).
+    """
+    from reforge.config import ZONE_X_HEIGHT_TARGET
+
+    if not word_positions or len(word_positions) != len(word_imgs):
+        return None
+    crops = _placed_word_crops(word_imgs)
+    gaps = []
+    for k in range(len(word_positions) - 1):
+        a, b = word_positions[k], word_positions[k + 1]
+        if a.get("line") != b.get("line"):
+            continue
+        (crop_a, _), (_, pad_b) = crops[k], crops[k + 1]
+        ink_right_a = a["x"] + crop_a.shape[1] - 1 - 2   # right pad is 2 unless clipped
+        gaps.append(b["x"] + pad_b - ink_right_a - 1)
+    if not gaps:
+        return None
+    return float(np.median(gaps)) / ZONE_X_HEIGHT_TARGET
+
+
 def check_stroke_weight_consistency(word_imgs: list[np.ndarray]) -> float:
     """Compute cross-word ink median spread.
 
@@ -684,6 +757,14 @@ def overall_quality_score(
         scores["baseline_alignment"] = check_baseline_alignment(img, word_positions)
         scores["composition_score"] = check_composition_score(img, word_positions)
         scores["layout_regularity"] = check_layout_regularity(word_positions)  # D4: observation-only
+        if word_imgs is not None and words is not None:
+            bc = check_baseline_consistency(word_imgs, word_positions, words)
+            if bc is not None:
+                scores["baseline_consistency"] = bc
+        if word_imgs is not None:
+            gap = check_word_gap_ratio(word_imgs, word_positions)
+            if gap is not None:
+                scores["word_gap_ratio"] = gap
         if words is not None:
             scores["punctuation_visibility"] = check_punctuation_visibility(
                 img, words, word_positions

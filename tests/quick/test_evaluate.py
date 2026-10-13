@@ -598,3 +598,44 @@ class TestExperimentLog:
         a1 = entries[0]
         assert a1["verdict"] == "revert"
         assert "gaming" in a1["lesson"].lower()
+
+
+@pytest.mark.quick
+class TestPlacementMetrics:
+    """baseline_consistency and word_gap_ratio (2026-10-13)."""
+
+    def _word(self, w=60, top=10, bottom=40, h=50):
+        img = np.full((h, w), 255, dtype=np.uint8)
+        img[top:bottom, 5:w - 5] = 30
+        return img
+
+    def _layout(self, offsets, gap=10):
+        imgs, pos, x = [], [], 0
+        for k, off in enumerate(offsets):
+            img = self._word()
+            imgs.append(img)
+            crop_w = img.shape[1] - 10 + 4   # ink 50 cols + 2px pad each side
+            pos.append({"x": x, "y": 100 + off, "line": 0, "width": crop_w, "height": img.shape[0]})
+            x += crop_w + gap
+        return imgs, pos
+
+    def test_baseline_consistency_aligned_vs_jittered(self):
+        from reforge.evaluate.visual import check_baseline_consistency
+        words = ["was", "on", "so", "an"]
+        imgs, pos = self._layout([0, 0, 0, 0])
+        assert check_baseline_consistency(imgs, pos, words) == pytest.approx(1.0)
+        imgs, pos = self._layout([0, 6, -6, 0])
+        assert check_baseline_consistency(imgs, pos, words) < 0.6
+
+    def test_word_gap_ratio_tracks_spacing(self):
+        from reforge.config import ZONE_X_HEIGHT_TARGET
+        from reforge.evaluate.visual import check_word_gap_ratio
+        imgs, pos = self._layout([0, 0, 0], gap=10)
+        # ink gap = layout gap + 2px right pad + 2px left pad
+        assert check_word_gap_ratio(imgs, pos) == pytest.approx(14 / ZONE_X_HEIGHT_TARGET)
+
+    def test_mismatched_inputs_return_none(self):
+        from reforge.evaluate.visual import check_baseline_consistency, check_word_gap_ratio
+        imgs, pos = self._layout([0, 0])
+        assert check_baseline_consistency(imgs[:1], pos, ["a", "b"]) is None
+        assert check_word_gap_ratio(imgs[:1], pos) is None

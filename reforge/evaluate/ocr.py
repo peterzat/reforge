@@ -15,14 +15,29 @@ def _load_trocr():
     """Load TrOCR model and processor (cached, loaded once)."""
     from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
-    processor = TrOCRProcessor.from_pretrained("microsoft/trocr-small-handwritten")
-    model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-small-handwritten")
+    name = "microsoft/trocr-small-handwritten"
+    # Cached copy first: from_pretrained otherwise asks the Hub for updates on
+    # every load, and a throttled or slow Hub stalled the quick test tier
+    # (2026-10-13). Download only when the model is not cached.
+    try:
+        processor = TrOCRProcessor.from_pretrained(name, local_files_only=True)
+        model = VisionEncoderDecoderModel.from_pretrained(name, local_files_only=True)
+    except OSError:
+        processor = TrOCRProcessor.from_pretrained(name)
+        model = VisionEncoderDecoderModel.from_pretrained(name)
     model.eval()
     return processor, model
 
 
 def ocr_read(img: np.ndarray) -> str:
-    """Read text from a grayscale word image using TrOCR.
+    """Read text from a grayscale word image.
+
+    TrOCR-small by default. ``REFORGE_OCR_BACKEND=vlm`` reads with the local
+    vision-language model instead (reforge.evaluate.vlm; needs a running
+    server). That backend is for development and evaluation runs: it reads
+    short words far more reliably than TrOCR, but it is not deterministic
+    across model versions and needs the GPU server, so gates and tests keep
+    the default.
 
     Args:
         img: Grayscale uint8 numpy array (single word image).
@@ -30,6 +45,13 @@ def ocr_read(img: np.ndarray) -> str:
     Returns:
         Recognized text string.
     """
+    import os
+
+    if os.environ.get("REFORGE_OCR_BACKEND", "trocr") == "vlm":
+        from reforge.evaluate.vlm import read_word
+
+        return read_word(img)
+
     import torch
 
     processor, model = _load_trocr()

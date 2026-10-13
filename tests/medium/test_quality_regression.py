@@ -74,6 +74,7 @@ TRACKED_METRICS = [
     "baseline_alignment",
     "height_outlier_score",
     "x_height_consistency",
+    "baseline_consistency",
 ]
 
 # Metrics where lower is better (regression = value increases)
