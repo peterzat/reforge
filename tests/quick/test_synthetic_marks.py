@@ -213,3 +213,53 @@ class TestAttachMarkToWord:
         assert result.ndim == 2
         assert result.shape[1] > 50  # wider than just the word
         assert np.any(result < 180)
+
+
+@pytest.mark.quick
+class TestTrailingMarkRouting:
+    """Audit 2026-10-13: punctuation is stripped before the contraction check
+    and every trailing mark is synthesized; the base word recurses through
+    generate_word so it gets contraction splitting, chunking and retries."""
+
+    def test_split_trailing_marks(self):
+        from reforge.model.generator import split_trailing_marks
+        assert split_trailing_marks("Wait...") == ("Wait", "...")
+        assert split_trailing_marks("Really?!") == ("Really", "?!")
+        assert split_trailing_marks("can't.") == ("can't", ".")
+        assert split_trailing_marks("hello") == ("hello", "")
+        assert split_trailing_marks("...") == ("...", "")
+        assert split_trailing_marks("dogs'") == ("dogs'", "")
+
+    def _run(self, word):
+        from unittest.mock import MagicMock, patch
+        from reforge.model import generator as g
+        base = np.full((64, 120), 255, dtype=np.uint8)
+        base[20:45, 10:110] = 40
+        attached = []
+
+        def fake_attach(img, mark_img, gap_px=1, *, word=None, mark=None):
+            attached.append(mark)
+            return img
+        contraction = MagicMock(return_value=base)
+        with patch.object(g, "_generate_contraction", contraction), \
+             patch.object(g, "_attach_mark_to_word", side_effect=fake_attach), \
+             patch.object(g, "_render_trailing_mark_or_fallback",
+                          return_value=np.zeros((8, 4), dtype=np.uint8)), \
+             patch.object(g, "ddim_sample", return_value=base), \
+             patch.object(g, "postprocess_word", side_effect=lambda x: x), \
+             patch.object(g, "_get_ocr_fn", return_value=None):
+            g.generate_word(word, MagicMock(), MagicMock(),
+                            MagicMock(return_value={"input_ids": np.zeros((1, 16))}),
+                            style_features=MagicMock(), num_candidates=1, device="cpu")
+        return contraction, attached
+
+    def test_punctuated_contraction_takes_contraction_path(self):
+        contraction, attached = self._run("don't.")
+        assert contraction.call_args[0][:2] == ("don", "'t")
+        assert attached == ["."]
+
+    def test_every_trailing_mark_is_attached(self):
+        _, attached = self._run("Wait...")
+        assert attached == [".", ".", "."]
+        _, attached = self._run("Really?!")
+        assert attached == ["?", "!"]

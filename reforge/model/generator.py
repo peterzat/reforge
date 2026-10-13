@@ -995,15 +995,17 @@ def generate_word(
 
     log = logging.getLogger("reforge.generator")
 
-    # Contraction path (spec 2026-04-18 Option W): split at the apostrophe,
-    # keeping the mark on the right (e.g. "can't" -> "can" + "'t"). Both parts
-    # render through the normal word path; no synthetic apostrophe injection.
-    if is_contraction(word):
-        left_text, right_text = split_contraction(word)
-        log.debug("contraction split: %s -> %s + %s", word, left_text, right_text)
-        return _generate_contraction(
-            left_text, right_text, word,
-            unet, vae, tokenizer, style_features,
+    # Trailing punctuation: DiffusionPen renders trailing marks invisibly (IAM
+    # bias), so strip every trailing mark, generate the base word through this
+    # same function, then attach synthetic marks. Recursing (rather than
+    # sampling the base inline, as before 2026-10-13) gives punctuated words
+    # the contraction split ("don't."), long-word chunking
+    # ("extraordinarily,"), the OCR retry loop and the style tiebreak.
+    base_word, marks = split_trailing_marks(word)
+    if marks:
+        log.debug("trailing punctuation: %s -> %s + %r", word, base_word, marks)
+        base_img = generate_word(
+            base_word, unet, vae, tokenizer, style_features,
             uncond_context=uncond_context,
             num_steps=num_steps,
             guidance_scale=guidance_scale,
@@ -1012,15 +1014,16 @@ def generate_word(
             style_reference_imgs=style_reference_imgs,
             reference_stroke_width=reference_stroke_width,
         )
+        return _attach_trailing_marks(base_img, base_word, marks)
 
-    # Trailing punctuation path: strip the mark, generate the base word,
-    # then attach a synthetic Bezier-rendered mark. DiffusionPen renders
-    # trailing punctuation as invisible (IAM dataset bias).
-    base_word, trailing_mark = strip_trailing_punctuation(word)
-    if trailing_mark is not None:
-        log.debug("trailing punctuation: %s -> %s + '%s'", word, base_word, trailing_mark)
-        return _generate_punctuated_word(
-            word, trailing_mark, base_word,
+    # Contraction path (spec 2026-04-18 Option W): split at the apostrophe,
+    # keeping the mark on the right (e.g. "can't" -> "can" + "'t"). Both parts
+    # render through the normal word path; no synthetic apostrophe injection.
+    if is_contraction(word):
+        left_text, right_text = split_contraction(word)
+        log.debug("contraction split: %s -> %s + %s", word, left_text, right_text)
+        return _generate_contraction(
+            left_text, right_text, word,
             unet, vae, tokenizer, style_features,
             uncond_context=uncond_context,
             num_steps=num_steps,
@@ -1326,6 +1329,39 @@ def strip_trailing_punctuation(word: str) -> tuple[str, str | None]:
     return word, None
 
 
+def split_trailing_marks(word: str) -> tuple[str, str]:
+    """Split every trailing synthesizable mark off a word.
+
+    "Wait..." -> ("Wait", "..."), "Really?!" -> ("Really", "?!"),
+    "can't." -> ("can't", "."). A token made only of marks is returned
+    unsplit ("..." -> ("...", "")) since there is no base word to size the
+    marks against.
+    """
+    base = word.rstrip("".join(SYNTHETIC_MARKS))
+    if not base:
+        return word, ""
+    return base, word[len(base):]
+
+
+def _attach_trailing_marks(base_img: np.ndarray, base_word: str, marks: str) -> np.ndarray:
+    """Attach synthetic marks left to right, sized and inked from the base word.
+
+    Mark size follows the base word's x-height from estimate_x_height: the
+    raw compute_x_height misreads short words ("it" as 5-9px of a 64px
+    word), which rendered "it?" and "good," with tiny marks.
+    """
+    from reforge.quality.font_scale import estimate_x_height
+
+    ink_pixels = base_img[base_img < 180]
+    ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
+    body_h = int(round(estimate_x_height(base_img, base_word)))
+    result = base_img
+    for mark in marks:
+        mark_img = _render_trailing_mark_or_fallback(mark, ink_intensity, body_h)
+        result = _attach_mark_to_word(result, mark_img, word=base_word, mark=mark)
+    return result
+
+
 def _attach_mark_to_word(
     word_img: np.ndarray,
     mark_img: np.ndarray,
@@ -1453,83 +1489,6 @@ def strip_and_reattach_punctuation(
 
     mark_img = make_synthetic_mark(mark, ink_intensity, body_h)
     return _attach_mark_to_word(word_img, mark_img, word=base_word, mark=mark)
-
-
-def _generate_punctuated_word(
-    word: str,
-    mark: str,
-    base_word: str,
-    unet,
-    vae,
-    tokenizer,
-    style_features,
-    uncond_context=None,
-    num_steps=DEFAULT_DDIM_STEPS,
-    guidance_scale=DEFAULT_GUIDANCE_SCALE,
-    num_candidates=DEFAULT_NUM_CANDIDATES,
-    device="cuda",
-    style_reference_imgs=None,
-    reference_stroke_width=0.0,
-) -> np.ndarray:
-    """Generate a word with trailing punctuation by producing the base word
-    and attaching a synthetic mark.
-
-    This mirrors _generate_contraction but for trailing punctuation marks.
-    """
-    import logging
-
-    from reforge.quality.ink_metrics import compute_x_height
-    from reforge.quality.score import quality_score
-
-    log = logging.getLogger("reforge.generator")
-
-    ocr_fn = _get_ocr_fn() if num_candidates > 1 else None
-
-    # Generate base word (without trailing punctuation)
-    canvas_width = compute_canvas_width(len(base_word))
-    text_ctx = tokenizer(base_word, return_tensors="pt", padding="max_length", max_length=16)
-
-    best_img = None
-    best_score = -999
-    for _ in range(num_candidates):
-        img = ddim_sample(
-            unet, vae, text_ctx, style_features,
-            uncond_context=uncond_context,
-            canvas_width=canvas_width,
-            num_steps=num_steps,
-            guidance_scale=guidance_scale,
-            device=device,
-        )
-        img = postprocess_word(img)
-        img = pad_clipped_descender(img)
-        score = quality_score(
-            img,
-            reference_stroke_width=reference_stroke_width,
-            word_len=len(base_word) if num_candidates > 1 else 0,
-        )
-        if ocr_fn is not None:
-            ocr_acc = ocr_fn(img, base_word)
-            combined = (1 - OCR_SELECTION_WEIGHT) * score + OCR_SELECTION_WEIGHT * ocr_acc
-        else:
-            combined = score
-        if combined > best_score:
-            best_score = combined
-            best_img = img
-
-    # Derive mark properties and attach
-    ink_pixels = best_img[best_img < 180]
-    ink_intensity = int(np.median(ink_pixels)) if len(ink_pixels) > 0 else 60
-    body_h = compute_x_height(best_img)
-
-    mark_img = _render_trailing_mark_or_fallback(mark, ink_intensity, body_h)
-    result = _attach_mark_to_word(best_img, mark_img, word=base_word, mark=mark)
-
-    log.debug(
-        "punctuated word: %s (%dx%d) + '%s' -> %dx%d",
-        base_word, best_img.shape[1], best_img.shape[0],
-        mark, result.shape[1], result.shape[0],
-    )
-    return result
 
 
 def _ink_density_profile(img: np.ndarray, ink_thresh: int = 180) -> np.ndarray:

@@ -110,8 +110,8 @@ def zone_class(word: str) -> tuple[int, int]:
     return asc, int(any(c in _DESCENDERS for c in core))
 
 
-def plan_zone_scales(word_images: list[np.ndarray], words: list[str]) -> list[float]:
-    """Scale each word so its x-height lands on ZONE_X_HEIGHT_TARGET.
+def estimate_x_height(img: np.ndarray, word: str) -> float:
+    """x-height of a word image in pixels, robust on short words.
 
     The word's ink height in x-heights is predicted from its letters
     (ZONE_HEIGHT_RATIOS). For words of 4+ letters the prediction is blended
@@ -119,18 +119,25 @@ def plan_zone_scales(word_images: list[np.ndarray], words: list[str]) -> list[fl
     long words have a dense, measurable body band, while short words do not
     (compute_x_height reads "it" as 5-9px of a 64px word).
     """
-    from reforge.config import ZONE_HEIGHT_RATIOS, ZONE_X_HEIGHT_TARGET
+    from reforge.config import ZONE_HEIGHT_RATIOS
 
-    scales = []
-    for img, word in zip(word_images, words):
-        ink_h = compute_ink_height(img)
-        prior = ZONE_HEIGHT_RATIOS[zone_class(word)]
-        measured = float(np.clip(ink_h / max(compute_x_height(img), 1), 1.0, 3.5))
-        n_letters = len(word.strip().strip(".,;:!?\"'"))
-        weight = float(np.clip((n_letters - 3) / 4, 0.0, 0.75))
-        ratio = prior ** (1 - weight) * measured ** weight
-        scales.append(float(np.clip(ZONE_X_HEIGHT_TARGET * ratio / ink_h, 0.15, 1.6)))
-    return scales
+    ink_h = compute_ink_height(img)
+    prior = ZONE_HEIGHT_RATIOS[zone_class(word)]
+    measured = float(np.clip(ink_h / max(compute_x_height(img), 1), 1.0, 3.5))
+    n_letters = len(word.strip().strip(".,;:!?\"'"))
+    weight = float(np.clip((n_letters - 3) / 4, 0.0, 0.75))
+    ratio = prior ** (1 - weight) * measured ** weight
+    return ink_h / ratio
+
+
+def plan_zone_scales(word_images: list[np.ndarray], words: list[str]) -> list[float]:
+    """Scale each word so its estimated x-height lands on ZONE_X_HEIGHT_TARGET."""
+    from reforge.config import ZONE_X_HEIGHT_TARGET
+
+    return [
+        float(np.clip(ZONE_X_HEIGHT_TARGET / estimate_x_height(img, word), 0.15, 1.6))
+        for img, word in zip(word_images, words)
+    ]
 
 
 def plan_word_scales(
