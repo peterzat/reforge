@@ -85,56 +85,24 @@ fi
 # Style input used (default hw-sample.png, note for future multi-style support)
 STYLE_INPUT="styles/hw-sample.png"
 
-# Quality metrics: prefer the regression baseline (comprehensive, trustworthy)
-# over re-scoring the composed image (which lacks word_imgs/words context).
-BASELINE_FILE="tests/medium/quality_baseline.json"
+# Quality metrics come from the run manifest demo.sh writes next to
+# result.png (seed, sizing policy, metrics computed with word images and
+# texts). Before 2026-10-13 this block copied the frozen regression baseline
+# for "Quick brown foxes jump high", so every entry listed the same numbers.
+MANIFEST="result.json"
 METRICS="$(.venv/bin/python3 -c "
 import json, os
-
-baseline_path = '$BASELINE_FILE'
-tracked = ('overall', 'composition_score', 'stroke_weight_consistency',
-           'word_height_ratio', 'ocr_accuracy', 'style_fidelity',
-           'ink_contrast', 'background_cleanliness')
-
-if os.path.exists(baseline_path):
-    with open(baseline_path) as f:
-        data = json.load(f)
-    # New format (spec 2026-04-10 C3): per-seed entries under 'seeds'.
-    # Read the reference seed (42) with a fallback to the legacy flat
-    # 'metrics' key for backward compatibility.
-    metrics = (
-        data.get('seeds', {}).get('42', {}).get('metrics')
-        or data.get('metrics', {})
-    )
-    parts = []
-    for k in tracked:
-        if k in metrics:
-            v = metrics[k]
-            if isinstance(v, float):
-                parts.append(f'{k}={v:.3f}')
-            else:
-                parts.append(f'{k}={v}')
-    if parts:
-        print(', '.join(parts))
-    else:
-        print('metrics unavailable (empty baseline)')
+tracked = ('overall', 'height_outlier_score', 'baseline_alignment',
+           'stroke_weight_consistency', 'ocr_accuracy', 'ocr_min',
+           'word_readability_rate', 'style_fidelity')
+if not os.path.exists('$MANIFEST'):
+    print('metrics unavailable (no run manifest)')
 else:
-    # Fall back to image-only scoring (no word_imgs context)
-    import numpy as np
-    from PIL import Image
-    from reforge.evaluate.visual import overall_quality_score
-    img = Image.open('$SOURCE')
-    arr = np.array(img.convert('L'))
-    scores = overall_quality_score(arr)
-    parts = []
-    for k in tracked:
-        if k in scores:
-            v = scores[k]
-            if isinstance(v, float):
-                parts.append(f'{k}={v:.3f}')
-            else:
-                parts.append(f'{k}={v}')
-    print(', '.join(parts) + ' (image-only, no baseline)')
+    m = json.load(open('$MANIFEST'))
+    q = m.get('quality', {})
+    parts = [f'{k}={q[k]:.3f}' for k in tracked if isinstance(q.get(k), (int, float))]
+    head = f\"seed={m.get('seed')}, sizing={m.get('sizing_policy')}\"
+    print(head + (', ' + ', '.join(parts) if parts else ''))
 " 2>/dev/null || echo 'metrics unavailable')"
 
 # Initialize history file if it doesn't exist

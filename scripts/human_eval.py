@@ -66,6 +66,12 @@ PIPELINE_FILES = [
     "reforge/evaluate/visual.py",
     "reforge/evaluate/compare.py",
     "reforge/evaluate/ocr.py",
+    "reforge/pipeline.py",
+    "reforge/quality/ink_metrics.py",
+    "reforge/model/font_glyph.py",
+    "reforge/model/encoder.py",
+    "reforge/preprocess/segment.py",
+    "reforge/preprocess/normalize.py",
 ]
 
 EVAL_TYPES = [
@@ -533,17 +539,14 @@ def generate_ink_weight_eval(models, output_dir):
 def generate_composition_eval(models, output_dir):
     """B7: Full two-paragraph composition with CV metrics.
 
-    Generation is scoped-deterministic: seeds torch and numpy per run, disables
-    cudnn.benchmark for the eval path only (restored on exit), and runs three
-    seeds (matching the test_quality_regression set). The seed whose
+    Generation is deterministic per seed: run(seed=...) seeds each word from
+    (seed, word index) and disables cuDNN autotuning for the generation loop.
+    Three seeds run (matching the test_quality_regression set). The seed whose
     overall_quality_score is the median of the three is promoted to
     composition_full.png for human display; all three are archived under
     images/archive/ so historical runs can be diffed visually.
     """
     import shutil
-
-    import numpy as np
-    import torch
 
     from reforge.config import PRESET_QUALITY
     from reforge.pipeline import run
@@ -558,48 +561,36 @@ def generate_composition_eval(models, output_dir):
     preset = PRESET_QUALITY
     seeds = [42, 137, 2718]
 
-    # Scope CUDA determinism to the eval path: pipeline.py sets
-    # cudnn.benchmark=True for speed in production, but benchmark-mode CUDA
-    # picks algorithms based on current GPU state, which leaks non-determinism
-    # into sampling. We snapshot and restore so the pipeline reverts after.
-    saved_benchmark = torch.backends.cudnn.benchmark
-    saved_deterministic = torch.backends.cudnn.deterministic
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-
     archive_dir = os.path.join(output_dir, "archive")
     os.makedirs(archive_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
-    try:
-        per_seed = []
-        for seed in seeds:
-            torch.manual_seed(seed)
-            np.random.seed(seed)
-            seed_path = os.path.join(output_dir, f"composition_full_seed{seed}.png")
-            result = run(
-                style_path=STYLE_PATH,
-                text=text,
-                output_path=seed_path,
-                num_steps=preset["steps"],
-                guidance_scale=preset["guidance_scale"],
-                num_candidates=preset["candidates"],
-                device=models["device"],
-                verbose=False,
-            )
-            archive_path = os.path.join(
-                archive_dir, f"{timestamp}_seed{seed}_composition.png"
-            )
-            shutil.copy(seed_path, archive_path)
-            per_seed.append({
-                "seed": seed,
-                "image_path": seed_path,
-                "archive_path": archive_path,
-                "cv_metrics": result["quality_scores"],
-            })
-    finally:
-        torch.backends.cudnn.benchmark = saved_benchmark
-        torch.backends.cudnn.deterministic = saved_deterministic
+    # run(seed=...) seeds each word from (seed, index) and runs cuDNN
+    # deterministically for the generation loop, restoring settings after.
+    per_seed = []
+    for seed in seeds:
+        seed_path = os.path.join(output_dir, f"composition_full_seed{seed}.png")
+        result = run(
+            style_path=STYLE_PATH,
+            text=text,
+            output_path=seed_path,
+            num_steps=preset["steps"],
+            guidance_scale=preset["guidance_scale"],
+            num_candidates=preset["candidates"],
+            device=models["device"],
+            verbose=False,
+            seed=seed,
+        )
+        archive_path = os.path.join(
+            archive_dir, f"{timestamp}_seed{seed}_composition.png"
+        )
+        shutil.copy(seed_path, archive_path)
+        per_seed.append({
+            "seed": seed,
+            "image_path": seed_path,
+            "archive_path": archive_path,
+            "cv_metrics": result["quality_scores"],
+        })
 
     sorted_by_overall = sorted(per_seed, key=lambda e: e["cv_metrics"].get("overall", 0.0))
     median_entry = sorted_by_overall[len(sorted_by_overall) // 2]
@@ -618,6 +609,7 @@ def generate_composition_eval(models, output_dir):
         "cv_metrics": median_entry["cv_metrics"],
         "per_seed_cv": per_seed_cv,
         "selected_seed": median_entry["seed"],
+        "archive_paths": {str(e["seed"]): e["archive_path"] for e in per_seed},
     }
 
 
@@ -939,6 +931,19 @@ def _enrich_candidate_join_key(responses, eval_metadata):
     cand_resp["human_pick_index"] = pick_index
 
 
+def _worktree_dirty():
+    """True when tracked files differ from HEAD (the commit hash alone then
+    does not identify the code that produced the reviewed images)."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return bool(out.strip())
+
+
 def save_review(responses, eval_metadata, eval_types):
     """Persist review JSON. Returns path to saved file."""
     now = datetime.now()
@@ -969,6 +974,17 @@ def save_review(responses, eval_metadata, eval_types):
         review["per_seed_cv"] = per_seed_cv
     if selected_seed is not None:
         review["selected_seed"] = selected_seed
+    if "composition" in eval_metadata:
+        comp = eval_metadata["composition"]
+        # Exactly which images were rated, so ratings can be re-scored later
+        # by new instruments (audit 2026-10-13: before this, mapping a review
+        # to its image meant guessing from archive timestamps).
+        review["composition_inputs"] = {
+            "text": comp.get("text"),
+            "preset_params": comp.get("preset_params"),
+            "archive_paths": comp.get("archive_paths"),
+        }
+    review["dirty"] = _worktree_dirty()
 
     os.makedirs(REVIEW_DIR, exist_ok=True)
     with open(path, "w") as f:

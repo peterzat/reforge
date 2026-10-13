@@ -8,10 +8,10 @@ import numpy as np
 import torch
 from PIL import Image
 
-# Enable tensor core acceleration on Ada GPUs
-torch.set_float32_matmul_precision("high")
-if torch.backends.cudnn.is_available():
-    torch.backends.cudnn.benchmark = True
+# Tensor-core settings (TF32 matmul, cuDNN autotuning) are applied inside
+# run() and restored afterwards. Setting them at import changed numerics for
+# every later test in the same pytest process, which made the regression gate
+# depend on which tests had imported this module first.
 
 from reforge.config import (
     DEFAULT_DDIM_STEPS,
@@ -35,6 +35,46 @@ def _log(msg: str, verbose: bool, end: str = "\n") -> None:
     if verbose:
         sys.stderr.write(msg + end)
         sys.stderr.flush()
+
+
+def _git_state() -> dict:
+    """Commit and dirty flag of the checkout this module runs from."""
+    import subprocess
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=root,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        dirty = bool(subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"], cwd=root,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip())
+    except (OSError, subprocess.CalledProcessError):
+        return {"commit": None, "dirty": None}
+    return {"commit": commit, "dirty": dirty}
+
+
+def _write_manifest(output_path: str, run_info: dict) -> str:
+    """Write the run manifest next to the output image; return its path."""
+    import json
+    from datetime import datetime, timezone
+
+    from reforge.config import SIZING_POLICY
+
+    manifest = {
+        "output": os.path.basename(output_path),
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "git": _git_state(),
+        "sizing_policy": SIZING_POLICY,
+        **run_info,
+    }
+    path = os.path.splitext(output_path)[0] + ".json"
+    with open(path, "w") as f:
+        json.dump(manifest, f, indent=2, default=float)
+        f.write("\n")
+    return path
 
 
 def postprocess_words(images: list, words: list) -> list:
@@ -70,6 +110,8 @@ def run(
     device: str | None = None,
     verbose: bool = True,
     page_ratio: str = "auto",
+    seed: int | None = None,
+    write_manifest: bool = True,
 ) -> dict:
     """Run the full generation pipeline.
 
@@ -83,6 +125,11 @@ def run(
         num_candidates: Best-of-N candidate count.
         device: Torch device.
         verbose: Print progress to stderr.
+        seed: Seed for reproducible output. Each word is seeded from
+            (seed, word index), so one word's candidate retries do not shift
+            the noise of every later word; cuDNN runs deterministically.
+        write_manifest: Write ``<output stem>.json`` next to the PNG with the
+            seed, settings, git state and quality metrics of this run.
 
     Returns:
         Dict with output_path, quality_scores, and word_positions.
@@ -205,35 +252,53 @@ def run(
     n_words = len(real_words)
     _log(f"Generating {n_words} words ({num_steps} steps, {num_candidates} candidates)", verbose)
 
-    generated_images = []
-    word_idx = 0
-    t_gen = time.monotonic()
-    for word in flat_words:
-        if word is None:
-            generated_images.append(None)
-            continue
-        word_idx += 1
-        if verbose:
-            elapsed = time.monotonic() - t_gen
-            if word_idx > 1:
-                eta = elapsed / (word_idx - 1) * (n_words - word_idx + 1)
-                msg = f"  [{word_idx}/{n_words}] {word} (ETA {_fmt_time(eta)})"
-            else:
-                msg = f"  [{word_idx}/{n_words}] {word}"
-            _log(f"\r{msg:<60}", verbose, end="")
-        img = generate_word(
-            word, unet, vae, tokenizer, style_features,
-            uncond_context=uncond_context,
-            num_steps=num_steps,
-            guidance_scale=guidance_scale,
-            num_candidates=num_candidates,
-            device=device,
-            style_reference_imgs=word_imgs_raw,
-            reference_stroke_width=reference_stroke_width,
-        )
-        generated_images.append(img)
+    # Ada tensor cores: TF32 matmul always; cuDNN autotuning only when
+    # unseeded, since autotuned kernel choice is not reproducible.
+    saved_numerics = (
+        torch.get_float32_matmul_precision(),
+        torch.backends.cudnn.benchmark,
+        torch.backends.cudnn.deterministic,
+    )
+    torch.set_float32_matmul_precision("high")
+    torch.backends.cudnn.benchmark = seed is None
+    torch.backends.cudnn.deterministic = seed is not None
+    if seed is not None:
+        np.random.seed(seed)
 
-    gen_time = time.monotonic() - t_gen
+    try:
+        generated_images = []
+        word_idx = 0
+        t_gen = time.monotonic()
+        for word in flat_words:
+            if word is None:
+                generated_images.append(None)
+                continue
+            word_idx += 1
+            if seed is not None:
+                torch.manual_seed(seed * 1_000_003 + word_idx)
+            if verbose:
+                elapsed = time.monotonic() - t_gen
+                if word_idx > 1:
+                    eta = elapsed / (word_idx - 1) * (n_words - word_idx + 1)
+                    msg = f"  [{word_idx}/{n_words}] {word} (ETA {_fmt_time(eta)})"
+                else:
+                    msg = f"  [{word_idx}/{n_words}] {word}"
+                _log(f"\r{msg:<60}", verbose, end="")
+            img = generate_word(
+                word, unet, vae, tokenizer, style_features,
+                uncond_context=uncond_context,
+                num_steps=num_steps,
+                guidance_scale=guidance_scale,
+                num_candidates=num_candidates,
+                device=device,
+                style_reference_imgs=word_imgs_raw,
+                reference_stroke_width=reference_stroke_width,
+            )
+            generated_images.append(img)
+        gen_time = time.monotonic() - t_gen
+    finally:
+        torch.set_float32_matmul_precision(saved_numerics[0])
+        torch.backends.cudnn.benchmark, torch.backends.cudnn.deterministic = saved_numerics[1:]
     _log(f"\r  [{n_words}/{n_words}] done ({_fmt_time(gen_time)})" + " " * 20, verbose)
 
     # --- Size + harmonize ---
@@ -267,7 +332,22 @@ def run(
         parts = [f"{k}={v:.2f}" for k, v in quality.items() if k != "overall" and isinstance(v, (int, float))]
         _log(f"Quality: {quality['overall']:.2f} ({' '.join(parts)})", verbose)
 
+    manifest_path = None
+    if write_manifest:
+        manifest_path = _write_manifest(output_path, {
+            "seed": seed,
+            "text": text,
+            "style_path": style_path,
+            "style_image_paths": style_image_paths,
+            "num_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "num_candidates": num_candidates,
+            "words": real_words,
+            "quality": quality,
+        })
+
     return {
+        "manifest_path": manifest_path,
         "output_path": output_path,
         "quality_scores": quality,
         "word_positions": word_positions,

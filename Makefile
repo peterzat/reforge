@@ -23,26 +23,9 @@ test: test-medium
 
 review:
 	./demo.sh
-	@.venv/bin/python3 -c "\
-	import numpy as np; \
-	from PIL import Image; \
-	from reforge.evaluate.visual import overall_quality_score; \
-	img = Image.open('result.png'); \
-	arr = np.array(img.convert('L')); \
-	scores = overall_quality_score(arr); \
-	print(); \
-	print('=== Quality Review ==='); \
-	print(f'Image: result.png ({img.width}x{img.height})'); \
-	print(f'Aspect ratio: {img.width/img.height:.2f}:1'); \
-	print(); \
-	print('Metrics:'); \
-	[print(f'  {k:30s} {v:.3f}' if isinstance(v, float) else f'  {k:30s} {v}') for k, v in scores.items()]; \
-	print(); \
-	print('Demo text: The morning sun cast long shadows across the quiet garden...'); \
-	print('Style: styles/hw-sample.png'); \
-	print(); \
-	print('To review: paste this output and result.png into a Claude conversation.'); \
-	"
+	@echo
+	@echo "Image: result.png    Run manifest (seed, settings, metrics): result.json"
+	@echo "To review: open result.png in Claude Code (it reads images directly) or ./qpeek.sh result.png"
 
 test-hard:
 	.venv/bin/python -m pytest tests/medium/test_hard_words.py -x -s

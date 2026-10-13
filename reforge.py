@@ -46,6 +46,10 @@ def main():
         help="Torch device (default: auto-detect cuda/cpu)."
     )
     parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Seed for reproducible output (default: unseeded)."
+    )
+    parser.add_argument(
         "--page-ratio", type=str, default="auto",
         help="Page aspect ratio mode. 'auto' targets near-square output (default: auto)."
     )
@@ -74,6 +78,7 @@ def main():
         num_candidates=num_candidates,
         device=args.device,
         page_ratio=args.page_ratio,
+        seed=args.seed,
     )
 
 

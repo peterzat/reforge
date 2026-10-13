@@ -12,6 +12,7 @@ tests/medium/hard_words_ledger.jsonl
 tests/medium/failed_output.png
 tests/medium/diagnostic_results.json
 result.png
+result.json
 TODO.md
 reviews/human/*
 !reviews/human/.gitkeep
