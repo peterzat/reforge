@@ -7,16 +7,16 @@ See [README](../README.md) for current output and project overview.
 
 ---
 
-## 20261013-174230
+## 20261013-185952
 
-![output](output-history/20261013-174230.png)
+![output](output-history/20261013-185952.png)
 
 | Field | Value |
 |-------|-------|
-| Git state | `50d6591 (uncommitted changes: FINDINGS.md draft)` |
-| Commit message | Protect the evaluator in code; publish the audit write-up |
+| Git state | `8b876bf (uncommitted changes)` |
+| Commit message | Zone sizing: measure x-height without trailing marks |
 | Style input | `styles/hw-sample.png` |
-| Metrics | seed=42, sizing=zone, overall=0.711, height_outlier_score=0.071, baseline_alignment=0.356, stroke_weight_consistency=0.879, ocr_accuracy=0.908, ocr_min=0.000, word_readability_rate=0.925, style_fidelity=0.387 |
+| Metrics | seed=42, sizing=zone, overall=0.711, height_outlier_score=0.071, baseline_alignment=0.346, stroke_weight_consistency=0.878, ocr_accuracy=0.910, ocr_min=0.000, word_readability_rate=0.925, style_fidelity=0.386 |
 
 ---
 
