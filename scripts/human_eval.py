@@ -224,15 +224,11 @@ def _generate_single_word(word, models, num_steps=20, guidance_scale=3.0):
 
 
 def _generate_words(words, models, num_steps=20, guidance_scale=3.0):
-    """Generate multiple word images with font normalization."""
-    from reforge.quality.font_scale import normalize_font_size
-
-    images = []
-    for w in words:
-        img = _generate_single_word(w, models, num_steps, guidance_scale)
-        img = normalize_font_size(img, w)
-        images.append(img)
-    return images
+    """Generate raw word images (no sizing; callers run postprocess_words)."""
+    return [
+        _generate_single_word(w, models, num_steps, guidance_scale)
+        for w in words
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -412,11 +408,10 @@ def generate_sizing_eval(models, output_dir):
     limitation tracked separately in FINDINGS.md.
     """
     from reforge.compose.render import compose_words
-    from reforge.quality.harmonize import harmonize_words
+    from reforge.pipeline import postprocess_words
 
     words = ["the", "quick", "something"]
-    word_images = _generate_words(words, models)
-    word_images = harmonize_words(word_images)
+    word_images = postprocess_words(_generate_words(words, models), words)
 
     composed, positions = compose_words(
         word_images, words, page_width=600,
@@ -435,11 +430,10 @@ def generate_sizing_eval(models, output_dir):
 def generate_baseline_eval(models, output_dir):
     """B4: Generate a phrase with descenders for baseline alignment check."""
     from reforge.compose.render import compose_words
-    from reforge.quality.harmonize import harmonize_words
+    from reforge.pipeline import postprocess_words
 
     words = ["jumping", "quickly", "beyond", "gray", "fences"]
-    word_images = _generate_words(words, models)
-    word_images = harmonize_words(word_images)
+    word_images = postprocess_words(_generate_words(words, models), words)
 
     composed, positions = compose_words(
         word_images, words, page_width=800,
@@ -459,11 +453,10 @@ def generate_spacing_eval(models, output_dir):
     """B5: Same phrase composed with two different WORD_SPACING values."""
     from reforge.compose.render import compose_words
     from reforge.evaluate.compare import create_comparison_image
-    from reforge.quality.harmonize import harmonize_words
+    from reforge.pipeline import postprocess_words
 
     words = ["bright", "morning", "light", "through", "windows"]
-    word_images = _generate_words(words, models)
-    word_images = harmonize_words(word_images)
+    word_images = postprocess_words(_generate_words(words, models), words)
 
     from reforge.config import WORD_SPACING as current_spacing
     half_spacing = max(1, current_spacing // 2)
@@ -501,7 +494,7 @@ def generate_ink_weight_eval(models, output_dir):
     from reforge.compose.render import compose_words
     from reforge.config import STROKE_WEIGHT_SHIFT_STRENGTH
     from reforge.evaluate.compare import create_comparison_image
-    from reforge.quality.harmonize import harmonize_words
+    from reforge.pipeline import postprocess_words
 
     words = ["Quick", "brown", "foxes", "jump", "high"]
     word_images = _generate_words(words, models)
@@ -513,7 +506,7 @@ def generate_ink_weight_eval(models, output_dir):
     composed_images = []
     for label, strength in configs:
         with patch("reforge.quality.harmonize.STROKE_WEIGHT_SHIFT_STRENGTH", strength):
-            harmonized = harmonize_words(list(word_images))
+            harmonized = postprocess_words(list(word_images), list(words))
         composed = compose_words(
             harmonized, list(words),
             page_width=800, page_ratio="fixed",

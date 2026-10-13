@@ -136,6 +136,9 @@ def run(
     """
     import cv2
 
+    if seed is not None and not (0 <= seed < 2**32):
+        raise ValueError(f"seed must be in [0, 2**32), got {seed}")
+
     # --- Validate device ---
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -262,10 +265,10 @@ def run(
     torch.set_float32_matmul_precision("high")
     torch.backends.cudnn.benchmark = seed is None
     torch.backends.cudnn.deterministic = seed is not None
-    if seed is not None:
-        np.random.seed(seed)
 
     try:
+        if seed is not None:
+            np.random.seed(seed)
         generated_images = []
         word_idx = 0
         t_gen = time.monotonic()
